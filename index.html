@@ -451,24 +451,29 @@
     position: relative;
     width: 90vw;
     max-width: 1200px;
-    max-height: 85vh;
+    height: 85vh;
     background: #000;
     border-radius: var(--radius-lg);
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0,0,0,0.8);
     animation: scaleIn 0.3s ease;
+    display: flex;
+    flex-direction: column;
   }
   @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
   .player-loading {
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 16px;
-    padding: 80px 20px;
     color: var(--text2);
     font-size: 15px;
+    background: rgba(0,0,0,0.7);
+    z-index: 5;
   }
   .player-loading .spinner {
     width: 40px;
@@ -480,13 +485,16 @@
   }
   .player-error {
     display: none;
+    position: absolute;
+    inset: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 80px 20px;
     color: var(--text2);
     font-size: 15px;
+    background: rgba(0,0,0,0.85);
+    z-index: 5;
   }
   .player-error .error-icon { font-size: 48px; }
   .player-error .retry-btn {
@@ -505,8 +513,10 @@
   .player-container video {
     width: 100%;
     display: block;
-    max-height: 80vh;
-    background: #000;
+    flex: 1;
+    min-height: 0;
+    object-fit: contain;
+    max-height: none;
   }
 
   /* Cinema-style subtitles — branco com borda preta, igual cinema */
@@ -514,7 +524,7 @@
     color: #fff;
     background: transparent;
     font-family: 'Arial', 'Helvetica', sans-serif;
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 700;
     text-shadow:
       -2px -2px 0 #000,
@@ -613,6 +623,58 @@
   }
   .subtitle-btn .sub-icon { font-size: 14px; }
   .subtitle-btn .sub-label { font-size: 11px; font-weight: 600; }
+
+  .copy-url-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all;
+    transition: all 0.2s;
+  }
+  .copy-url-btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .copy-url-btn.copied {
+    background: rgba(46,204,113,0.25);
+    border-color: #2ecc71;
+    color: #2ecc71;
+  }
+
+  .cast-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all;
+    transition: all 0.2s;
+  }
+  .cast-btn:hover {
+    background: rgba(229,9,20,0.2);
+    border-color: var(--primary);
+  }
+  .cast-btn.casting {
+    background: rgba(229,9,20,0.25);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .cast-btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 
   .player-info {
     display: flex;
@@ -985,6 +1047,14 @@
             <span class="sub-icon">💬</span>
             <span class="sub-label">Leg</span>
           </button>
+          <button class="copy-url-btn" id="copyUrlBtn" onclick="copyStreamUrl()" title="Copiar URL da stream">
+            <span>🔗</span>
+            <span class="sub-label">URL</span>
+          </button>
+          <button class="cast-btn" id="castBtn" onclick="startCast()" title="Transmitir para Chromecast" disabled>
+            <span id="castIcon">📺</span>
+            <span class="sub-label" id="castLabel">Cast</span>
+          </button>
           <button class="player-close" onclick="closePlayer()">✕</button>
         </div>
       </div>
@@ -1261,6 +1331,8 @@
     });
 
     container.innerHTML = html;
+
+
   }
 
   function genreIcon(name) {
@@ -1803,6 +1875,8 @@
     video.onerror = function() {
       clearBufferTimer();
       const err = video.error;
+      // MEDIA_ERR_ABORTED é normal durante seeks — ignora
+      if (err && err.code === MediaError.MEDIA_ERR_ABORTED) return;
       let msg = 'Erro ao carregar vídeo';
       if (err) {
         if (err.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Falha de rede ao carregar vídeo';
@@ -1813,8 +1887,14 @@
     };
 
     video.oncanplay = function() {
-      // Apenas indica que o browser pode decodificar — NÃO inicia play
-      // O play é controlado pelo _waitForBuffer (mínimo 30%)
+      // Browser pode decodificar — inicia play (só na primeira vez)
+      if (!video._started) {
+        video._started = true;
+        clearBufferTimer();
+        loading.style.display = 'none';
+        video.style.display = 'block';
+        video.play().catch(function() {});
+      }
     };
 
     video.onwaiting = function() {
@@ -1830,23 +1910,15 @@
     };
 
     video.onseeking = function() {
-      // Esconde o vídeo para não mostrar frame corrompido durante o pulo
-      video.style.display = 'none';
-      loading.style.display = 'flex';
-      loading.querySelector('span').textContent = 'Pulando — bufferizando...';
+      video._seeking = true;
       setStreamStatus('seeking', '\u23F3 Pulando...');
     };
 
     video.onseeked = function() {
-      // Quando termina o seek, pausa e espera buffer mínimo
-      video.pause();
-      loading.style.display = 'flex';
-      loading.querySelector('span').textContent = 'Bufferizando 0%...';
-      _waitForBuffer(video, 30, function() {
-        loading.style.display = 'none';
-        video.style.display = 'block';
-        video.play().catch(function() {});
-      });
+      video._seeking = false;
+      loading.style.display = 'none';
+      video.style.display = 'block';
+      setStreamStatus('playing', '\u25B6\uFE0F Streaming');
     };
 
     video.onprogress = function() {
@@ -1866,6 +1938,15 @@
       newTrack.src = '/api/subtitle?path=' + encodeURIComponent(subtitlePath);
     }
     parent.replaceChild(newTrack, track);
+
+    // Se houver legenda, já liga automático
+    if (subtitlePath) {
+      subtitlesEnabled = true;
+      const t = document.getElementById('subtitleTrack');
+      if (t) t.track.mode = 'showing';
+    } else {
+      subtitlesEnabled = false;
+    }
     updateSubtitleButton(subtitlePath);
 
     // Start loading video
@@ -1879,13 +1960,8 @@
       }
     });
 
-    // Aguarda buffer mínimo de 30% antes de liberar o play
+    // Inicia loading — vídeo toca assim que oncanplay disparar
     loading.querySelector('span').textContent = 'Bufferizando 0%...';
-    _waitForBuffer(video, 30, function() {
-      loading.style.display = 'none';
-      video.style.display = 'block';
-      video.play().catch(function() {});
-    });
 
     // Timeout: se readyState=0 após 25s, é erro de conexão
     setTimeout(function() {
@@ -1916,9 +1992,14 @@
   }
 
   function closePlayer() {
+    const video = document.getElementById('videoPlayer');
+    // Não fecha durante seek
+    if (video && video._seeking) {
+      console.log('[closePlayer] ignorado — seeking em andamento');
+      return;
+    }
     clearBufferTimer();
     const overlay = document.getElementById('playerOverlay');
-    const video = document.getElementById('videoPlayer');
     const loading = document.getElementById('playerLoading');
     const errorEl = document.getElementById('playerError');
     video.pause();
@@ -1937,6 +2018,158 @@
   }
 
   let subtitlesEnabled = true;
+
+  // ══════════════════════════════════════
+  //  Google Cast (Chromecast)
+  // ══════════════════════════════════════
+  let castLoaded = false;
+  let castSession = null;
+  const CAST_APP_ID = 'CC1AD845'; // Default Media Receiver
+
+  function getMimeType(path) {
+    const ext = path.split('.').pop().toLowerCase();
+    const types = {
+      mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska',
+      webm: 'video/webm', mov: 'video/quicktime', avi: 'video/x-msvideo',
+      flv: 'video/x-flv', wmv: 'video/x-ms-wmv', mpg: 'video/mpeg', mpeg: 'video/mpeg',
+    };
+    return types[ext] || 'video/mp4';
+  }
+
+  function loadCastSdk(callback) {
+    if (window.chrome && window.chrome.cast) {
+      callback();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js';
+    script.onload = callback;
+    script.onerror = () => console.warn('[Cast] Falha ao carregar SDK');
+    document.body.appendChild(script);
+  }
+
+  function initCastApi() {
+    if (!window.chrome || !window.chrome.cast) return;
+    const ctx = cast.framework.CastContext.getInstance();
+    ctx.setOptions({
+      receiverApplicationId: CAST_APP_ID,
+      autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+    });
+    ctx.addEventListener(
+      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+      onCastSessionChanged
+    );
+    castLoaded = true;
+    // Enable button if Cast is available
+    const btn = document.getElementById('castBtn');
+    if (btn) btn.disabled = false;
+  }
+
+  function onCastSessionChanged(e) {
+    const btn = document.getElementById('castBtn');
+    const icon = document.getElementById('castIcon');
+    const label = document.getElementById('castLabel');
+    castSession = e.session;
+    if (e.session && e.session.getSessionState() === 'connected') {
+      btn.classList.add('casting');
+      btn.title = 'Conectado ao Chromecast';
+      icon.textContent = '📡';
+      label.textContent = 'Cast';
+    } else {
+      btn.classList.remove('casting');
+      btn.title = 'Transmitir para Chromecast';
+      icon.textContent = '📺';
+    }
+  }
+
+  function startCast() {
+    const path = currentVideoPath;
+    if (!path) return;
+
+    if (!castLoaded) {
+      loadCastSdk(() => {
+        initCastApi();
+        // Small delay for init, then try again
+        setTimeout(() => startCast(), 500);
+      });
+      return;
+    }
+
+    const castCtx = cast.framework.CastContext.getInstance();
+    castCtx.requestSession()
+      .then(() => {
+        const session = castCtx.getCurrentSession();
+        if (!session) return;
+
+        const streamUrl = window.location.origin + '/api/stream?path=' + encodeURIComponent(path);
+        const movieName = document.getElementById('playerMovieName').textContent;
+        const mimeType = getMimeType(path);
+
+        const mediaInfo = new chrome.cast.media.MediaInfo(streamUrl, mimeType);
+        mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+        mediaInfo.metadata.title = movieName;
+        mediaInfo.metadata.subtitle = 'TicianoFlix';
+
+        // Add subtitle track if available
+        if (currentSubtitlePath) {
+          const subUrl = window.location.origin + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath);
+          const track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
+          track.trackContentId = subUrl;
+          track.trackContentType = 'text/vtt';
+          track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
+          track.name = 'Português';
+          track.language = 'pt-BR';
+          mediaInfo.tracks = [track];
+        }
+
+        const request = new chrome.cast.media.LoadRequest(mediaInfo);
+        if (currentSubtitlePath) {
+          request.activeTrackIds = [1];
+        }
+
+        session.loadMedia(request)
+          .then(() => console.log('[Cast] Mídia enviada com sucesso'))
+          .catch(err => console.warn('[Cast] Erro ao carregar mídia:', err));
+      })
+      .catch(err => {
+        if (err.code === 'cancel' || err.code === 'CANCEL') return;
+        console.warn('[Cast] Erro na sessão:', err);
+      });
+  }
+
+  function copyStreamUrl() {
+    const btn = document.getElementById('copyUrlBtn');
+    const path = currentVideoPath;
+    if (!path) return;
+    const url = window.location.origin + '/api/stream?path=' + encodeURIComponent(path);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        btn.classList.add('copied');
+        btn.title = 'Copiado!';
+        setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copiar URL da stream'; }, 2000);
+      }).catch(() => fallbackCopy(url, btn));
+    } else {
+      fallbackCopy(url, btn);
+    }
+  }
+
+  function fallbackCopy(text, btn) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      btn.classList.add('copied');
+      btn.title = 'Copiado!';
+      setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copiar URL da stream'; }, 2000);
+    } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  // Close movie info on Escape
 
   function toggleSubtitles() {
     const track = document.getElementById('subtitleTrack');

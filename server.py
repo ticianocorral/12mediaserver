@@ -10,6 +10,7 @@ import os
 import subprocess
 import urllib.parse
 import urllib.request
+import urllib.error
 import mimetypes
 import socket
 import threading
@@ -777,50 +778,51 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self._stream_file_direct(path)
 
     def _stream_video_proxy(self, path):
-        """Proxy video through rclone HTTP server."""
+        """Proxy video through main server (no redirect). Forwards Range
+        requests to rclone serve and streams response back to client.
+        Same-origin = works on mobile browsers without cross-origin issues."""
         safe_path = urllib.parse.quote(path.strip("/"), safe="/")
         rclone_url = f"http://localhost:{RCLONE_SERVE_PORT}/{safe_path}"
 
-        # Forward Range header if present
         range_header = self.headers.get("Range")
-        req = urllib.request.Request(rclone_url, method="GET")
-        if range_header:
-            req.add_header("Range", range_header)
-
-        try:
-            resp = urllib.request.urlopen(req, timeout=120)
-        except Exception as e:
-            sys.stderr.write(f"[TicianoFlix] rclone proxy failed: {e}, trying direct\n")
-            self._stream_file_direct(path)
-            return
-
         mime = self._guess_mime(path)
-        status = resp.status
-        content_length = resp.headers.get("Content-Length", "")
-        content_range = resp.headers.get("Content-Range", "")
-
-        self.send_response(status)
-        if content_length:
-            self.send_header("Content-Length", content_length)
-        if content_range:
-            self.send_header("Content-Range", content_range)
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Content-Type", mime)
-        self.end_headers()
 
         try:
+            req = urllib.request.Request(rclone_url, method="GET")
+            if range_header:
+                req.add_header("Range", range_header)
+            resp = urllib.request.urlopen(req, timeout=None)
+
+            status = resp.status
+            rsp_headers = resp.headers
+
+            if status == 206:
+                self.send_response(206)
+                cr = rsp_headers.get("Content-Range", "")
+                if cr:
+                    self.send_header("Content-Range", cr)
+            else:
+                self.send_response(200)
+
+            cl = rsp_headers.get("Content-Length")
+            if cl:
+                self.send_header("Content-Length", cl)
+            self.send_header("Content-Type", mime)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
             while True:
                 buf = resp.read(65536)
                 if not buf:
                     break
                 self.wfile.write(buf)
-        except (BrokenPipeError, ConnectionResetError) as e:
-            sys.stderr.write(f"[TicianoFlix] Client disconnected during stream: {e}\n")
+        except urllib.error.HTTPError as e:
+            sys.stderr.write(f"[ERROR] Video proxy HTTP {e.code}: {e.reason}\n")
+            self._stream_file_direct(path)
         except Exception as e:
-            sys.stderr.write(f"[TicianoFlix] Stream proxy write error: {e}\n")
-        finally:
-            resp.close()
+            sys.stderr.write(f"[ERROR] Video proxy failed: {e}\n")
+            self._stream_file_direct(path)
 
     def _stream_file_direct(self, path):
         """Fallback: stream directly via rclone cat (original method)."""
@@ -904,13 +906,18 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             try:
                 result = subprocess.run(
                     ["rclone", "cat", remote_path],
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True, timeout=30
                 )
                 if result.returncode != 0:
                     self._send_error("Subtitle not found", 404)
                     return
-                raw = result.stdout
-                # Cache locally
+                # Tenta UTF-8 primeiro, fallback pra latin-1 (comum em SRT)
+                raw_bytes = result.stdout
+                try:
+                    raw = raw_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    raw = raw_bytes.decode("latin-1")
+                # Cache local (sempre UTF-8)
                 try:
                     cache_path.write_text(raw, encoding="utf-8")
                 except Exception:
@@ -1212,9 +1219,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_error("Not found", 404)
 
-
-# ═══════════════════════════════════════════════
-#  Server
+    # ═══════════════════════════════════════════════
+#  (download removido)
 # ═══════════════════════════════════════════════
 
 def find_free_port():
@@ -1222,16 +1228,37 @@ def find_free_port():
     env_port = os.environ.get("TICIANOFLIX_PORT")
     if env_port:
         return int(env_port)
+    # Sempre forçar 8080 — se estiver ocupada, liberar
     port = PORT
-    while port < PORT + 100:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, port))
+        s.close()
+        return port
+    except OSError:
+        # Porta ocupada — tentar matar processo via fuser
+        import subprocess as _sp
+        _sp.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=5)
+        time.sleep(1)
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((HOST, port))
             s.close()
             return port
         except OSError:
-            port += 1
-    return PORT
+            # Último recurso: procurar outra porta
+            while port < PORT + 100:
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((HOST, port))
+                    s.close()
+                    return port
+                except OSError:
+                    port += 1
+            return PORT
 
 
 def main():
@@ -1259,10 +1286,14 @@ def main():
                 ["rclone", "serve", "http", "gdrive:",
                  "--addr", f"localhost:{rclone_serve_port}",
                  "--read-only",
-                 "--drive-chunk-size", "32M",
-                 "--buffer-size", "64M",
+                 "--drive-chunk-size", "128M",
+                 "--buffer-size", "512M",
                  "--vfs-cache-mode", "writes",
                  "--vfs-cache-max-size", "5G",
+                 "--vfs-read-chunk-size", "64M",
+                 "--vfs-read-chunk-size-limit", "off",
+                 "--vfs-read-ahead", "512M",
+                 "--header", "Access-Control-Allow-Origin: *",
                  "--log-level", "ERROR"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -1304,6 +1335,8 @@ def main():
     port = find_free_port()
     server = http.server.ThreadingHTTPServer((HOST, port), TicianoFlixHandler)
     server.timeout = 0.5
+    # Permite reuso imediato da porta ao reiniciar
+    server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     print(f"""
 ╔══════════════════════════════════════════════╗
