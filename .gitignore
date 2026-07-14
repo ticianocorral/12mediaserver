@@ -1,0 +1,40 @@
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# 📦 AppImage (gerado localmente, não versionar)
+*.AppImage
+*.AppImage.home
+
+# 💾 Cache do TicianoFlix
+.cache/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 🧹 Cache Python
+.Python
+env/
+venv/
+.venv/
+*.env
+
+# 🔧 IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 📋 Config local (não versionar)
+*.local/

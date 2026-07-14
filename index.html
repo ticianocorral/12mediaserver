@@ -1,0 +1,2131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TicianoFlix</title>
+<style>
+  /* ====== RESET & BASE ====== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #141414;
+    --bg2: #1a1a2e;
+    --bg3: #222;
+    --surface: #1e1e2e;
+    --primary: #e50914;
+    --primary-hover: #ff0f1f;
+    --accent: #e50914;
+    --text: #fff;
+    --text2: #999;
+    --text3: #666;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 4px 20px rgba(0,0,0,0.4);
+    --transition: 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #555; }
+  a { color: inherit; text-decoration: none; }
+
+  /* ====== HEADER / NAVBAR ====== */
+  .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 48px;
+    height: 68px;
+    background: linear-gradient(180deg, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0) 100%);
+    transition: background var(--transition);
+  }
+  .header.scrolled {
+    background: rgba(20,20,20,0.98);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  }
+  .logo {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--primary);
+    letter-spacing: -1px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .logo-icon { font-size: 32px; }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .search-box {
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 24px;
+    padding: 6px 16px;
+    transition: all var(--transition);
+  }
+  .search-box:focus-within {
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .search-box input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 14px;
+    width: 200px;
+    padding: 6px 0;
+  }
+  .search-box input::placeholder { color: var(--text3); }
+  .search-box .search-icon {
+    font-size: 18px;
+    margin-right: 8px;
+    opacity: 0.5;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text2);
+    font-size: 16px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+  }
+  .icon-btn:hover {
+    background: rgba(255,255,255,0.12);
+    color: var(--text);
+  }
+  .icon-btn.loading {
+    animation: spin 0.8s linear infinite;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3000;
+    background: var(--surface);
+    color: var(--text);
+    padding: 12px 24px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    display: none;
+    animation: fadeIn 0.3s ease;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .toast.show { display: block; }
+  .toast.success { border-color: #4caf50; }
+  .toast.error { border-color: var(--primary); }
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    color: var(--text2);
+    max-width: 600px;
+  }
+  .breadcrumb a {
+    color: var(--text2);
+    cursor: pointer;
+    transition: color var(--transition);
+  }
+  .breadcrumb a:hover { color: var(--text); }
+  .breadcrumb .sep { color: var(--text3); }
+
+  /* ====== MAIN CONTENT ====== */
+  .main {
+    padding-top: 90px;
+    padding-left: 48px;
+    padding-right: 48px;
+    padding-bottom: 80px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ====== HERO / BANNER ====== */
+  .hero {
+    position: relative;
+    width: 100%;
+    height: 320px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 40px;
+    background: linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%);
+  }
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: brightness(0.4) saturate(0.8);
+    transition: background-image var(--transition);
+  }
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    height: 100%;
+    padding: 60px 48px;
+    background: linear-gradient(0deg, rgba(20,20,20,0.9) 0%, transparent 60%);
+  }
+  .hero h1 {
+    font-size: 36px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  .hero p {
+    font-size: 16px;
+    color: var(--text2);
+    max-width: 500px;
+    line-height: 1.5;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--primary);
+    color: white;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    width: fit-content;
+  }
+
+  /* ====== GENRE SECTION ====== */
+  .genre-section {
+    margin-bottom: 28px;
+  }
+  .genre-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: opacity var(--transition);
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .genre-header:hover {
+    opacity: 0.8;
+  }
+  .genre-title {
+    font-size: 20px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .genre-title .arrow {
+    font-size: 14px;
+    color: var(--primary);
+    opacity: 0.6;
+  }
+  .genre-count {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text3);
+  }
+  .genre-movies-preview {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+  }
+  .genre-movies-preview::-webkit-scrollbar { height: 4px; }
+  .genre-movies-preview::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .preview-card {
+    flex: 0 0 130px;
+    aspect-ratio: 2/3;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform var(--transition);
+    background: var(--surface);
+  }
+  .preview-card:hover {
+    transform: scale(1.08);
+    z-index: 2;
+  }
+  .preview-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .preview-card .placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--text3);
+    background: linear-gradient(135deg, var(--bg2), var(--surface));
+  }
+
+  /* ====== EMPTY GENRE ====== */
+  .empty-genre {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 20px;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed rgba(255,255,255,0.08);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .empty-genre:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.15);
+  }
+  .empty-genre-icon {
+    font-size: 32px;
+    opacity: 0.3;
+  }
+  .empty-genre-info h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .empty-genre-info p {
+    font-size: 13px;
+    color: var(--text3);
+  }
+  .empty-genre .click-hint {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--text3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ====== MOVIE GRID (dentro do género) ====== */
+  .movie-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+
+  /* ====== MOVIE CARD ====== */
+  .movie-card {
+    position: relative;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all var(--transition);
+    background: var(--surface);
+    aspect-ratio: 2/3;
+  }
+  .movie-card:hover {
+    transform: scale(1.05);
+    z-index: 5;
+    box-shadow: var(--shadow);
+  }
+  .movie-card-poster {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition);
+  }
+  .movie-card-poster-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    color: var(--text3);
+    background: linear-gradient(135deg, var(--bg2), var(--surface));
+  }
+  .movie-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity var(--transition);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 16px;
+  }
+  .movie-card:hover .movie-card-overlay {
+    opacity: 1;
+  }
+  .movie-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .movie-card-subtitle {
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  /* ====== EMPTY STATE ====== */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text3);
+  }
+  .empty-state .empty-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.4; }
+  .empty-state h3 { font-size: 20px; margin-bottom: 8px; color: var(--text2); }
+  .empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto; line-height: 1.6; }
+
+  /* ====== LOADING ====== */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    gap: 12px;
+    color: var(--text2);
+  }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(255,255,255,0.1);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ====== PLAYER OVERLAY ====== */
+  .player-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0,0,0,0.92);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.3s ease;
+  }
+  .player-overlay.active { display: flex; align-items: center; justify-content: center; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .player-container {
+    position: relative;
+    width: 90vw;
+    max-width: 1200px;
+    max-height: 85vh;
+    background: #000;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    animation: scaleIn 0.3s ease;
+  }
+  @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .player-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 80px 20px;
+    color: var(--text2);
+    font-size: 15px;
+  }
+  .player-loading .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255,255,255,0.08);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .player-error {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 80px 20px;
+    color: var(--text2);
+    font-size: 15px;
+  }
+  .player-error .error-icon { font-size: 48px; }
+  .player-error .retry-btn {
+    margin-top: 8px;
+    padding: 10px 24px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .player-error .retry-btn:hover { background: var(--primary-hover); }
+
+  .player-container video {
+    width: 100%;
+    display: block;
+    max-height: 80vh;
+    background: #000;
+  }
+
+  /* Cinema-style subtitles — branco com borda preta, igual cinema */
+  video::cue {
+    color: #fff;
+    background: transparent;
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-shadow:
+      -2px -2px 0 #000,
+       2px -2px 0 #000,
+      -2px  2px 0 #000,
+       2px  2px 0 #000,
+       0px  0px 4px #000,
+       0px  0px 8px rgba(0,0,0,0.6);
+    line-height: 1.5;
+  }
+  video::cue(b) {
+    font-weight: 900;
+  }
+  video::cue(i) {
+    font-style: italic;
+  }
+
+  .player-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .player-container:hover .player-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .player-container:hover .player-header { opacity: 1; }
+  .player-header .movie-name {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .player-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 28px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background var(--transition);
+  }
+  .player-close:hover { background: rgba(255,255,255,0.15); }
+
+  .player-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .subtitle-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all;
+    transition: all 0.2s;
+  }
+  .subtitle-btn:hover {
+    background: rgba(229,9,20,0.3);
+    border-color: var(--primary);
+  }
+  .subtitle-btn.active {
+    background: rgba(229,9,20,0.25);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .subtitle-btn .sub-icon { font-size: 14px; }
+  .subtitle-btn .sub-label { font-size: 11px; font-weight: 600; }
+
+  .player-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text2);
+    padding: 0 20px 16px;
+  }
+  .player-info .file-size { color: var(--text3); }
+  .player-info .stream-status {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text3);
+    white-space: nowrap;
+  }
+  .player-info .stream-status.buffering {
+    color: #ffa726;
+    background: rgba(255,167,38,0.12);
+  }
+  .player-info .stream-status.seeking {
+    color: #42a5f5;
+    background: rgba(66,165,245,0.12);
+  }
+  .player-info .stream-status.cached {
+    color: #66bb6a;
+    background: rgba(102,187,106,0.12);
+  }
+
+  /* ====== MOVIE INFO OVERLAY ====== */
+  .movie-info-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: rgba(0,0,0,0.95);
+    backdrop-filter: blur(8px);
+    animation: fadeIn 0.3s ease;
+    overflow-y: auto;
+  }
+  .movie-info-overlay.active { display: block; }
+
+  .movie-info-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-size: cover;
+    background-position: center top;
+    filter: blur(40px) brightness(0.25);
+    transition: background-image 0.5s;
+  }
+  .movie-info-content {
+    display: flex;
+    gap: 48px;
+    max-width: 1100px;
+    margin: 60px auto;
+    padding: 0 48px;
+    align-items: flex-start;
+  }
+  .movie-info-poster {
+    flex: 0 0 300px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .movie-info-poster img {
+    width: 100%;
+    display: block;
+    aspect-ratio: 2/3;
+    object-fit: cover;
+  }
+  .movie-info-poster .placeholder {
+    width: 100%;
+    aspect-ratio: 2/3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 64px;
+    color: var(--text3);
+    background: linear-gradient(135deg, var(--bg2), var(--surface));
+  }
+
+  .movie-info-details {
+    flex: 1;
+    padding-top: 20px;
+  }
+  .movie-info-details .badge {
+    display: inline-block;
+    background: var(--primary);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .movie-info-details h1 {
+    font-size: 36px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+  .movie-info-details .year {
+    font-size: 18px;
+    color: var(--text2);
+    margin-bottom: 20px;
+  }
+  .movie-info-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .movie-info-meta .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--text2);
+    background: rgba(255,255,255,0.06);
+    padding: 6px 14px;
+    border-radius: 20px;
+  }
+  .movie-info-meta .meta-item .label {
+    color: var(--text3);
+    font-size: 12px;
+  }
+  .movie-info-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .btn-play {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 14px 32px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .btn-play:hover {
+    background: var(--primary-hover);
+    transform: scale(1.02);
+  }
+  .btn-close-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 14px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .btn-close-info:hover {
+    background: rgba(255,255,255,0.15);
+  }
+
+  .movie-info-files {
+    background: rgba(255,255,255,0.03);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .movie-info-files h4 {
+    font-size: 13px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .file-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .file-list-item .icon { font-size: 16px; }
+  .file-list-item .name { flex: 1; }
+
+  /* ====== NFO METADATA ====== */
+  .movie-plot {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text2);
+    margin: 12px 0 16px;
+    max-width: 600px;
+  }
+  .movie-tagline {
+    font-size: 14px;
+    font-style: italic;
+    color: var(--text3);
+    margin-bottom: 12px;
+  }
+  .movie-rating {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+  }
+  .movie-rating .stars { color: #f5c518; letter-spacing: 2px; }
+  .movie-rating .num { color: var(--text); font-weight: 700; }
+  .movie-rating .votes { color: var(--text3); font-size: 12px; }
+  .movie-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 12px;
+  }
+  .movie-genre-tag {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(229,9,20,0.15);
+    color: var(--primary);
+    border: 1px solid rgba(229,9,20,0.25);
+  }
+  .movie-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin: 8px 0 12px;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .movie-meta-row .label { color: var(--text3); }
+  .movie-cast {
+    margin: 12px 0;
+  }
+  .movie-cast h4 {
+    font-size: 13px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .movie-cast-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cast-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    font-size: 12px;
+    max-width: 220px;
+  }
+  .cast-item .name { color: var(--text); font-weight: 500; }
+  .cast-item .role { color: var(--text3); }
+  .movie-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 8px 0;
+  }
+  .movie-tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text3);
+  }
+
+  /* ====== RESPONSIVE ====== */
+  @media (max-width: 1024px) {
+    .main { padding-left: 24px; padding-right: 24px; }
+    .header { padding: 0 24px; }
+    .hero { height: 260px; }
+    .hero-content { padding: 40px 24px; }
+    .hero h1 { font-size: 28px; }
+    .movie-info-content { flex-direction: column; align-items: center; text-align: center; gap: 24px; }
+    .movie-info-poster { flex: 0 0 200px; }
+    .movie-info-actions { justify-content: center; }
+  }
+  @media (max-width: 768px) {
+    .main { padding-left: 16px; padding-right: 16px; }
+    .header { padding: 0 16px; height: 56px; }
+    .logo { font-size: 22px; }
+    .search-box input { width: 120px; font-size: 13px; }
+    .hero { height: 200px; border-radius: var(--radius); margin-bottom: 24px; }
+    .hero-content { padding: 24px 16px; }
+    .hero h1 { font-size: 22px; }
+    .hero p { font-size: 14px; }
+    .movie-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .genre-title { font-size: 17px; }
+    .player-container { width: 98vw; border-radius: 4px; }
+    .movie-info-content { padding: 0 20px; margin: 40px auto; }
+    .movie-info-poster { flex: 0 0 160px; }
+    .movie-info-details h1 { font-size: 26px; }
+  }
+  @media (max-width: 480px) {
+    .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .search-box input { width: 80px; font-size: 12px; }
+    .header-right { gap: 10px; }
+    .preview-card { flex: 0 0 100px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ====== HEADER ====== -->
+  <header class="header" id="header">
+    <div class="logo" onclick="loadPath('')">
+      <span class="logo-icon">▶</span>
+      TicianoFlix
+    </div>
+    <div class="header-right">
+      <div class="header-actions">
+        <button class="icon-btn" id="backupBtn" onclick="backupDb()" title="Exportar banco de dados">💾</button>
+        <button class="icon-btn" id="restoreBtn" onclick="document.getElementById('restoreInput').click()" title="Importar banco de dados">📂</button>
+        <input type="file" id="restoreInput" accept=".db" style="display:none" onchange="restoreDb(this)">
+        <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshCache()" title="Atualizar filmes do Google Drive">🔄</button>
+      </div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Pesquisar filmes..." onkeydown="if(event.key==='Enter') search()">
+      </div>
+    </div>
+  </header>
+
+  <!-- ====== BREADCRUMB ====== -->
+  <div class="main" id="main">
+    <div class="breadcrumb" id="breadcrumb"></div>
+
+    <!-- ====== HERO BANNER ====== -->
+    <div class="hero" id="hero">
+      <div class="hero-bg" id="heroBg"></div>
+      <div class="hero-content">
+        <div class="hero-badge">📺 TicianoFlix</div>
+        <h1 id="heroTitle">Seus Filmes, Sua Tela</h1>
+        <p id="heroDesc">Navegue pelos seus filmes do Google Drive com estilo Netflix.</p>
+      </div>
+    </div>
+
+    <!-- ====== CONTENT ====== -->
+    <div id="content"></div>
+  </div>
+
+  <!-- ====== TOAST NOTIFICATION ====== -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ====== PLAYER OVERLAY ====== -->
+  <div class="player-overlay" id="playerOverlay">
+    <div class="player-container">
+      <div class="player-header">
+        <span class="movie-name" id="playerMovieName">Carregando...</span>
+        <div class="player-header-right">
+          <button class="subtitle-btn" id="subtitleBtn" onclick="toggleSubtitles()" title="Legendas" style="display:none">
+            <span class="sub-icon">💬</span>
+            <span class="sub-label">Leg</span>
+          </button>
+          <button class="player-close" onclick="closePlayer()">✕</button>
+        </div>
+      </div>
+      <div class="player-loading" id="playerLoading">
+        <div class="spinner"></div>
+        <span>Preparando vídeo do Google Drive...</span>
+      </div>
+      <div class="player-error" id="playerError">
+        <div class="error-icon">❌</div>
+        <span class="error-msg">Erro ao carregar vídeo</span>
+        <button class="retry-btn" onclick="retryPlay()">Tentar novamente</button>
+      </div>
+      <video id="videoPlayer" controls style="display:none">
+        <track kind="subtitles" id="subtitleTrack" srclang="pt-BR" label="Português" default>
+      </video>
+      <div class="player-info">
+        <span id="playerMovieSubtitle"></span>
+        <span class="file-size" id="playerFileSize"></span>
+        <span class="stream-status" id="streamStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== MOVIE INFO OVERLAY ====== -->
+  <div class="movie-info-overlay" id="movieInfoOverlay">
+    <div class="movie-info-bg" id="movieInfoBg"></div>
+    <div class="movie-info-content" id="movieInfoContent"></div>
+  </div>
+
+<script>
+  // ==================== STATE ====================
+  let currentPath = "";
+
+  // ==================== API ====================
+  async function apiFetch(endpoint) {
+    try {
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error("API error:", e);
+      return null;
+    }
+  }
+
+  function streamUrl(filePath) {
+    return '/api/stream?path=' + encodeURIComponent(filePath);
+  }
+
+  function posterUrl(folderPath, imageName) {
+    if (!imageName) return null;
+    const fullPath = folderPath + '/' + imageName;
+    return '/api/stream?path=' + encodeURIComponent(fullPath);
+  }
+
+  // ==================== FORMAT ====================
+  function formatSize(bytes) {
+    if (!bytes) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+    return size.toFixed(1) + ' ' + units[i];
+  }
+
+  function formatDate(t) {
+    if (!t) return '';
+    const d = new Date(t);
+    return d.toLocaleDateString('pt-BR');
+  }
+
+  function fileIcon(name) {
+    const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+    const icons = { '.mp4': '🎬', '.mkv': '🎥', '.avi': '🎞', '.mov': '🎬', '.wmv': '🎬', '.flv': '🎬', '.webm': '🎬', '.m4v': '🎬' };
+    return icons[ext] || '📹';
+  }
+
+  // ==================== SIMPLE FRONTEND CACHE ====================
+  const _frontCache = {};
+  const _CACHE_TTL = 120000; // 2 min
+
+  function cachedFetch(url) {
+    const now = Date.now();
+    const entry = _frontCache[url];
+    if (entry && (now - entry.time) < _CACHE_TTL) {
+      return Promise.resolve(entry.data);
+    }
+    return apiFetch(url).then(data => {
+      _frontCache[url] = { data, time: Date.now() };
+      return data;
+    });
+  }
+
+  // Override apiFetch calls to use cache where possible
+  // ==================== SEARCH ====================
+  function search() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) { loadPath(''); return; }
+    document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Pesquisando...</span></div>';
+
+    cachedFetch('/api/search?q=' + encodeURIComponent(q)).then(data => {
+      if (!data || !data.results) {
+        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><h3>Erro na pesquisa</h3></div>';
+        return;
+      }
+      renderResults(data.results, q);
+    });
+  }
+
+  function renderResults(results, query) {
+    const container = document.getElementById('content');
+    if (results.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <h3>Nenhum resultado encontrado</h3>
+          <p>Tente outro termo de busca.</p>
+        </div>
+        <div class="genre-section">
+          <div class="genre-header" onclick="loadPath('')">
+            <div class="genre-title"><span class="arrow">←</span> Voltar ao início</div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    // Group by directory
+    const groups = {};
+    results.forEach(item => {
+      const dir = item.Path ? item.Path.replace('/' + item.Name, '') : '';
+      const key = dir || '/';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    });
+
+    const groupKeys = Object.keys(groups);
+    let html = `<div class="genre-section">
+      <div class="genre-header" style="cursor:default;border:none">
+        <div class="genre-title">🔍 Resultados para "${query}" <span class="genre-count">(${results.length})</span></div>
+      </div>`;
+
+    groupKeys.forEach(key => {
+      const items = groups[key];
+      const displayPath = key === '/' ? 'Raiz' : key;
+      html += `<div style="margin-bottom:16px">
+        <div style="font-size:14px;color:var(--text3);margin-bottom:8px;padding:0 4px">📁 ${escHtml(displayPath)}</div>
+        <div class="movie-grid">`;
+      items.forEach(item => {
+        const name = item.Name || '';
+        const filePath = item.Path ? '/' + item.Path : '';
+        const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
+        html += renderMovieCardHtml(name, filePath, item.Size, posterSrc);
+      });
+      html += `</div></div>`;
+    });
+
+    html += `</div>
+      <div class="genre-section">
+        <div class="genre-header" onclick="loadPath('')">
+          <div class="genre-title"><span class="arrow">←</span> Voltar ao início</div>
+        </div>
+      </div>`;
+
+    container.innerHTML = html;
+    document.getElementById('hero').style.display = 'none';
+  }
+
+  // ==================== HOME / GENRE LIST ====================
+  function loadPath(path) {
+    currentPath = path;
+    document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
+    document.getElementById('searchInput').value = '';
+
+    // Close any open info overlay
+    closeMovieInfo();
+
+    cachedFetch('/api/list?path=' + encodeURIComponent(path)).then(data => {
+      if (!data) {
+        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3><p>Não foi possível conectar ao servidor.</p></div>';
+        return;
+      }
+      renderDirectory(data);
+    });
+  }
+
+  function isHomePage(path) {
+    return path === '' || path === '/' || path === '/TicianoFlix';
+  }
+
+  function renderDirectory(data) {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+
+    renderBreadcrumb(data.path);
+
+    const isHome = isHomePage(data.path);
+    const hasFolders = data.folders && data.folders.length > 0;
+    const hasVideos = data.videos && data.videos.length > 0;
+    const hasImages = data.images && data.images.length > 0;
+
+    // If we're in a genre (1 level deep, has movie subfolders)
+    if (!isHome && hasFolders && !hasVideos) {
+      renderGenreView(container, data);
+      return;
+    }
+
+    // If we're in a folder with videos directly
+    if (!isHome && hasVideos) {
+      renderVideoView(container, data);
+      return;
+    }
+
+    // HOME PAGE: show all genres as sections
+    if (isHome) {
+      renderHomeView(container, data);
+      return;
+    }
+
+    // Empty state
+    if (!hasFolders && !hasVideos && !hasImages) {
+      renderEmptyState(container, data.path);
+      return;
+    }
+
+    // Fallback: show folders and videos
+    renderGenericView(container, data);
+  }
+
+  // ===== HOME VIEW: genres as sections =====
+  function renderHomeView(container, data) {
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    document.getElementById('heroTitle').textContent = 'Seus Filmes, Sua Tela';
+    document.getElementById('heroDesc').textContent = 'Navegue pelos géneros e descubra seus filmes.';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+
+    const folders = data.folders || [];
+    if (folders.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <h3>Nenhum género encontrado</h3>
+          <p>Crie pastas dentro de "TicianoFlix" no seu Google Drive para organizar por género.</p>
+        </div>`;
+      return;
+    }
+
+    let html = '';
+    folders.forEach((genre, idx) => {
+      const genreName = genre.Name || '';
+      const genrePath = '/TicianoFlix/' + genreName;
+
+      // Render as a clickable section header + preview
+      html += `<div class="genre-section">
+        <div class="genre-header" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '${escHtml(genreName).replace(/'/g, "\\'")}')">
+          <div class="genre-title">
+            <span>${genreIcon(genreName)}</span>
+            ${escHtml(genreName)}
+            <span class="arrow">→</span>
+          </div>
+          <div class="genre-count">Entrar</div>
+        </div>
+        <div class="genre-movies-preview" id="preview-${idx}">
+          <div class="loading" style="min-height:180px;font-size:13px">
+            <div class="spinner" style="width:20px;height:20px"></div>
+            <span>Carregando...</span>
+          </div>
+        </div>
+      </div>`;
+
+      // Fetch genre contents in background
+      fetchGenrePreview(genrePath, idx);
+    });
+
+    container.innerHTML = html;
+  }
+
+  function genreIcon(name) {
+    const icons = {
+      'terror': '👻', 'horror': '👻',
+      'comedia': '😂', 'comédia': '😂',
+      'acao': '💥', 'acção': '💥', 'ação': '💥',
+      'drama': '🎭',
+      'ficcao': '🚀', 'ficção': '🚀', 'sci-fi': '🚀',
+      'shows': '📺', 'series': '📺', 'séries': '📺',
+      'documentario': '📽', 'documentário': '📽',
+      'romance': '💕',
+      'aventura': '🗺',
+      'animacao': '🎨', 'animação': '🎨',
+      'suspense': '🔪',
+      'trash': '🗑',
+      'acervo': '📚',
+    };
+    const key = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return icons[key] || '🎬';
+  }
+
+  async function fetchGenrePreview(genrePath, idx) {
+    const data = await cachedFetch('/api/list?path=' + encodeURIComponent(genrePath));
+    const el = document.getElementById('preview-' + idx);
+    if (!el) return;
+
+    if (!data) {
+      el.innerHTML = '<div class="empty-genre" onclick="loadGenre(\'' + genrePath.replace(/'/g, "\\'") + '\',\'\')"><div class="empty-genre-icon">❌</div><div class="empty-genre-info"><h4>Erro ao carregar</h4></div></div>';
+      return;
+    }
+
+    const movieFolders = data.folders || [];
+    const directVideos = data.videos || [];
+
+    if (movieFolders.length === 0 && directVideos.length === 0) {
+      el.innerHTML = `<div class="empty-genre" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '')">
+        <div class="empty-genre-icon">📭</div>
+        <div class="empty-genre-info">
+          <h4>Nenhum filme ainda</h4>
+          <p>Adicione filmes nesta pasta para vê-los aqui.</p>
+        </div>
+        <div class="click-hint">Clique para entrar <span class="arrow">→</span></div>
+      </div>`;
+      return;
+    }
+
+    // Show movies as horizontal preview cards
+    let items = movieFolders.slice(0, 8);
+    let html = '';
+    let loadedCount = 0;
+
+    items.forEach((movie, mi) => {
+      const movieName = movie.Name || '';
+      const moviePath = genrePath + '/' + movieName;
+      const uniqueId = 'preview-img-' + idx + '-' + mi;
+
+      html += `<div class="preview-card" onclick="showMovieInfo('${moviePath.replace(/'/g, "\\'")}', event)" title="${escHtml(movieName)}">
+        <div class="placeholder" id="${uniqueId}">🎬</div>
+      </div>`;
+
+      // Load poster lazily
+      cachedFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath)).then(detail => {
+        const imgEl = document.getElementById(uniqueId);
+        if (!imgEl) return;
+        loadedCount++;
+        if (detail && detail.poster) {
+          const img = document.createElement('img');
+          img.src = posterUrl(moviePath, detail.poster.Name);
+          img.alt = escHtml(movieName);
+          img.loading = 'lazy';
+          img.onerror = () => { imgEl.textContent = '🎬'; };
+          imgEl.parentNode.replaceChild(img, imgEl);
+        } else {
+          imgEl.textContent = '🎬';
+        }
+      });
+    });
+
+    if (movieFolders.length > 8) {
+      html += `<div class="preview-card" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '')" style="display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--text2);background:var(--bg2)">
+        +${movieFolders.length - 8}
+      </div>`;
+    }
+
+    el.innerHTML = html;
+  }
+
+  // ===== GENRE VIEW: show movie folders as cards =====
+  function renderGenreView(container, data) {
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+
+    const parts = data.path.split('/').filter(Boolean);
+    const genreName = parts.length > 0 ? parts[parts.length - 1] : 'Género';
+    document.getElementById('heroTitle').textContent = genreName;
+    document.getElementById('heroDesc').textContent = data.folders.length + ' filme(s) · ' + (data.videos ? data.videos.length : 0) + ' vídeo(s)';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+
+    const movieFolders = data.folders || [];
+    const directVideos = data.videos || [];
+
+    if (movieFolders.length === 0 && directVideos.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <h3>Nenhum filme em "${escHtml(genreName)}"</h3>
+          <p>Adicione filmes nesta pasta do Google Drive para vê-los aqui.</p>
+        </div>`;
+      return;
+    }
+
+    let html = `<div class="genre-section">
+      <div class="genre-header" style="cursor:default;border:none;padding-bottom:4px">
+        <div class="genre-title">🎬 Filmes <span class="genre-count">(${movieFolders.length})</span></div>
+      </div>
+      <div class="movie-grid">`;
+
+    // Show movie folders as cards
+    movieFolders.forEach(folder => {
+      const name = folder.Name || '';
+      const folderPath = (data.path ? data.path + '/' : '') + name;
+      html += renderMovieFolderCard(name, folderPath);
+    });
+
+    // Also show any direct videos
+    directVideos.forEach(video => {
+      const name = video.Name || '';
+      const filePath = (data.path ? data.path + '/' : '') + name;
+      html += renderMovieCardHtml(name, filePath, video.Size, video.poster ? posterUrl(data.path, video.poster) : null);
+    });
+
+    html += `</div></div>`;
+    container.innerHTML = html;
+
+    // Load posters for movie folders
+    movieFolders.forEach(folder => {
+      const name = folder.Name || '';
+      const folderPath = (data.path ? data.path + '/' : '') + name;
+      const imgId = 'poster-' + encodeURIComponent(folderPath).replace(/%/g, '_');
+      cachedFetch('/api/movie-detail?path=' + encodeURIComponent(folderPath)).then(detail => {
+        const imgEl = document.getElementById(imgId);
+        if (!imgEl) return;
+        if (detail && detail.poster) {
+          imgEl.src = posterUrl(folderPath, detail.poster.Name);
+          imgEl.onerror = () => { imgEl.style.display = 'none'; imgEl.nextElementSibling.style.display = 'flex'; };
+        } else {
+          imgEl.style.display = 'none';
+          if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'flex';
+        }
+      });
+    });
+  }
+
+  function renderMovieFolderCard(name, folderPath) {
+    const encodedPath = encodeURIComponent(folderPath).replace(/%/g, '_');
+    const nameClean = name.replace(/[._]/g, ' ');
+    const yearMatch = name.match(/(\d{4})/);
+    const year = yearMatch ? yearMatch[1] : '';
+    const safePath = folderPath.replace(/'/g, "\\'");
+
+    return `
+      <div class="movie-card" onclick="showMovieInfo('${safePath}', event)" title="${escHtml(name)}">
+        <img class="movie-card-poster" id="poster-${encodedPath}" src="" alt="${escHtml(name)}" style="display:none">
+        <div class="movie-card-poster-placeholder" id="ph-${encodedPath}">🎬</div>
+        <div class="movie-card-overlay">
+          <div class="movie-card-title">${escHtml(nameClean)}</div>
+          <div class="movie-card-subtitle">${year ? year : 'Filme'}</div>
+        </div>
+      </div>`;
+  }
+
+  // ===== VIDEO VIEW: direct video files =====
+  function renderVideoView(container, data) {
+    let html = `<div class="movie-grid">`;
+    (data.videos || []).forEach(video => {
+      const name = video.Name || '';
+      const filePath = (data.path ? data.path + '/' : '') + name;
+      const posterSrc = video.poster ? posterUrl(data.path, video.poster) : null;
+      html += renderMovieCardHtml(name, filePath, video.Size, posterSrc);
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+  }
+
+  // ===== GENERIC / FALLBACK =====
+  function renderGenericView(container, data) {
+    let html = '';
+
+    if (data.folders && data.folders.length > 0) {
+      html += `<div class="genre-section">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">📁 Pastas <span class="genre-count">(${data.folders.length})</span></div>
+        </div>
+        <div class="movie-grid">`;
+      data.folders.forEach(folder => {
+        const name = folder.Name || '';
+        const folderPath = (data.path ? data.path + '/' : '') + name;
+        const safePath = folderPath.replace(/'/g, "\\'");
+        html += `
+          <div class="movie-card" onclick="loadPath('${safePath}')" title="${escHtml(name)}">
+            <div class="movie-card-poster-placeholder">📁</div>
+            <div class="movie-card-overlay">
+              <div class="movie-card-title">${escHtml(name)}</div>
+            </div>
+          </div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    if (data.videos && data.videos.length > 0) {
+      html += `<div class="genre-section">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">🎬 Vídeos <span class="genre-count">(${data.videos.length})</span></div>
+        </div>
+        <div class="movie-grid">`;
+      data.videos.forEach(video => {
+        const name = video.Name || '';
+        const filePath = (data.path ? data.path + '/' : '') + name;
+        const posterSrc = video.poster ? posterUrl(data.path, video.poster) : null;
+        html += renderMovieCardHtml(name, filePath, video.Size, posterSrc);
+      });
+      html += `</div></div>`;
+    }
+
+    container.innerHTML = html || `<div class="empty-state"><div class="empty-icon">📂</div><h3>Pasta vazia</h3></div>`;
+  }
+
+  // ===== EMPTY STATE =====
+  function renderEmptyState(container, path) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📂</div>
+        <h3>Pasta vazia</h3>
+        <p>Nenhum conteúdo encontrado aqui.</p>
+      </div>`;
+  }
+
+  // ===== MOVIE CARD HTML =====
+  function renderMovieCardHtml(name, filePath, size, posterSrc) {
+    const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
+    const safePath = filePath.replace(/'/g, "\\'");
+    const safeName = escHtml(name).replace(/'/g, "\\'");
+    const yearMatch = name.match(/(\d{4})/);
+    const year = yearMatch ? yearMatch[1] : '';
+
+    let html = `
+      <div class="movie-card" onclick="playMovie('${safePath}', '${safeName}')" title="${escHtml(name)}">`;
+
+    if (posterSrc) {
+      html += `<img class="movie-card-poster" src="${posterSrc}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`;
+      html += `<div class="movie-card-poster-placeholder" style="display:none">${fileIcon(name)}</div>`;
+    } else {
+      html += `<div class="movie-card-poster-placeholder">${fileIcon(name)}</div>`;
+    }
+
+    html += `
+        <div class="movie-card-overlay">
+          <div class="movie-card-title">${escHtml(nameClean)}</div>
+          <div class="movie-card-subtitle">${formatSize(size)}${year ? ' • ' + year : ''}</div>
+        </div>
+      </div>`;
+    return html;
+  }
+
+  // ===== LOAD GENRE =====
+  function loadGenre(path, name) {
+    loadPath(path);
+  }
+
+  // ===== MOVIE INFO =====
+  let currentMovieFolder = null;
+
+  function showMovieInfo(folderPath, event) {
+    if (event) event.stopPropagation();
+    currentMovieFolder = folderPath;
+
+    const overlay = document.getElementById('movieInfoOverlay');
+    const content = document.getElementById('movieInfoContent');
+    const bg = document.getElementById('movieInfoBg');
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    content.innerHTML = '<div class="loading" style="min-height:400px"><div class="spinner"></div><span>Carregando informações...</span></div>';
+    bg.style.backgroundImage = 'none';
+
+    cachedFetch('/api/movie-detail?path=' + encodeURIComponent(folderPath)).then(detail => {
+      if (!detail) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3></div>';
+        return;
+      }
+
+      const title = detail.title || 'Filme';
+      const titleClean = title.replace(/[._]/g, ' ');
+      const year = detail.year || '';
+      const video = detail.video;
+      const poster = detail.poster;
+      const fanart = detail.fanart;
+      const subtitle = detail.subtitle;
+      const nfo = detail.nfo;
+
+      // Background fanart
+      if (fanart) {
+        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, fanart.Name) + ')';
+      } else if (poster) {
+        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, poster.Name) + ')';
+      }
+
+      // Poster image
+      const posterImg = poster
+        ? '<img src="' + posterUrl(folderPath, poster.Name) + '" alt="' + escHtml(titleClean) + '">'
+        : '<div class="placeholder">🎬</div>';
+
+      const videoPath = video ? (folderPath + '/' + video.Name) : null;
+
+      // ---- NFO RICH CONTENT ----
+      let nfoHtml = '';
+
+      // Rating stars
+      if (nfo && nfo.rating) {
+        const r = parseFloat(nfo.rating);
+        const full = Math.floor(r / 2);
+        const half = r % 2 >= 1 ? 1 : 0;
+        const stars = '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(Math.max(0, 5 - full - half));
+        nfoHtml += `<div class="movie-rating">
+          <span class="stars">${stars}</span>
+          <span class="num">${nfo.rating}</span>
+          ${nfo.votes ? '<span class="votes">(' + nfo.votes + ' votos)</span>' : ''}
+        </div>`;
+      }
+
+      // Genres
+      if (nfo && nfo.genres && nfo.genres.length > 0) {
+        nfoHtml += '<div class="movie-genres">';
+        nfo.genres.forEach(g => { nfoHtml += '<span class="movie-genre-tag">' + escHtml(g) + '</span>'; });
+        nfoHtml += '</div>';
+      }
+
+      // Tagline
+      if (nfo && nfo.tagline) {
+        nfoHtml += '<div class="movie-tagline">"' + escHtml(nfo.tagline) + '"</div>';
+      }
+
+      // Plot
+      if (nfo && nfo.plot) {
+        nfoHtml += '<div class="movie-plot">' + escHtml(nfo.plot) + '</div>';
+      }
+
+      // Metadata row: runtime, mpaa, country, year, premiered
+      let metaParts = [];
+      if (nfo && nfo.runtime) metaParts.push('<span><span class="label">Duração</span> ' + nfo.runtime + ' min</span>');
+      if (nfo && nfo.mpaa) metaParts.push('<span><span class="label">Classificação</span> ' + escHtml(nfo.mpaa) + '</span>');
+      if (year) metaParts.push('<span><span class="label">Ano</span> ' + year + '</span>');
+      if (nfo && nfo.premiered) metaParts.push('<span><span class="label">Estreia</span> ' + nfo.premiered + '</span>');
+      if (nfo && nfo.country && nfo.country.length > 0) metaParts.push('<span><span class="label">País</span> ' + nfo.country.join(', ') + '</span>');
+      if (nfo && nfo.source) metaParts.push('<span><span class="label">Fonte</span> ' + nfo.source + '</span>');
+      if (metaParts.length > 0) {
+        nfoHtml += '<div class="movie-meta-row">' + metaParts.join('') + '</div>';
+      }
+
+      // Directors / Writers
+      let creditsHtml = '';
+      if (nfo && nfo.directors && nfo.directors.length > 0) {
+        creditsHtml += '<span><span class="label">Diretor</span> ' + nfo.directors.join(', ') + '</span>';
+      }
+      if (nfo && nfo.writers && nfo.writers.length > 0) {
+        creditsHtml += '<span><span class="label">Roteiro</span> ' + nfo.writers.join(', ') + '</span>';
+      }
+      if (nfo && nfo.studios && nfo.studios.length > 0) {
+        creditsHtml += '<span><span class="label">Estúdio</span> ' + nfo.studios.join(', ') + '</span>';
+      }
+      if (creditsHtml) {
+        nfoHtml += '<div class="movie-meta-row">' + creditsHtml + '</div>';
+      }
+
+      // Cast
+      if (nfo && nfo.actors && nfo.actors.length > 0) {
+        nfoHtml += '<div class="movie-cast"><h4>Elenco</h4><div class="movie-cast-grid">';
+        // Show top 12 actors
+        nfo.actors.slice(0, 12).forEach(a => {
+          nfoHtml += '<div class="cast-item"><span class="name">' + escHtml(a.name) + '</span> <span class="role">' + escHtml(a.role || '') + '</span></div>';
+        });
+        nfoHtml += '</div></div>';
+      }
+
+      // Tags
+      if (nfo && nfo.tags && nfo.tags.length > 0) {
+        nfoHtml += '<div class="movie-tags">';
+        nfo.tags.forEach(t => { nfoHtml += '<span class="movie-tag">#' + escHtml(t.replace(/[^a-z0-9]/gi, '')) + '</span>'; });
+        nfoHtml += '</div>';
+      }
+
+      // ---- BUILD FINAL HTML ----
+      let html = `
+        <div class="movie-info-poster">
+          ${posterImg}
+        </div>
+        <div class="movie-info-details">
+          ${year ? '<div class="badge">' + year + '</div>' : ''}
+          <h1>${escHtml(titleClean)}</h1>
+          ${nfoHtml}
+
+          <div class="movie-info-meta">
+            ${video ? '<div class="meta-item">📦 <span class="label">Tamanho</span> ' + formatSize(video.Size) + '</div>' : ''}
+            ${video ? '<div class="meta-item">🎞 <span class="label">Formato</span> ' + (video.Name ? video.Name.split('.').pop().toUpperCase() : '') + '</div>' : ''}
+            ${subtitle ? '<div class="meta-item">💬 <span class="label">Legenda</span> ' + formatSize(subtitle.Size) + '</div>' : '<div class="meta-item">💬 <span class="label">Legenda</span> Não</div>'}
+          </div>
+
+          <div class="movie-info-actions">
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
+            <button class="btn-close-info" onclick="closeMovieInfo()">✕ Fechar</button>
+          </div>
+
+          <div class="movie-info-files">
+            <h4>Arquivos</h4>
+            ${video ? '<div class="file-list-item"><span class="icon">🎬</span><span class="name">' + escHtml(video.Name) + '</span><span>' + formatSize(video.Size) + '</span></div>' : ''}
+            ${poster ? '<div class="file-list-item"><span class="icon">🖼</span><span class="name">' + escHtml(poster.Name) + '</span><span>' + formatSize(poster.Size) + '</span></div>' : ''}
+            ${fanart ? '<div class="file-list-item"><span class="icon">🖼</span><span class="name">' + escHtml(fanart.Name) + '</span><span>' + formatSize(fanart.Size) + '</span></div>' : ''}
+            ${subtitle ? '<div class="file-list-item"><span class="icon">💬</span><span class="name">' + escHtml(subtitle.Name) + '</span><span>' + formatSize(subtitle.Size) + '</span></div>' : ''}
+          </div>
+        </div>`;
+
+      content.innerHTML = html;
+    });
+  }
+
+  function closeMovieInfo() {
+    const overlay = document.getElementById('movieInfoOverlay');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+    currentMovieFolder = null;
+  }
+
+  function playFromInfo(videoPath, movieName, subtitlePath) {
+    closeMovieInfo();
+    playMovie(videoPath, movieName, subtitlePath);
+  }
+
+  // Close movie info on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const infoOverlay = document.getElementById('movieInfoOverlay');
+      if (infoOverlay.classList.contains('active')) {
+        closeMovieInfo();
+      } else {
+        closePlayer();
+      }
+    }
+  });
+
+  // Close on backdrop click
+  document.getElementById('movieInfoOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeMovieInfo();
+  });
+
+  // ==================== BREADCRUMB ====================
+  function renderBreadcrumb(path) {
+    const el = document.getElementById('breadcrumb');
+    const parts = path ? path.split('/').filter(Boolean) : [];
+    let current = '';
+    let html = '<a onclick="loadPath(\'\')">🏠 Início</a>';
+    parts.forEach((part, i) => {
+      current += '/' + part;
+      const name = part.replace(/[._]/g, ' ');
+      if (i === parts.length - 1) {
+        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
+      } else {
+        html += ' <span class="sep">›</span> <a onclick="loadPath(\'' + current.replace(/'/g, "\\'") + '\')">' + escHtml(name) + '</a>';
+      }
+    });
+    el.innerHTML = html;
+  }
+
+  // ==================== PLAYER ====================
+  let currentVideoPath = null;
+  let currentSubtitlePath = null;
+  let _bufferTimer = null;
+  let _bufferSafetyTimeout = null;
+
+  function clearBufferTimer() {
+    if (_bufferTimer) { clearInterval(_bufferTimer); _bufferTimer = null; }
+    if (_bufferSafetyTimeout) { clearTimeout(_bufferSafetyTimeout); _bufferSafetyTimeout = null; }
+  }
+
+  function _waitForBuffer(video, minPercent, callback) {
+    clearBufferTimer();
+    const loading = document.getElementById('playerLoading');
+
+    _bufferTimer = setInterval(function() {
+      let pct = 0;
+      if (video.buffered && video.buffered.length > 0 && video.duration > 0) {
+        const end = video.buffered.end(video.buffered.length - 1);
+        pct = (end / video.duration) * 100;
+      }
+      loading.querySelector('span').textContent = 'Bufferizando ' + Math.round(pct) + '%...';
+      setStreamStatus('buffering', '\u2B07\uFE0F ' + Math.round(pct) + '%');
+
+      if (pct >= minPercent) {
+        clearBufferTimer();
+        if (callback) callback();
+      }
+    }, 400);
+
+    // Segurança: após 60s toca de qualquer jeito
+    _bufferSafetyTimeout = setTimeout(function() {
+      if (_bufferTimer) {
+        clearBufferTimer();
+        if (callback) callback();
+      }
+    }, 60000);
+  }
+
+  function playMovie(filePath, movieName, subtitlePath) {
+    const overlay = document.getElementById('playerOverlay');
+    const video = document.getElementById('videoPlayer');
+    const loading = document.getElementById('playerLoading');
+    const movieTitle = document.getElementById('playerMovieName');
+    const movieSubtitle = document.getElementById('playerMovieSubtitle');
+
+    currentVideoPath = filePath;
+    currentSubtitlePath = subtitlePath || null;
+    movieTitle.textContent = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
+    movieSubtitle.textContent = filePath;
+    document.getElementById('playerFileSize').textContent = '';
+
+    // Limpa qualquer timer de buffer pendente
+    clearBufferTimer();
+
+    // Show loading state
+    video.style.display = 'none';
+    loading.style.display = 'flex';
+    document.getElementById('playerError').style.display = 'none';
+    loading.querySelector('span').textContent = 'Preparando vídeo do Google Drive...';
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Set up video events
+    video.onerror = function() {
+      clearBufferTimer();
+      const err = video.error;
+      let msg = 'Erro ao carregar vídeo';
+      if (err) {
+        if (err.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Falha de rede ao carregar vídeo';
+        else if (err.code === MediaError.MEDIA_ERR_DECODE) msg = 'Erro de decodificação — formato não suportado';
+        else if (err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) msg = 'Formato de vídeo não suportado pelo navegador';
+      }
+      showPlayerError(msg);
+    };
+
+    video.oncanplay = function() {
+      // Apenas indica que o browser pode decodificar — NÃO inicia play
+      // O play é controlado pelo _waitForBuffer (mínimo 30%)
+    };
+
+    video.onwaiting = function() {
+      if (video.style.display === 'block') {
+        loading.style.display = 'flex';
+        loading.querySelector('span').textContent = 'Bufferizando...';
+      }
+    };
+
+    video.onplaying = function() {
+      loading.style.display = 'none';
+      setStreamStatus('playing', '\u25B6\uFE0F Streaming');
+    };
+
+    video.onseeking = function() {
+      // Esconde o vídeo para não mostrar frame corrompido durante o pulo
+      video.style.display = 'none';
+      loading.style.display = 'flex';
+      loading.querySelector('span').textContent = 'Pulando — bufferizando...';
+      setStreamStatus('seeking', '\u23F3 Pulando...');
+    };
+
+    video.onseeked = function() {
+      // Quando termina o seek, pausa e espera buffer mínimo
+      video.pause();
+      loading.style.display = 'flex';
+      loading.querySelector('span').textContent = 'Bufferizando 0%...';
+      _waitForBuffer(video, 30, function() {
+        loading.style.display = 'none';
+        video.style.display = 'block';
+        video.play().catch(function() {});
+      });
+    };
+
+    video.onprogress = function() {
+      updateBufferStatus(video);
+    };
+
+    // Set up subtitle track
+    const track = document.getElementById('subtitleTrack');
+    const parent = track.parentNode;
+    const newTrack = document.createElement('track');
+    newTrack.id = 'subtitleTrack';
+    newTrack.kind = 'subtitles';
+    newTrack.srclang = 'pt-BR';
+    newTrack.label = 'Português';
+    newTrack.default = true;
+    if (subtitlePath) {
+      newTrack.src = '/api/subtitle?path=' + encodeURIComponent(subtitlePath);
+    }
+    parent.replaceChild(newTrack, track);
+    updateSubtitleButton(subtitlePath);
+
+    // Start loading video
+    video.src = streamUrl(filePath);
+    video.load();
+
+    // Fetch file size in background
+    cachedFetch('/api/info?path=' + encodeURIComponent(filePath)).then(info => {
+      if (info && info.Size) {
+        document.getElementById('playerFileSize').textContent = formatSize(info.Size);
+      }
+    });
+
+    // Aguarda buffer mínimo de 30% antes de liberar o play
+    loading.querySelector('span').textContent = 'Bufferizando 0%...';
+    _waitForBuffer(video, 30, function() {
+      loading.style.display = 'none';
+      video.style.display = 'block';
+      video.play().catch(function() {});
+    });
+
+    // Timeout: se readyState=0 após 25s, é erro de conexão
+    setTimeout(function() {
+      if (video.readyState === 0) {
+        clearBufferTimer();
+        showPlayerError('O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
+      }
+    }, 25000);
+  }
+
+  function showPlayerError(msg) {
+    const loading = document.getElementById('playerLoading');
+    const video = document.getElementById('videoPlayer');
+    const errorEl = document.getElementById('playerError');
+    loading.style.display = 'none';
+    video.style.display = 'none';
+    video.src = '';
+    errorEl.querySelector('.error-msg').textContent = msg;
+    errorEl.style.display = 'flex';
+  }
+
+  function retryPlay() {
+    if (currentVideoPath) {
+      const movieTitle = document.getElementById('playerMovieName');
+      const name = movieTitle.textContent;
+      playMovie(currentVideoPath, name, currentSubtitlePath);
+    }
+  }
+
+  function closePlayer() {
+    clearBufferTimer();
+    const overlay = document.getElementById('playerOverlay');
+    const video = document.getElementById('videoPlayer');
+    const loading = document.getElementById('playerLoading');
+    const errorEl = document.getElementById('playerError');
+    video.pause();
+    video.src = '';
+    video.onerror = null;
+    video.oncanplay = null;
+    video.onwaiting = null;
+    video.onplaying = null;
+    video.onseeking = null;
+    video.onseeked = null;
+    video.onprogress = null;
+    loading.style.display = 'none';
+    errorEl.style.display = 'none';
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  let subtitlesEnabled = true;
+
+  function toggleSubtitles() {
+    const track = document.getElementById('subtitleTrack');
+    const btn = document.getElementById('subtitleBtn');
+    subtitlesEnabled = !subtitlesEnabled;
+    if (track) {
+      track.track.mode = subtitlesEnabled ? 'showing' : 'hidden';
+    }
+    btn.classList.toggle('active', subtitlesEnabled);
+  }
+
+  function updateSubtitleButton(subtitlePath) {
+    const btn = document.getElementById('subtitleBtn');
+    if (subtitlePath) {
+      btn.style.display = 'flex';
+      btn.classList.toggle('active', subtitlesEnabled);
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  function setStreamStatus(type, text) {
+    const el = document.getElementById('streamStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'stream-status';
+    if (type) el.classList.add(type);
+  }
+
+  function updateBufferStatus(video) {
+    const el = document.getElementById('streamStatus');
+    if (!el) return;
+    try {
+      if (video.buffered && video.buffered.length > 0 && video.duration > 0) {
+        const end = video.buffered.end(video.buffered.length - 1);
+        const pct = Math.round((end / video.duration) * 100);
+        if (pct < 100) {
+          el.textContent = '⬇️ ' + pct + '%';
+          el.className = 'stream-status buffering';
+        } else {
+          el.textContent = '💾 100% cache';
+          el.className = 'stream-status cached';
+        }
+      }
+    } catch(e) {
+      // silencioso
+    }
+  }
+
+  document.getElementById('playerOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closePlayer();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closePlayer();
+  });
+
+  // ==================== HEADER SCROLL ====================
+  window.addEventListener('scroll', function() {
+    const header = document.getElementById('header');
+    if (window.scrollY > 50) {
+      header.classList.add('scrolled');
+    } else {
+      header.classList.remove('scrolled');
+    }
+  });
+
+  // ==================== UTILS ====================
+  function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ==================== TOAST ====================
+  let toastTimeout = null;
+  function showToast(msg, type) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => { el.classList.remove('show'); }, 4000);
+  }
+
+  // ==================== BACKUP / RESTORE ====================
+  async function backupDb() {
+    const btn = document.getElementById('backupBtn');
+    btn.textContent = '⏳';
+    try {
+      const res = await fetch('/api/backup');
+      if (!res.ok) { showToast('Erro ao exportar banco', 'error'); btn.textContent = '💾'; return; }
+
+      // Get the save path from headers
+      const savePath = res.headers.get('X-Backup-Path') || '';
+
+      // Browser fallback: trigger download
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ticianoflix-backup-' + new Date().toISOString().slice(0,10) + '.db';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      if (savePath) {
+        showToast('💾 Backup salvo em: ' + savePath, 'success');
+      } else {
+        showToast('Banco exportado!', 'success');
+      }
+    } catch(e) {
+      showToast('Erro ao exportar: ' + e.message, 'error');
+    }
+    btn.textContent = '💾';
+  }
+
+  async function restoreDb(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.db')) {
+      showToast('Selecione um arquivo .db', 'error');
+      input.value = '';
+      return;
+    }
+
+    const btn = document.getElementById('restoreBtn');
+    btn.textContent = '⏳';
+    showToast('Enviando backup...', '');
+    try {
+      const formData = new FormData();
+      formData.append('backup', file);
+      const res = await fetch('/api/restore', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.error) {
+        showToast('Erro: ' + data.error, 'error');
+      } else {
+        showToast('✅ ' + (data.message || 'Banco restaurado!'), 'success');
+        setTimeout(() => loadPath(''), 3000);
+      }
+    } catch(e) {
+      showToast('Erro ao restaurar: ' + e.message, 'error');
+      console.error('Restore error:', e);
+    }
+    btn.textContent = '📂';
+    input.value = '';
+  }
+
+  // ==================== REFRESH CACHE ====================
+  async function refreshCache() {
+    const btn = document.getElementById('refreshBtn');
+    btn.classList.add('loading');
+    btn.textContent = '';
+
+    try {
+      await fetch('/api/refresh');
+      // Wait a bit for scan to start, then poll for completion
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        const res = await fetch('/api/cache-status');
+        const status = await res.json();
+        if (status.cached && !status.stale) {
+          clearInterval(poll);
+          btn.classList.remove('loading');
+          btn.textContent = '🔄';
+          loadPath(currentPath);
+        } else if (attempts > 60) {
+          clearInterval(poll);
+          btn.classList.remove('loading');
+          btn.textContent = '🔄';
+          loadPath(currentPath);
+        }
+      }, 2000);
+      // Fallback: reload after 30s even if poll fails
+      setTimeout(() => {
+        btn.classList.remove('loading');
+        btn.textContent = '🔄';
+        loadPath(currentPath);
+      }, 30000);
+    } catch(e) {
+      btn.classList.remove('loading');
+      btn.textContent = '🔄';
+      console.error('Refresh failed:', e);
+    }
+  }
+
+  // ==================== INIT ====================
+  loadPath("");
+</script>
+</body>
+</html>
