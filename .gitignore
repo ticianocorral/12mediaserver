@@ -1,3 +1,9 @@
+# ──────────────────────────────────────────
+#  TicianoFlix — .gitignore
+#  Segurança: nada de secrets, cache, ou
+#  artifacts locais no repositório.
+# ──────────────────────────────────────────
+
 # 🐍 Python
 __pycache__/
 *.py[cod]
@@ -8,24 +14,55 @@ dist/
 build/
 *.egg
 *.whl
+*.so
+*.pkl
 
-# 📦 AppImage (gerado localmente, não versionar)
+# ⚙️ Virtualenv
+env/
+venv/
+.venv/
+*.env
+*.env.local
+
+# 📦 AppImage (gerado localmente)
 *.AppImage
 *.AppImage.home
 
 # 💾 Cache do TicianoFlix
 .cache/
+cache/
+downloads/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
 
-# 🧹 Cache Python
-.Python
-env/
-venv/
-.venv/
-*.env
+# 🔑 Secrets / Credenciais
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa
+id_ed25519
+**/rclone.conf
+**/rclone*.conf
+credentials.json
+client_secret*.json
+token*.json
+*.cred
+*.credential
+oauth_token*
+*_rsa
+*_ed25519
+
+# 📋 Config local
+*.local/
+*.local.*
+config.local.*
+.envrc
+.direnv/
 
 # 🔧 IDE / Editor
 .vscode/
@@ -35,6 +72,36 @@ venv/
 *~
 .DS_Store
 Thumbs.db
+*.sublime-*
+*.bak
+*.orig
 
-# 📋 Config local (não versionar)
-*.local/
+# 📸 Wallpapers (output script)
+wallpaper_cachyos.py
+*.png
+!assets/*.png
+!favicon.png
+
+# 📝 Logs
+*.log
+*.log.*
+
+# 📦 Pacotes / Tarballs
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+*.7z
+
+# 🧪 Test / Reports
+scripts/
+htmlcov/
+.coverage
+coverage/
+pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 🫥 OS
+Desktop.ini
+ehthumbs.db

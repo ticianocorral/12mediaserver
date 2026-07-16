@@ -34,8 +34,10 @@ _cache_home = Path.home() / ".cache" / "ticianoflix"
 CACHE_DIR = _cache_home
 DB_PATH = CACHE_DIR / "ticianoflix.db"
 IMAGE_CACHE_DIR = CACHE_DIR / "images"
+SUBS_CACHE_DIR = CACHE_DIR / "subs"
 CACHE_DIR.mkdir(exist_ok=True)
 IMAGE_CACHE_DIR.mkdir(exist_ok=True)
+SUBS_CACHE_DIR.mkdir(exist_ok=True)
 
 POSTER_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
@@ -95,6 +97,23 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type);
         CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent);
         CREATE INDEX IF NOT EXISTS idx_folders_depth ON folders(depth);
+
+        CREATE TABLE IF NOT EXISTS movie_meta (
+            folder_path TEXT PRIMARY KEY,
+            title TEXT,
+            year TEXT,
+            plot TEXT,
+            rating TEXT,
+            votes TEXT,
+            genres TEXT,
+            tagline TEXT,
+            directors TEXT,
+            writers TEXT,
+            cast_list TEXT,
+            video_info TEXT,
+            audio_info TEXT,
+            updated_at REAL NOT NULL DEFAULT 0
+        );
     """)
     conn.commit()
     conn.close()
@@ -268,6 +287,11 @@ def scan_drive():
                     (movie_path,)
                 )
 
+                # Parse NFO and save metadata to DB
+                nfo_data = _fetch_nfo_raw(movie_path)
+                if nfo_data:
+                    _save_nfo_to_db(conn, movie_path, nfo_data)
+
         # Mark genre as having content if any movie folder has video
         genre_has_video = conn.execute(
             "SELECT COUNT(*) as c FROM folders WHERE parent=? AND has_video=1",
@@ -404,9 +428,6 @@ def cached_list_directory(path):
     }
 
 
-# In-memory cache for movie details (avoids repeated SQL queries)
-_movie_cache = {}
-_MOVIE_CACHE_TTL = 300  # 5 minutes
 
 
 def _parse_nfo(xml_text):
@@ -484,23 +505,9 @@ def _parse_nfo(xml_text):
     }
 
 
-def _fetch_nfo(folder_path):
-    """Fetch and parse NFO file for a movie folder. Caches locally."""
+def _fetch_nfo_raw(folder_path):
+    """Fetch NFO XML text for a movie folder via rclone. No caching."""
     nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    cache_key = "nfo_" + nfo_path.replace("/", "_").replace(" ", "_").replace("(", "").replace(")", "")
-    cache_path = IMAGE_CACHE_DIR / cache_key
-
-    # Try local cache first
-    if cache_path.exists():
-        try:
-            xml_text = cache_path.read_text(encoding="utf-8", errors="replace")
-            parsed = _parse_nfo(xml_text)
-            if parsed:
-                return parsed
-        except Exception:
-            pass
-
-    # Try fetching via rclone cat
     remote_path = RCLONE_REMOTE + nfo_path
     try:
         result = subprocess.run(
@@ -509,24 +516,94 @@ def _fetch_nfo(folder_path):
         )
         if result.returncode != 0:
             return None
-        xml_text = result.stdout
-        # Cache locally
-        try:
-            cache_path.write_text(xml_text, encoding="utf-8")
-        except Exception:
-            pass
-        return _parse_nfo(xml_text)
+        return result.stdout
+    except Exception:
+        return None
+
+
+def _save_nfo_to_db(conn, folder_path, nfo_data):
+    """Save parsed NFO metadata into movie_meta table."""
+    import json
+    conn.execute("""INSERT OR REPLACE INTO movie_meta
+        (folder_path, title, year, plot, rating, votes, genres, tagline,
+         directors, writers, cast_list, video_info, audio_info, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+        folder_path,
+        nfo_data.get("title"),
+        nfo_data.get("year"),
+        nfo_data.get("plot"),
+        nfo_data.get("rating"),
+        nfo_data.get("votes"),
+        json.dumps(nfo_data.get("genres", []), ensure_ascii=False),
+        nfo_data.get("tagline"),
+        json.dumps(nfo_data.get("directors", []), ensure_ascii=False),
+        json.dumps(nfo_data.get("writers", []), ensure_ascii=False),
+        json.dumps(nfo_data.get("actors", []), ensure_ascii=False),
+        json.dumps(nfo_data.get("video_info", {}), ensure_ascii=False),
+        json.dumps(nfo_data.get("audio_info", {}), ensure_ascii=False),
+        time.time(),
+    ))
+
+
+def _fetch_nfo_from_db(folder_path):
+    """Read parsed NFO metadata from movie_meta table."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM movie_meta WHERE folder_path=?", (folder_path,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    import json
+    return {
+        "title": row["title"],
+        "year": row["year"],
+        "plot": row["plot"],
+        "rating": row["rating"],
+        "votes": row["votes"],
+        "genres": json.loads(row["genres"]) if row["genres"] else [],
+        "tagline": row["tagline"],
+        "directors": json.loads(row["directors"]) if row["directors"] else [],
+        "writers": json.loads(row["writers"]) if row["writers"] else [],
+        "actors": json.loads(row["cast_list"]) if row["cast_list"] else [],
+        "video_info": json.loads(row["video_info"]) if row["video_info"] else {},
+        "audio_info": json.loads(row["audio_info"]) if row["audio_info"] else {},
+    }
+
+
+def _fetch_nfo(folder_path):
+    """Fetch and parse NFO metadata. Tries DB first, then downloads via rclone."""
+    # Try DB cache first
+    from_db = _fetch_nfo_from_db(folder_path)
+    if from_db:
+        return from_db
+
+    # Fallback: fetch via rclone
+    nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
+    remote_path = RCLONE_REMOTE + nfo_path
+    try:
+        result = subprocess.run(
+            ["rclone", "cat", remote_path],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode != 0:
+            return None
+        parsed = _parse_nfo(result.stdout)
+        if parsed:
+            # Save to DB for next time
+            conn = get_db()
+            try:
+                _save_nfo_to_db(conn, folder_path, parsed)
+                conn.commit()
+            finally:
+                conn.close()
+        return parsed
     except Exception:
         return None
 
 
 def cached_movie_detail(folder_path):
-    """Get movie detail from cache (memory + SQLite)."""
-    now = time.time()
-    cached = _movie_cache.get(folder_path)
-    if cached and (now - cached["time"]) < _MOVIE_CACHE_TTL:
-        return cached["data"]
-
+    """Get movie detail from SQLite cache (files + NFO metadata)."""
     conn = get_db()
     file_rows = conn.execute(
         "SELECT * FROM files WHERE folder_path=? ORDER BY name",
@@ -590,9 +667,6 @@ def cached_movie_detail(folder_path):
         if nfo["year"]:
             result["year"] = nfo["year"]
         result["nfo"] = nfo
-
-    # Store in memory cache
-    _movie_cache[folder_path] = {"data": result, "time": time.time()}
 
     return result
 
@@ -895,7 +969,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         """Serve a subtitle file, converting SRT→VTT if needed.
         Caches locally on first fetch for speed."""
         cache_key = "sub_" + path.strip("/").replace("/", "_").replace(" ", "_")
-        cache_path = IMAGE_CACHE_DIR / cache_key
+        cache_path = SUBS_CACHE_DIR / cache_key
 
         # Try local cache first
         if cache_path.exists():
@@ -1028,6 +1102,34 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 "movies": movies,
                 "files": files,
             })
+            return
+
+        # API: List genres with content (from cache)
+        if path == "/api/genres":
+            conn = get_db()
+            genre_rows = conn.execute(
+                "SELECT * FROM folders WHERE depth=1 AND has_video=1 ORDER BY name"
+            ).fetchall()
+            conn.close()
+            data = {
+                "path": "/TicianoFlix",
+                "folders": [
+                    {
+                        "Path": row["path"].lstrip("/"),
+                        "Name": row["name"],
+                        "Size": 0,
+                        "MimeType": "inode/directory",
+                        "ModTime": "",
+                        "IsDir": True,
+                        "has_video": True,
+                    }
+                    for row in genre_rows
+                ],
+                "videos": [],
+                "subtitles": [],
+                "images": [],
+            }
+            self._send_json(data)
             return
 
         # API: List directory (from cache)
@@ -1288,9 +1390,10 @@ def main():
                  "--read-only",
                  "--drive-chunk-size", "128M",
                  "--buffer-size", "512M",
-                 "--vfs-cache-mode", "writes",
-                 "--vfs-cache-max-size", "5G",
-                 "--vfs-read-chunk-size", "64M",
+                 "--vfs-cache-mode", "full",
+                 "--vfs-cache-max-size", "10G",
+                 "--vfs-cache-max-age", "720h",
+                 "--vfs-read-chunk-size", "4M",
                  "--vfs-read-chunk-size-limit", "off",
                  "--vfs-read-ahead", "512M",
                  "--header", "Access-Control-Allow-Origin: *",

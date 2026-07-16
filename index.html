@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TicianoFlix</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%23e50914'/><polygon points='10,6 10,26 26,16' fill='white'/></svg>">
 <style>
   /* ====== RESET & BASE ====== */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,6 +39,18 @@
   a { color: inherit; text-decoration: none; }
 
   /* ====== HEADER / NAVBAR ====== */
+  .menu-toggle {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0 16px 0 0;
+    display: flex;
+    align-items: center;
+    line-height: 1;
+  }
+  .menu-toggle:hover { opacity: 0.7; }
   .header {
     position: fixed;
     top: 0;
@@ -166,6 +179,100 @@
   .breadcrumb a:hover { color: var(--text); }
   .breadcrumb .sep { color: var(--text3); }
 
+  /* ====== SIDEBAR FIXA ====== */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 220px;
+    height: 100vh;
+    z-index: 3001;
+    background: var(--bg2);
+    border-right: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+  }
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    padding: 20px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .sidebar-header .logo-text {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--primary);
+    letter-spacing: -1px;
+  }
+  .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    font-size: 14px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all var(--transition);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .sidebar-item:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+  }
+  .sidebar-item.active {
+    color: var(--text);
+    background: rgba(229,9,20,0.1);
+    border-left: 3px solid var(--primary);
+  }
+  .sidebar-item .icon { font-size: 16px; width: 22px; text-align: center; }
+  .sidebar-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    padding: 16px 20px 6px;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 0;
+  }
+  .sidebar-footer .sidebar-item {
+    font-size: 13px;
+    padding: 8px 20px;
+  }
+
+  /* ====== HEADER / NAVBAR ====== */
+  .menu-toggle { display: none; }
+  .header {
+    position: fixed;
+    top: 0;
+    left: 220px;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 48px;
+    height: 68px;
+    background: linear-gradient(180deg, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0) 100%);
+    transition: background var(--transition);
+  }
+  .header.scrolled {
+    background: rgba(20,20,20,0.98);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  }
+
   /* ====== MAIN CONTENT ====== */
   .main {
     padding-top: 90px;
@@ -173,63 +280,36 @@
     padding-right: 48px;
     padding-bottom: 80px;
     max-width: 1600px;
-    margin: 0 auto;
+    margin: 0 0 0 220px;
   }
 
   /* ====== HERO / BANNER ====== */
   .hero {
     position: relative;
     width: 100%;
-    height: 320px;
+    padding: 32px 48px;
     border-radius: var(--radius-lg);
-    overflow: hidden;
-    margin-bottom: 40px;
+    margin-bottom: 32px;
     background: linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%);
   }
   .hero-bg {
-    position: absolute;
-    inset: 0;
-    background-size: cover;
-    background-position: center;
-    filter: brightness(0.4) saturate(0.8);
-    transition: background-image var(--transition);
+    display: none;
   }
   .hero-content {
     position: relative;
     z-index: 2;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    height: 100%;
-    padding: 60px 48px;
-    background: linear-gradient(0deg, rgba(20,20,20,0.9) 0%, transparent 60%);
   }
   .hero h1 {
-    font-size: 36px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
   }
   .hero p {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--text2);
-    max-width: 500px;
-    line-height: 1.5;
   }
   .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--primary);
-    color: white;
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 16px;
-    width: fit-content;
+    display: none;
   }
 
   /* ====== GENRE SECTION ====== */
@@ -519,12 +599,12 @@
     max-height: none;
   }
 
-  /* Cinema-style subtitles — branco com borda preta, igual cinema */
+  /* Cinema-style subtitles — amarelo com borda preta */
   video::cue {
-    color: #fff;
+    color: #ffd700;
     background: transparent;
     font-family: 'Arial', 'Helvetica', sans-serif;
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 700;
     text-shadow:
       -2px -2px 0 #000,
@@ -558,20 +638,12 @@
     pointer-events: none;
   }
   .player-container:hover .player-header {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent);
-    z-index: 10;
-    opacity: 0;
-    transition: opacity 0.3s;
+    opacity: 1;
+    pointer-events: all;
   }
-  .player-container:hover .player-header { opacity: 1; }
+  .player-container:hover .player-header .player-close {
+    pointer-events: all;
+  }
   .player-header .movie-name {
     font-size: 16px;
     font-weight: 600;
@@ -598,7 +670,7 @@
     gap: 8px;
   }
 
-  .subtitle-btn {
+  .subtitle-size-btn {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--text);
@@ -612,17 +684,10 @@
     pointer-events: all;
     transition: all 0.2s;
   }
-  .subtitle-btn:hover {
-    background: rgba(229,9,20,0.3);
-    border-color: var(--primary);
+  .subtitle-size-btn:hover {
+    background: rgba(255,193,7,0.25);
+    border-color: #ffc107;
   }
-  .subtitle-btn.active {
-    background: rgba(229,9,20,0.25);
-    border-color: var(--primary);
-    color: var(--primary);
-  }
-  .subtitle-btn .sub-icon { font-size: 14px; }
-  .subtitle-btn .sub-label { font-size: 11px; font-weight: 600; }
 
   .copy-url-btn {
     background: rgba(255,255,255,0.1);
@@ -648,7 +713,54 @@
     color: #2ecc71;
   }
 
+  .subtitle-size-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all;
+    transition: all 0.2s;
+  }
+  .subtitle-size-btn:hover {
+    background: rgba(255,193,7,0.25);
+    border-color: #ffc107;
+  }
+
   .cast-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all;
+    transition: all 0.2s;
+  }
+  .cast-btn:hover {
+    background: rgba(229,9,20,0.2);
+    border-color: var(--primary);
+  }
+  .cast-btn.casting {
+    background: rgba(229,9,20,0.25);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .cast-btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .player-info {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--text);
@@ -719,6 +831,20 @@
     overflow-y: auto;
   }
   .movie-info-overlay.active { display: block; }
+
+  .movie-info-breadcrumb {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 220px;
+    right: 0;
+    z-index: 3002;
+    padding: 16px 24px;
+    font-size: 13px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  .movie-info-breadcrumb a { pointer-events: all; }
 
   .movie-info-bg {
     position: fixed;
@@ -963,9 +1089,7 @@
   @media (max-width: 1024px) {
     .main { padding-left: 24px; padding-right: 24px; }
     .header { padding: 0 24px; }
-    .hero { height: 260px; }
-    .hero-content { padding: 40px 24px; }
-    .hero h1 { font-size: 28px; }
+    .hero { padding: 24px 24px; }
     .movie-info-content { flex-direction: column; align-items: center; text-align: center; gap: 24px; }
     .movie-info-poster { flex: 0 0 200px; }
     .movie-info-actions { justify-content: center; }
@@ -998,17 +1122,7 @@
 
   <!-- ====== HEADER ====== -->
   <header class="header" id="header">
-    <div class="logo" onclick="loadPath('')">
-      <span class="logo-icon">▶</span>
-      TicianoFlix
-    </div>
-    <div class="header-right">
-      <div class="header-actions">
-        <button class="icon-btn" id="backupBtn" onclick="backupDb()" title="Exportar banco de dados">💾</button>
-        <button class="icon-btn" id="restoreBtn" onclick="document.getElementById('restoreInput').click()" title="Importar banco de dados">📂</button>
-        <input type="file" id="restoreInput" accept=".db" style="display:none" onchange="restoreDb(this)">
-        <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshCache()" title="Atualizar filmes do Google Drive">🔄</button>
-      </div>
+    <div class="header-right" style="flex:1;justify-content:center">
       <div class="search-box">
         <span class="search-icon">🔍</span>
         <input type="text" id="searchInput" placeholder="Pesquisar filmes..." onkeydown="if(event.key==='Enter') search()">
@@ -1037,23 +1151,45 @@
   <!-- ====== TOAST NOTIFICATION ====== -->
   <div class="toast" id="toast"></div>
 
+  <!-- ====== SIDEBAR ====== -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo-text">▶ TicianoFlix</span>
+    </div>
+    <div class="sidebar-nav" id="sidebarNav">
+      <button class="sidebar-item active" onclick="loadPath('')">
+        <span class="icon">🏠</span> Início
+      </button>
+      <div class="sidebar-section-title">Gêneros</div>
+      <div id="sidebarGenres"></div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="sidebar-item" onclick="backupDb()" title="Exportar banco de dados">
+        <span class="icon">💾</span> Exportar
+      </button>
+      <button class="sidebar-item" onclick="document.getElementById('restoreInput').click()" title="Importar banco de dados">
+        <span class="icon">📂</span> Importar
+      </button>
+      <input type="file" id="restoreInput" accept=".db" style="display:none" onchange="restoreDb(this)">
+      <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Atualizar filmes do Google Drive">
+        <span class="icon">🔄</span> Atualizar
+      </button>
+    </div>
+  </div>
+
   <!-- ====== PLAYER OVERLAY ====== -->
   <div class="player-overlay" id="playerOverlay">
     <div class="player-container">
       <div class="player-header">
         <span class="movie-name" id="playerMovieName">Carregando...</span>
         <div class="player-header-right">
-          <button class="subtitle-btn" id="subtitleBtn" onclick="toggleSubtitles()" title="Legendas" style="display:none">
-            <span class="sub-icon">💬</span>
-            <span class="sub-label">Leg</span>
-          </button>
           <button class="copy-url-btn" id="copyUrlBtn" onclick="copyStreamUrl()" title="Copiar URL da stream">
             <span>🔗</span>
             <span class="sub-label">URL</span>
           </button>
-          <button class="cast-btn" id="castBtn" onclick="startCast()" title="Transmitir para Chromecast" disabled>
-            <span id="castIcon">📺</span>
-            <span class="sub-label" id="castLabel">Cast</span>
+          <button class="subtitle-size-btn" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho da legenda">
+            <span>🔤</span>
+            <span class="sub-label" id="subtitleSizeLabel">Méd</span>
           </button>
           <button class="player-close" onclick="closePlayer()">✕</button>
         </div>
@@ -1079,6 +1215,7 @@
   </div>
 
   <!-- ====== MOVIE INFO OVERLAY ====== -->
+  <div class="movie-info-breadcrumb" id="movieInfoBreadcrumb"></div>
   <div class="movie-info-overlay" id="movieInfoOverlay">
     <div class="movie-info-bg" id="movieInfoBg"></div>
     <div class="movie-info-content" id="movieInfoContent"></div>
@@ -1222,6 +1359,27 @@
     document.getElementById('hero').style.display = 'none';
   }
 
+  // ==================== SIDEBAR ====================
+  let _sidebarGenresLoaded = false;
+
+  function loadSidebarGenres() {
+    const container = document.getElementById('sidebarGenres');
+    if (_sidebarGenresLoaded) return;
+    _sidebarGenresLoaded = true;
+    cachedFetch('/api/genres').then(data => {
+      if (!data || !data.folders) return;
+      let html = '';
+      data.folders.forEach(g => {
+        const name = g.Name || '';
+        const path = '/TicianoFlix/' + name;
+        html += '<button class="sidebar-item" onclick="loadPath(\'' + path.replace(/'/g, "\\'") + '\')">'
+          + '<span class="icon">' + genreIcon(name) + '</span> '
+          + escHtml(name) + '</button>';
+      });
+      container.innerHTML = html;
+    });
+  }
+
   // ==================== HOME / GENRE LIST ====================
   function loadPath(path) {
     currentPath = path;
@@ -1231,7 +1389,10 @@
     // Close any open info overlay
     closeMovieInfo();
 
-    cachedFetch('/api/list?path=' + encodeURIComponent(path)).then(data => {
+    const isHome = isHomePage(path);
+    const url = isHome ? '/api/genres' : ('/api/list?path=' + encodeURIComponent(path));
+
+    cachedFetch(url).then(data => {
       if (!data) {
         document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3><p>Não foi possível conectar ao servidor.</p></div>';
         return;
@@ -1249,9 +1410,13 @@
     const hero = document.getElementById('hero');
     hero.style.display = 'block';
 
-    renderBreadcrumb(data.path);
-
     const isHome = isHomePage(data.path);
+
+    if (!isHome) {
+      renderBreadcrumb(data.path);
+    } else {
+      document.getElementById('breadcrumb').innerHTML = '';
+    }
     const hasFolders = data.folders && data.folders.length > 0;
     const hasVideos = data.videos && data.videos.length > 0;
     const hasImages = data.images && data.images.length > 0;
@@ -1284,55 +1449,104 @@
     renderGenericView(container, data);
   }
 
-  // ===== HOME VIEW: genres as sections =====
+  // ===== HOME VIEW: summary + recent movies =====
   function renderHomeView(container, data) {
     const hero = document.getElementById('hero');
-    hero.style.display = 'block';
-    document.getElementById('heroTitle').textContent = 'Seus Filmes, Sua Tela';
-    document.getElementById('heroDesc').textContent = 'Navegue pelos géneros e descubra seus filmes.';
+    hero.style.display = 'none';
+    document.getElementById('heroTitle').textContent = '';
+    document.getElementById('heroDesc').textContent = '';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
     const folders = data.folders || [];
-    if (folders.length === 0) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📂</div>
-          <h3>Nenhum género encontrado</h3>
-          <p>Crie pastas dentro de "TicianoFlix" no seu Google Drive para organizar por género.</p>
-        </div>`;
-      return;
-    }
+    const totalGenres = folders.length;
+    let totalMovies = 0;
+    folders.forEach(g => { if (g.Name) totalMovies++; });
 
-    let html = '';
-    folders.forEach((genre, idx) => {
-      const genreName = genre.Name || '';
-      const genrePath = '/TicianoFlix/' + genreName;
-
-      // Render as a clickable section header + preview
-      html += `<div class="genre-section">
-        <div class="genre-header" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '${escHtml(genreName).replace(/'/g, "\\'")}')">
-          <div class="genre-title">
-            <span>${genreIcon(genreName)}</span>
-            ${escHtml(genreName)}
-            <span class="arrow">→</span>
-          </div>
-          <div class="genre-count">Entrar</div>
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px">
+        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
+          <div style="font-size:36px;margin-bottom:8px">🎬</div>
+          <div style="font-size:28px;font-weight:800">${totalGenres}</div>
+          <div style="font-size:13px;color:var(--text3)">Gêneros</div>
         </div>
-        <div class="genre-movies-preview" id="preview-${idx}">
-          <div class="loading" style="min-height:180px;font-size:13px">
-            <div class="spinner" style="width:20px;height:20px"></div>
-            <span>Carregando...</span>
-          </div>
+        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
+          <div style="font-size:36px;margin-bottom:8px">📀</div>
+          <div style="font-size:28px;font-weight:800">—</div>
+          <div style="font-size:13px;color:var(--text3)">Filmes</div>
+        </div>
+      </div>
+      <div class="genre-section">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">📥 Últimos Adicionados</div>
+        </div>
+        <div class="movie-grid" id="recentGrid">
+          <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>`;
 
-      // Fetch genre contents in background
-      fetchGenrePreview(genrePath, idx);
+    // Fetch first movie from each genre to show as "recent"
+    let allMovies = [];
+    let loaded = 0;
+    folders.forEach((genre, gi) => {
+      const genrePath = '/TicianoFlix/' + (genre.Name || '');
+      cachedFetch('/api/list?path=' + encodeURIComponent(genrePath)).then(listData => {
+        if (listData && listData.folders) {
+          listData.folders.forEach(f => {
+            allMovies.push({ path: (genrePath + '/' + f.Name), name: f.Name });
+          });
+        }
+        loaded++;
+        if (loaded === folders.length) {
+          renderRecentMovies(allMovies);
+        }
+      });
     });
 
-    container.innerHTML = html;
+    function renderRecentMovies(movies) {
+      const grid = document.getElementById('recentGrid');
+      if (!grid) return;
+      if (movies.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Nenhum filme ainda</h3></div>';
+        return;
+      }
+      // Show last 12 (or fewer)
+      const recent = movies.slice(-12).reverse();
+      // Update total count in stats card
+      const statCards = container.querySelectorAll('div[style*="grid-template-columns"]');
+      // Find the movies count card and update it
+      const allStatDivs = container.querySelectorAll('div[style*="background:var(--surface)"]');
+      if (allStatDivs.length >= 2) {
+        const countEl = allStatDivs[1].querySelector('div[style*="font-size:28px"]');
+        if (countEl) countEl.textContent = movies.length;
+      }
 
-
+      let html = '';
+      recent.forEach(m => {
+        const nameClean = (m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
+        const safePath = m.path.replace(/'/g, "\\'");
+        html += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(m.name) + '">'
+          + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
+          + '<div class="movie-card-overlay">'
+          + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
+          + '</div></div>';
+        // Load poster
+        cachedFetch('/api/movie-detail?path=' + encodeURIComponent(m.path)).then(detail => {
+          if (!detail || !detail.poster) return;
+          const cards = grid.querySelectorAll('.movie-card');
+          const idx = recent.indexOf(m);
+          if (cards[idx]) {
+            const img = document.createElement('img');
+            img.className = 'movie-card-poster';
+            img.src = posterUrl(m.path, detail.poster.Name);
+            img.alt = escHtml(m.name);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
+            img.onerror = () => img.remove();
+            cards[idx].appendChild(img);
+          }
+        });
+      });
+      grid.innerHTML = html;
+    }
   }
 
   function genreIcon(name) {
@@ -1348,7 +1562,7 @@
       'aventura': '🗺',
       'animacao': '🎨', 'animação': '🎨',
       'suspense': '🔪',
-      'trash': '🗑',
+      'trash': '🍿',
       'acervo': '📚',
     };
     const key = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1428,8 +1642,13 @@
 
     const parts = data.path.split('/').filter(Boolean);
     const genreName = parts.length > 0 ? parts[parts.length - 1] : 'Género';
-    document.getElementById('heroTitle').textContent = genreName;
-    document.getElementById('heroDesc').textContent = data.folders.length + ' filme(s) · ' + (data.videos ? data.videos.length : 0) + ' vídeo(s)';
+    const totalMovies = data.folders.length;
+    const totalVideos = data.videos ? data.videos.length : 0;
+    // Set hero for genre view - simple header
+    const icon = genreIcon(genreName);
+    document.getElementById('heroTitle').innerHTML = icon + ' ' + escHtml(genreName);
+    document.getElementById('heroDesc').innerHTML = totalMovies + ' filme(s) · ' + totalVideos + ' vídeo(s) &middot; 🎬 ' + (totalMovies + totalVideos) + ' títulos';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
     const movieFolders = data.folders || [];
@@ -1478,13 +1697,18 @@
         if (!imgEl) return;
         if (detail && detail.poster) {
           imgEl.src = posterUrl(folderPath, detail.poster.Name);
-          imgEl.onerror = () => { imgEl.style.display = 'none'; imgEl.nextElementSibling.style.display = 'flex'; };
+          imgEl.style.display = 'block';
+          const ph = document.getElementById('ph-' + encodeURIComponent(folderPath).replace(/%/g, '_'));
+          if (ph) ph.style.display = 'none';
+          imgEl.onerror = () => { imgEl.style.display = 'none'; if (ph) ph.style.display = 'flex'; };
         } else {
           imgEl.style.display = 'none';
           if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'flex';
         }
       });
     });
+
+    // Load hero background from first movie's fanart or poster - REMOVED, simple header only
   }
 
   function renderMovieFolderCard(name, folderPath) {
@@ -1616,6 +1840,25 @@
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.getElementById('movieInfoBreadcrumb').style.display = 'block';
+
+    // Build breadcrumb for the overlay
+    const bcEl = document.getElementById('movieInfoBreadcrumb');
+    const path = folderPath || '';
+    const parts = path.split('/').filter(Boolean);
+    let cur = '/TicianoFlix';
+    let html = '<a onclick="loadPath(\'\')">🏠 Início</a>';
+    parts.forEach((p, i) => {
+      if (i === 0) return; // skip TicianoFlix root
+      cur += '/' + p;
+      const name = p.replace(/[._]/g, ' ');
+      if (i === parts.length - 1) {
+        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
+      } else {
+        html += ' <span class="sep">›</span> <a onclick="loadPath(\'' + cur.replace(/'/g, "\\'") + '\')">' + escHtml(name) + '</a>';
+      }
+    });
+    bcEl.innerHTML = html;
 
     content.innerHTML = '<div class="loading" style="min-height:400px"><div class="spinner"></div><span>Carregando informações...</span></div>';
     bg.style.backgroundImage = 'none';
@@ -1744,15 +1987,6 @@
 
           <div class="movie-info-actions">
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
-            <button class="btn-close-info" onclick="closeMovieInfo()">✕ Fechar</button>
-          </div>
-
-          <div class="movie-info-files">
-            <h4>Arquivos</h4>
-            ${video ? '<div class="file-list-item"><span class="icon">🎬</span><span class="name">' + escHtml(video.Name) + '</span><span>' + formatSize(video.Size) + '</span></div>' : ''}
-            ${poster ? '<div class="file-list-item"><span class="icon">🖼</span><span class="name">' + escHtml(poster.Name) + '</span><span>' + formatSize(poster.Size) + '</span></div>' : ''}
-            ${fanart ? '<div class="file-list-item"><span class="icon">🖼</span><span class="name">' + escHtml(fanart.Name) + '</span><span>' + formatSize(fanart.Size) + '</span></div>' : ''}
-            ${subtitle ? '<div class="file-list-item"><span class="icon">💬</span><span class="name">' + escHtml(subtitle.Name) + '</span><span>' + formatSize(subtitle.Size) + '</span></div>' : ''}
           </div>
         </div>`;
 
@@ -1765,6 +1999,8 @@
     overlay.classList.remove('active');
     document.body.style.overflow = '';
     currentMovieFolder = null;
+    document.getElementById('movieInfoBreadcrumb').innerHTML = '';
+    document.getElementById('movieInfoBreadcrumb').style.display = 'none';
   }
 
   function playFromInfo(videoPath, movieName, subtitlePath) {
@@ -1792,10 +2028,12 @@
   // ==================== BREADCRUMB ====================
   function renderBreadcrumb(path) {
     const el = document.getElementById('breadcrumb');
+    if (!el) return;
     const parts = path ? path.split('/').filter(Boolean) : [];
-    let current = '';
+    let current = '/TicianoFlix';
     let html = '<a onclick="loadPath(\'\')">🏠 Início</a>';
     parts.forEach((part, i) => {
+      if (i === 0) return; // skip TicianoFlix root, already have Inicio
       current += '/' + part;
       const name = part.replace(/[._]/g, ' ');
       if (i === parts.length - 1) {
@@ -1816,34 +2054,6 @@
   function clearBufferTimer() {
     if (_bufferTimer) { clearInterval(_bufferTimer); _bufferTimer = null; }
     if (_bufferSafetyTimeout) { clearTimeout(_bufferSafetyTimeout); _bufferSafetyTimeout = null; }
-  }
-
-  function _waitForBuffer(video, minPercent, callback) {
-    clearBufferTimer();
-    const loading = document.getElementById('playerLoading');
-
-    _bufferTimer = setInterval(function() {
-      let pct = 0;
-      if (video.buffered && video.buffered.length > 0 && video.duration > 0) {
-        const end = video.buffered.end(video.buffered.length - 1);
-        pct = (end / video.duration) * 100;
-      }
-      loading.querySelector('span').textContent = 'Bufferizando ' + Math.round(pct) + '%...';
-      setStreamStatus('buffering', '\u2B07\uFE0F ' + Math.round(pct) + '%');
-
-      if (pct >= minPercent) {
-        clearBufferTimer();
-        if (callback) callback();
-      }
-    }, 400);
-
-    // Segurança: após 60s toca de qualquer jeito
-    _bufferSafetyTimeout = setTimeout(function() {
-      if (_bufferTimer) {
-        clearBufferTimer();
-        if (callback) callback();
-      }
-    }, 60000);
   }
 
   function playMovie(filePath, movieName, subtitlePath) {
@@ -1960,8 +2170,9 @@
       }
     });
 
-    // Inicia loading — vídeo toca assim que oncanplay disparar
-    loading.querySelector('span').textContent = 'Bufferizando 0%...';
+    // Inicia loading — stream começa assim que oncanplay disparar
+    loading.querySelector('span').textContent = 'Carregando...';
+    setStreamStatus('buffering', '⬇️ 0%');
 
     // Timeout: se readyState=0 após 25s, é erro de conexão
     setTimeout(function() {
@@ -1992,6 +2203,8 @@
   }
 
   function closePlayer() {
+    // Confirmação antes de fechar
+    if (!confirm('Deseja realmente fechar o filme?')) return;
     const video = document.getElementById('videoPlayer');
     // Não fecha durante seek
     if (video && video._seeking) {
@@ -2018,6 +2231,25 @@
   }
 
   let subtitlesEnabled = true;
+  let subtitleSizeIndex = 1;
+  const subtitleSizes = [
+    { px: 22, label: 'Peq' },
+    { px: 28, label: 'Méd' },
+    { px: 36, label: 'Gde' },
+    { px: 48, label: 'Ext' },
+  ];
+
+  function cycleSubtitleSize() {
+    subtitleSizeIndex = (subtitleSizeIndex + 1) % subtitleSizes.length;
+    const size = subtitleSizes[subtitleSizeIndex];
+    document.getElementById('subtitleSizeLabel').textContent = size.label;
+    const style = document.createElement('style');
+    style.id = 'subDynamicSize';
+    style.textContent = 'video::cue { font-size: ' + size.px + 'px !important; }';
+    const old = document.getElementById('subDynamicSize');
+    if (old) old.remove();
+    document.head.appendChild(style);
+  }
 
   // ══════════════════════════════════════
   //  Google Cast (Chromecast)
@@ -2171,24 +2403,8 @@
 
   // Close movie info on Escape
 
-  function toggleSubtitles() {
-    const track = document.getElementById('subtitleTrack');
-    const btn = document.getElementById('subtitleBtn');
-    subtitlesEnabled = !subtitlesEnabled;
-    if (track) {
-      track.track.mode = subtitlesEnabled ? 'showing' : 'hidden';
-    }
-    btn.classList.toggle('active', subtitlesEnabled);
-  }
-
   function updateSubtitleButton(subtitlePath) {
-    const btn = document.getElementById('subtitleBtn');
-    if (subtitlePath) {
-      btn.style.display = 'flex';
-      btn.classList.toggle('active', subtitlesEnabled);
-    } else {
-      btn.style.display = 'none';
-    }
+    // legenda ativada automaticamente, sem botão toggle
   }
 
   function setStreamStatus(type, text) {
@@ -2219,9 +2435,9 @@
     }
   }
 
-  document.getElementById('playerOverlay').addEventListener('click', function(e) {
-    if (e.target === this) closePlayer();
-  });
+  document.getElementById('playerOverlay').onclick = function(e) {
+    // Apenas o botão fechar e Escape fecham — clique fora não fecha
+  };
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closePlayer();
@@ -2353,12 +2569,13 @@
     } catch(e) {
       btn.classList.remove('loading');
       btn.textContent = '🔄';
-      console.error('Refresh failed:', e);
+      console.error('Refresh failed:', e.message || e);
     }
   }
 
   // ==================== INIT ====================
   loadPath("");
+  loadSidebarGenres();
 </script>
 </body>
 </html>
