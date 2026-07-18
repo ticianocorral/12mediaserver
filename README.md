@@ -4,6 +4,7 @@
   <p>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
+    <img src="https://img.shields.io/badge/version-1.0-red" alt="v1.0">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
   </p>
 </div>
@@ -16,13 +17,20 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 
 ### ✨ Funcionalidades
 
-- **📁 Scan manual** do Google Drive com um clique (zero requisições automáticas)
+- **📁 Scan manual** do Google Drive com proteção contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
+- **📥 Download em background** — pause o filme e o cache VFS continua baixando
+- **📦 Indicador Offline** — filmes 100% cacheados aparecem com badge 📥 e seção especial na home
+- **🧹 Limpar Cache** — botão para remover vídeos baixados do cache VFS
+- **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
+- **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
 - **🔍 Busca** por título com debounce
 - **📱 Responsivo** — funciona no celular também
 - **🔄 Serviço systemd** — inicia automaticamente no login
+- **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
+- **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
 
 ---
 
@@ -146,9 +154,9 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 | Camada | Tecnologia |
 |--------|-----------|
 | **Backend** | Python 3 puro (`http.server.ThreadingHTTPServer`) |
-| **Frontend** | HTML + CSS + Vanilla JS (`cachedFetch` com TTL 2 min) |
-| **Streaming** | `rclone serve http` (VFS cache 5G, chunk 32M) |
-| **Cache** | SQLite (browsing) + RAM (movie details) |
+| **Frontend** | HTML + CSS + Vanilla JS (`cachedFetch` com TTL 2 min, `pushState` history) |
+| **Streaming** | `rclone serve http` (VFS cache full, chunk 4M, read-ahead 512M) |
+| **Cache** | SQLite (browsing) + RAM (movie details) + VFS rclone (download offline) |
 | **Init** | systemd user service |
 
 ---
@@ -178,10 +186,12 @@ TicianoFlix/
 
 ## 🧹 Manutenção
 
-### Limpar cache
+### Limpar cache de vídeos
+
+Clique em **🧹 Limpar Cache** na sidebar ou execute:
 
 ```bash
-rm -rf ~/.cache/ticianoflix/
+rm -rf ~/.cache/rclone/vfs/
 systemctl --user restart ticianoflix
 ```
 
