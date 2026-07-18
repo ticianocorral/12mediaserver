@@ -20,9 +20,10 @@ import sqlite3
 import re
 import time
 import shutil
+import io
+import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from functools import lru_cache
 
 HOST = "0.0.0.0"
 PORT = 8080
@@ -46,6 +47,28 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 rclone_server_proc = None
 _db_lock = threading.Lock()
+_scan_in_progress = False
+_scan_lock = threading.Lock()
+
+# Set of fully-cached file paths (persisted as JSON)
+CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
+_cached_files_lock = threading.Lock()
+_cached_files = set()
+if CACHED_FILES_PATH.exists():
+    try:
+        _cached_files = set(json.loads(CACHED_FILES_PATH.read_text()))
+    except Exception:
+        _cached_files = set()
+
+def _mark_file_cached(file_path):
+    """Register a file as fully cached in rclone VFS."""
+    with _cached_files_lock:
+        _cached_files.add(file_path)
+        CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
+
+def _is_file_cached(file_path):
+    with _cached_files_lock:
+        return file_path in _cached_files
 
 
 # ═══════════════════════════════════════════════
@@ -288,9 +311,11 @@ def scan_drive():
                 )
 
                 # Parse NFO and save metadata to DB
-                nfo_data = _fetch_nfo_raw(movie_path)
-                if nfo_data:
-                    _save_nfo_to_db(conn, movie_path, nfo_data)
+                nfo_raw = _fetch_nfo_raw(movie_path)
+                if nfo_raw:
+                    nfo_data = _parse_nfo(nfo_raw)
+                    if nfo_data:
+                        _save_nfo_to_db(conn, movie_path, nfo_data)
 
         # Mark genre as having content if any movie folder has video
         genre_has_video = conn.execute(
@@ -891,6 +916,20 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 if not buf:
                     break
                 self.wfile.write(buf)
+
+            # If the range covered the last byte, mark as VFS-cached
+            if status == 206 and range_header:
+                try:
+                    file_info = cached_get_file_info(path)
+                    file_size = file_info.get("Size", 0) if file_info else 0
+                    if file_size > 0:
+                        range_match = range_header.replace("bytes=", "").split("-")
+                        range_end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else None
+                        if range_end is not None and range_end >= file_size - 1:
+                            _mark_file_cached(path)
+                except Exception:
+                    pass
+
         except urllib.error.HTTPError as e:
             sys.stderr.write(f"[ERROR] Video proxy HTTP {e.code}: {e.reason}\n")
             self._stream_file_direct(path)
@@ -962,6 +1001,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 remaining -= len(buf)
             proc.stdout.close()
             proc.wait(timeout=10)
+            # If range covers the last byte of the file, the whole file is cached by rclone
+            if proc.returncode == 0 and file_size > 0 and end is not None and end >= file_size - 1:
+                _mark_file_cached(path)
         except Exception as e:
             sys.stderr.write(f"[ERROR] Direct stream failed: {e}\n")
 
@@ -1055,12 +1097,160 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         with open(filepath, "rb") as f:
             self.wfile.write(f.read())
 
-    def do_OPTIONS(self):
+    def _generate_backup_zip(self):
+        """Generate backup zip in memory. Returns bytes."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            db_path = Path(DB_PATH)
+            if db_path.exists():
+                z.write(db_path, "ticianoflix.db")
+            img_dir = Path(IMAGE_CACHE_DIR)
+            if img_dir.exists():
+                for f in sorted(img_dir.iterdir()):
+                    if f.is_file():
+                        z.write(f, f"images/{f.name}")
+            subs_dir = Path(SUBS_CACHE_DIR)
+            if subs_dir.exists():
+                for f in sorted(subs_dir.iterdir()):
+                    if f.is_file():
+                        z.write(f, f"subs/{f.name}")
+        return buf.getvalue()
+
+    def _serve_backup(self):
+        """Generate and serve a zip backup of DB + images + subs."""
+        data = self._generate_backup_zip()
         self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", 'attachment; filename="ticianoflix-backup.zip"')
+        self.send_header("Content-Length", str(len(data)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Range, Content-Type")
         self.end_headers()
+        self.wfile.write(data)
+
+    def _backup_to_drive(self):
+        """Generate backup zip and upload to Google Drive via rclone."""
+        try:
+            data = self._generate_backup_zip()
+            filename = f"ticianoflix-backup-{time.strftime('%Y-%m-%d')}.zip"
+            remote_path = f"{RCLONE_REMOTE}TicianoFlix/{filename}"
+
+            proc = subprocess.run(
+                ["rclone", "rcat", remote_path],
+                input=data,
+                capture_output=True,
+                timeout=60
+            )
+            if proc.returncode != 0:
+                err = proc.stderr.decode(errors="replace").strip()
+                return {"ok": False, "error": f"rclone failed: {err}"}
+
+            return {"ok": True, "path": f"TicianoFlix/{filename}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def _handle_restore_from_drive(self):
+        """Find latest backup zip in Drive, download and restore."""
+        try:
+            # List backup files in TicianoFlix root
+            result = run_rclone_cmd(["lsjson", f"{RCLONE_REMOTE}TicianoFlix"])
+            if not isinstance(result, list):
+                self._send_error("Failed to list Drive files")
+                return
+
+            zips = [f for f in result if f.get("Name", "").startswith("ticianoflix-backup-") and f.get("Name", "").endswith(".zip")]
+            if not zips:
+                self._send_error("Nenhum backup encontrado no Google Drive")
+                return
+
+            # Get most recent by ModTime
+            zips.sort(key=lambda f: f.get("ModTime", ""), reverse=True)
+            latest = zips[0]
+            name = latest["Name"]
+
+            self._send_json({"status": "downloading", "file": name})
+
+            # Download in background thread
+            def _do_restore():
+                try:
+                    remote = f"{RCLONE_REMOTE}TicianoFlix/{name}"
+                    proc = subprocess.run(
+                        ["rclone", "cat", remote],
+                        capture_output=True, timeout=120
+                    )
+                    if proc.returncode != 0:
+                        print(f"[TicianoFlix] Failed to download backup: {proc.stderr.decode(errors='replace')}", flush=True)
+                        return
+
+                    buf = io.BytesIO(proc.stdout)
+                    with zipfile.ZipFile(buf, "r") as z:
+                        names = z.namelist()
+                        if "ticianoflix.db" not in names:
+                            print("[TicianoFlix] Backup zip missing ticianoflix.db", flush=True)
+                            return
+                        db_path = Path(DB_PATH)
+                        if db_path.exists():
+                            shutil.copy2(db_path, db_path.with_suffix(".db.bak"))
+                        db_path.write_bytes(z.read("ticianoflix.db"))
+                        img_dir = Path(IMAGE_CACHE_DIR)
+                        img_dir.mkdir(exist_ok=True)
+                        for n in names:
+                            if n.startswith("images/") and not n.endswith("/"):
+                                (img_dir / Path(n).name).write_bytes(z.read(n))
+                        subs_dir = Path(SUBS_CACHE_DIR)
+                        subs_dir.mkdir(exist_ok=True)
+                        for n in names:
+                            if n.startswith("subs/") and not n.endswith("/"):
+                                (subs_dir / Path(n).name).write_bytes(z.read(n))
+                    print(f"[TicianoFlix] Backup restored from Drive: {name}", flush=True)
+                except Exception as e:
+                    print(f"[TicianoFlix] Restore from Drive failed: {e}", flush=True)
+
+            threading.Thread(target=_do_restore, daemon=True).start()
+
+        except Exception as e:
+            self._send_error(f"Falha ao restaurar do Drive: {e}")
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/restore":
+            self._handle_restore()
+            return
+
+        self._send_error("Not found", 404)
+
+    def _handle_restore(self):
+        """Restore backup from uploaded zip file."""
+        try:
+            content_len = int(self.headers.get("Content-Length", 0))
+            if content_len == 0:
+                self._send_error("Empty request", 400)
+                return
+            data = self.rfile.read(content_len)
+            buf = io.BytesIO(data)
+            with zipfile.ZipFile(buf, "r") as z:
+                names = z.namelist()
+                if "ticianoflix.db" not in names:
+                    self._send_error("Backup must contain ticianoflix.db", 400)
+                    return
+                db_path = Path(DB_PATH)
+                if db_path.exists():
+                    shutil.copy2(db_path, db_path.with_suffix(".db.bak"))
+                db_path.write_bytes(z.read("ticianoflix.db"))
+                img_dir = Path(IMAGE_CACHE_DIR)
+                img_dir.mkdir(exist_ok=True)
+                for name in names:
+                    if name.startswith("images/") and not name.endswith("/"):
+                        (img_dir / Path(name).name).write_bytes(z.read(name))
+                subs_dir = Path(SUBS_CACHE_DIR)
+                subs_dir.mkdir(exist_ok=True)
+                for name in names:
+                    if name.startswith("subs/") and not name.endswith("/"):
+                        (subs_dir / Path(name).name).write_bytes(z.read(name))
+            self._send_json({"status": "ok", "message": "Backup restaurado com sucesso"})
+        except Exception as e:
+            self._send_error(f"Falha ao restaurar: {e}")
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1080,9 +1270,77 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: Refresh cache (scan drive)
         if path == "/api/refresh":
+            global _scan_in_progress
+            with _scan_lock:
+                if _scan_in_progress:
+                    self._send_json({"status": "already_scanning"})
+                    return
+                _scan_in_progress = True
+
+            def scan_wrapper():
+                global _scan_in_progress
+                try:
+                    scan_drive()
+                finally:
+                    with _scan_lock:
+                        _scan_in_progress = False
+
             self._send_json({"status": "scanning"})
-            # Run scan in background
-            threading.Thread(target=scan_drive, daemon=True).start()
+            threading.Thread(target=scan_wrapper, daemon=True).start()
+            return
+
+        # API: Download backup (.zip)
+        if path == "/api/backup":
+            self._serve_backup()
+            return
+
+        # API: Backup to Google Drive
+        if path == "/api/backup/drive":
+            result = self._backup_to_drive()
+            if result["ok"]:
+                self._send_json({"status": "ok", "path": result["path"]})
+            else:
+                self._send_json({"status": "error", "error": result["error"]}, 500)
+            return
+
+        # API: Restore backup from Google Drive
+        if path == "/api/restore/drive":
+            self._handle_restore_from_drive()
+            return
+
+        # API: Check if file is fully cached in rclone VFS
+        if path == "/api/check-cached":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_json({"cached": False})
+                return
+            self._send_json({"cached": _is_file_cached(file_path)})
+            return
+
+        # API: Clear all caches (VFS, DB cache markers)
+        if path == "/api/clear-cache":
+            try:
+                import shutil as sh
+                # Clear VFS cache (downloaded videos)
+                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                if vfs_cache.exists():
+                    for entry in vfs_cache.iterdir():
+                        if entry.is_dir():
+                            sh.rmtree(entry)
+                # Clear cached files list
+                global _cached_files
+                with _cached_files_lock:
+                    _cached_files.clear()
+                    if CACHED_FILES_PATH.exists():
+                        CACHED_FILES_PATH.unlink()
+                # Clear DB cache timestamps
+                conn = get_db()
+                conn.execute("DELETE FROM cache_meta")
+                conn.commit()
+                conn.close()
+                self._send_json({"status": "ok"})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
             return
 
         # API: Cache status
@@ -1244,86 +1502,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_error("Not found", 404)
 
-    def do_POST(self):
-        """Handle POST requests (restore database)."""
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-
-        if path == "/api/restore":
-            content_type = self.headers.get("Content-Type", "")
-            content_length = int(self.headers.get("Content-Length", 0))
-
-            if "multipart/form-data" not in content_type or content_length == 0:
-                self._send_json({"error": "Expected multipart/form-data with file"}, 400)
-                return
-
-            try:
-                # Read the raw body
-                body = self.rfile.read(content_length)
-
-                # Extract boundary from Content-Type
-                boundary_match = re.search(r'boundary=(?:"([^"]+)"|([^;\s]+))', content_type)
-                if not boundary_match:
-                    self._send_json({"error": "Could not parse boundary"}, 400)
-                    return
-                boundary = boundary_match.group(1) or boundary_match.group(2)
-
-                # Split body by boundary
-                parts = body.split(("--" + boundary).encode())
-                file_data = None
-
-                for part in parts:
-                    if b"Content-Disposition" not in part:
-                        continue
-                    # Check if this part has name="backup"
-                    if b'name="backup"' not in part and b"name='backup'" not in part:
-                        continue
-
-                    # Split headers from content (double CRLF)
-                    header_end = part.find(b"\r\n\r\n")
-                    if header_end == -1:
-                        continue
-
-                    file_data = part[header_end + 4:]
-                    # Remove trailing \r\n and -- (boundary closing markers)
-                    file_data = file_data.rstrip(b"\r\n- ")
-
-                if not file_data:
-                    self._send_json({"error": "No file data found in upload (field name: 'backup')"}, 400)
-                    return
-
-                if len(file_data) < 100:  # Too small to be a valid DB
-                    self._send_json({"error": f"File too small ({len(file_data)} bytes), not a valid database"}, 400)
-                    return
-
-                # Write to disk
-                backup_path = DB_PATH.with_suffix(".db.bak")
-                if DB_PATH.exists():
-                    import shutil as _shutil
-                    _shutil.copy2(DB_PATH, backup_path)  # Backup current DB
-
-                with open(DB_PATH, "wb") as f:
-                    f.write(file_data)
-
-                # Re-scan in background
-                self._send_json({
-                    "status": "ok",
-                    "message": f"Banco restaurado ({len(file_data)} bytes). Atualizando cache..."
-                })
-                threading.Thread(target=scan_drive, daemon=True).start()
-
-            except Exception as e:
-                sys.stderr.write(f"[TicianoFlix] Restore failed: {e}\n")
-                import traceback
-                traceback.print_exc()
-                self._send_json({"error": f"Falha ao restaurar: {e}"}, 500)
-            return
-
-        self._send_error("Not found", 404)
-
     # ═══════════════════════════════════════════════
-#  (download removido)
-# ═══════════════════════════════════════════════
+    #  (download removido)
+    # ═══════════════════════════════════════════════
 
 def find_free_port():
     """Find an available port starting from PORT, or use TICIANOFLIX_PORT env."""

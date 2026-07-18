@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TicianoFlix</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%23e50914'/><polygon points='10,6 10,26 26,16' fill='white'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
   /* ====== RESET & BASE ====== */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,7 +28,7 @@
   }
   html { scroll-behavior: smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Roboto', sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -118,29 +120,6 @@
     align-items: center;
     gap: 6px;
   }
-  .icon-btn {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: var(--text2);
-    font-size: 16px;
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition);
-  }
-  .icon-btn:hover {
-    background: rgba(255,255,255,0.12);
-    color: var(--text);
-  }
-  .icon-btn.loading {
-    animation: spin 0.8s linear infinite;
-    pointer-events: none;
-    opacity: 0.6;
-  }
   .toast {
     position: fixed;
     bottom: 24px;
@@ -161,6 +140,7 @@
   }
   .toast.show { display: block; }
   .toast.success { border-color: #4caf50; }
+  .toast.info { border-color: #2196f3; }
   .toast.error { border-color: var(--primary); }
   .breadcrumb {
     display: flex;
@@ -200,10 +180,17 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .sidebar-header .logo-text {
-    font-size: 20px;
+    font-size: 26px;
     font-weight: 900;
     color: var(--primary);
     letter-spacing: -1px;
+  }
+  .sidebar-header .logo-version {
+    font-size: 10px;
+    color: var(--text3);
+    margin-left: 6px;
+    align-self: flex-end;
+    padding-bottom: 4px;
   }
   .sidebar-nav {
     flex: 1;
@@ -250,6 +237,15 @@
   .sidebar-footer .sidebar-item {
     font-size: 13px;
     padding: 8px 20px;
+  }
+  .sidebar-item.loading {
+    color: var(--primary) !important;
+    pointer-events: none;
+    opacity: 0.8;
+  }
+  .sidebar-item.loading .icon {
+    display: inline-block;
+    animation: spin 0.8s linear infinite;
   }
 
   /* ====== HEADER / NAVBAR ====== */
@@ -514,6 +510,107 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ====== BACKUP MODAL ====== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(6px);
+    animation: fadeIn 0.25s ease;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-lg);
+    width: 480px;
+    max-width: 92vw;
+    max-height: 80vh;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    animation: scaleIn 0.25s ease;
+    overflow: hidden;
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text3);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all var(--transition);
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  .modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .backup-option {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all var(--transition);
+    border: 1px solid transparent;
+  }
+  .backup-option:hover {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+  }
+  .backup-icon { font-size: 24px; width: 40px; text-align: center; flex-shrink: 0; }
+  .backup-option-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .backup-option-desc { font-size: 12px; color: var(--text3); line-height: 1.4; }
+
+  /* ====== CONFIRM MODAL ====== */
+  .confirm-modal { max-width: 380px; }
+  .confirm-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+    padding: 32px 28px 28px;
+  }
+  .confirm-icon { font-size: 48px; }
+  .confirm-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .confirm-desc { font-size: 13px; color: var(--text3); line-height: 1.5; }
+  .confirm-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .confirm-btn {
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .confirm-btn.cancel {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+  }
+  .confirm-btn.cancel:hover { background: rgba(255,255,255,0.14); }
+  .confirm-btn.confirm {
+    background: var(--primary);
+    color: #fff;
+  }
+  .confirm-btn.confirm:hover { opacity: 0.85; }
+
   /* ====== PLAYER OVERLAY ====== */
   .player-overlay {
     display: none;
@@ -603,7 +700,7 @@
   video::cue {
     color: #ffd700;
     background: transparent;
-    font-family: 'Arial', 'Helvetica', sans-serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 28px;
     font-weight: 700;
     text-shadow:
@@ -713,54 +810,7 @@
     color: #2ecc71;
   }
 
-  .subtitle-size-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    pointer-events: all;
-    transition: all 0.2s;
-  }
-  .subtitle-size-btn:hover {
-    background: rgba(255,193,7,0.25);
-    border-color: #ffc107;
-  }
-
   .cast-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    pointer-events: all;
-    transition: all 0.2s;
-  }
-  .cast-btn:hover {
-    background: rgba(229,9,20,0.2);
-    border-color: var(--primary);
-  }
-  .cast-btn.casting {
-    background: rgba(229,9,20,0.25);
-    border-color: var(--primary);
-    color: var(--primary);
-  }
-  .cast-btn[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .player-info {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--text);
@@ -817,6 +867,35 @@
   .player-info .stream-status.cached {
     color: #66bb6a;
     background: rgba(102,187,106,0.12);
+  }
+
+  /* ====== PLAYER CACHE BAR ====== */
+  .player-cache-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px 12px;
+  }
+  .cache-bar-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .cache-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #42a5f5, #66bb6a);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .cache-bar-text {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: right;
   }
 
   /* ====== MOVIE INFO OVERLAY ====== */
@@ -1085,6 +1164,21 @@
     color: var(--text3);
   }
 
+  .btn-play:hover { transform: scale(1.04); }
+  .btn-play:active { transform: scale(0.97); }
+  .offline-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #66bb6a;
+    background: rgba(102,187,106,0.12);
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
   /* ====== RESPONSIVE ====== */
   @media (max-width: 1024px) {
     .main { padding-left: 24px; padding-right: 24px; }
@@ -1148,6 +1242,21 @@
     <div id="content"></div>
   </div>
 
+  <!-- ====== CONFIRM MODAL ====== -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal confirm-modal">
+      <div class="modal-body confirm-body">
+        <div class="confirm-icon">🍿</div>
+        <div class="confirm-title">Sair do filme?</div>
+        <div class="confirm-desc">O progresso do cache será perdido.</div>
+        <div class="confirm-actions">
+          <button class="confirm-btn cancel" onclick="closeConfirmModal()">Continuar Assistindo</button>
+          <button class="confirm-btn confirm" id="confirmYesBtn">Sair</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ====== TOAST NOTIFICATION ====== -->
   <div class="toast" id="toast"></div>
 
@@ -1155,6 +1264,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text">▶ TicianoFlix</span>
+      <span class="logo-version">v1.0</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <button class="sidebar-item active" onclick="loadPath('')">
@@ -1164,18 +1274,58 @@
       <div id="sidebarGenres"></div>
     </div>
     <div class="sidebar-footer">
-      <button class="sidebar-item" onclick="backupDb()" title="Exportar banco de dados">
-        <span class="icon">💾</span> Exportar
+      <button class="sidebar-item" onclick="openBackupModal()" title="Backup, upload e restauração">
+        <span class="icon">💾</span> Backup
       </button>
-      <button class="sidebar-item" onclick="document.getElementById('restoreInput').click()" title="Importar banco de dados">
-        <span class="icon">📂</span> Importar
-      </button>
-      <input type="file" id="restoreInput" accept=".db" style="display:none" onchange="restoreDb(this)">
-      <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Atualizar filmes do Google Drive">
+      <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear Google Drive em busca de filmes novos">
         <span class="icon">🔄</span> Atualizar
+      </button>
+      <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
+        <span class="icon">🧹</span> Limpar Cache
       </button>
     </div>
   </div>
+
+  <!-- ====== BACKUP MODAL ====== -->
+  <div class="modal-overlay" id="backupModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">💾 Backup & Restaurar</span>
+        <button class="modal-close" onclick="closeBackupModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="backup-option" onclick="downloadBackup()">
+          <span class="backup-icon">📥</span>
+          <div>
+            <div class="backup-option-title">Salvar backup</div>
+            <div class="backup-option-desc">Baixar backup completo (DB + imagens + legendas)</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="backupToDrive()">
+          <span class="backup-icon">☁️</span>
+          <div>
+            <div class="backup-option-title">Salvar backup no Google Drive</div>
+            <div class="backup-option-desc">Fazer upload do backup para o Google Drive</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="document.getElementById('restoreFileInput').click()">
+          <span class="backup-icon">📂</span>
+          <div>
+            <div class="backup-option-title">Restaurar backup de arquivo</div>
+            <div class="backup-option-desc">Importar um arquivo .zip de backup salvo anteriormente</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="restoreFromDrive()">
+          <span class="backup-icon">☁️</span>
+          <div>
+            <div class="backup-option-title">Restaurar backup do Google Drive</div>
+            <div class="backup-option-desc">Baixar e restaurar o backup mais recente do Drive</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="restoreFileInput" accept=".zip" style="display:none" onchange="restoreFromFile(this)">
 
   <!-- ====== PLAYER OVERLAY ====== -->
   <div class="player-overlay" id="playerOverlay">
@@ -1211,6 +1361,12 @@
         <span class="file-size" id="playerFileSize"></span>
         <span class="stream-status" id="streamStatus"></span>
       </div>
+      <div class="player-cache-bar" id="playerCacheBar">
+        <div class="cache-bar-track">
+          <div class="cache-bar-fill" id="cacheBarFill"></div>
+        </div>
+        <span class="cache-bar-text" id="cacheBarText">Cache: 0%</span>
+      </div>
     </div>
   </div>
 
@@ -1224,6 +1380,18 @@
 <script>
   // ==================== STATE ====================
   let currentPath = "";
+
+  // History navigation support
+  window.addEventListener('popstate', function(e) {
+    const path = (e.state && e.state.path) || '';
+    // Close movie info overlay if open
+    const overlay = document.getElementById('movieInfoOverlay');
+    if (overlay && overlay.classList.contains('active')) {
+      closeMovieInfo();
+    }
+    // Always load, even if same path (handles initial pop)
+    loadPathInternal(path);
+  });
 
   // ==================== API ====================
   async function apiFetch(endpoint) {
@@ -1270,7 +1438,7 @@
   }
 
   // ==================== SIMPLE FRONTEND CACHE ====================
-  const _frontCache = {};
+  let _frontCache = {};
   const _CACHE_TTL = 120000; // 2 min
 
   function cachedFetch(url) {
@@ -1381,7 +1549,19 @@
   }
 
   // ==================== HOME / GENRE LIST ====================
-  function loadPath(path) {
+  function loadPath(path, replace) {
+    const s = history.state;
+    if (path !== (s && s.path)) {
+      if (replace) {
+        history.replaceState({ path: path }, '', window.location.pathname);
+      } else {
+        history.pushState({ path: path }, '', window.location.pathname);
+      }
+    }
+    loadPathInternal(path);
+  }
+
+  function loadPathInternal(path) {
     currentPath = path;
     document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
     document.getElementById('searchInput').value = '';
@@ -1482,6 +1662,12 @@
         <div class="movie-grid" id="recentGrid">
           <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
+      </div>
+      <div class="genre-section" id="offlineSection" style="display:none">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">📦 Disponíveis Offline</div>
+        </div>
+        <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
 
     // Fetch first movie from each genre to show as "recent"
@@ -1547,6 +1733,9 @@
       });
       grid.innerHTML = html;
     }
+
+    // Carrega filmes marcados como offline
+    _renderOfflineGrid();
   }
 
   function genreIcon(name) {
@@ -1556,13 +1745,13 @@
       'acao': '💥', 'acção': '💥', 'ação': '💥',
       'drama': '🎭',
       'ficcao': '🚀', 'ficção': '🚀', 'sci-fi': '🚀',
-      'shows': '📺', 'series': '📺', 'séries': '📺',
+      'shows': '🎵', 'series': '🎵', 'séries': '🎵',
       'documentario': '📽', 'documentário': '📽',
       'romance': '💕',
       'aventura': '🗺',
       'animacao': '🎨', 'animação': '🎨',
       'suspense': '🔪',
-      'trash': '🍿',
+      'trash': '💀',
       'acervo': '📚',
     };
     const key = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1834,6 +2023,11 @@
     if (event) event.stopPropagation();
     currentMovieFolder = folderPath;
 
+    // Push history state for movie detail
+    if (folderPath !== (history.state && history.state.path)) {
+      history.pushState({ path: folderPath }, '', window.location.pathname);
+    }
+
     const overlay = document.getElementById('movieInfoOverlay');
     const content = document.getElementById('movieInfoContent');
     const bg = document.getElementById('movieInfoBg');
@@ -1867,6 +2061,14 @@
       if (!detail) {
         content.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3></div>';
         return;
+      }
+
+      // Check VFS cache on server if not already marked
+      if (!_cachedSet.has(folderPath) && detail.video && detail.video.Name) {
+        const filePath = folderPath + '/' + detail.video.Name;
+        fetch('/api/check-cached?path=' + encodeURIComponent(filePath)).then(r => r.json()).then(d => {
+          if (d.cached) _markCached(folderPath);
+        }).catch(() => {});
       }
 
       const title = detail.title || 'Filme';
@@ -1987,6 +2189,7 @@
 
           <div class="movie-info-actions">
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
+            ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
           </div>
         </div>`;
 
@@ -2011,6 +2214,11 @@
   // Close movie info on Escape
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      const confirmModal = document.getElementById('confirmModal');
+      if (confirmModal.classList.contains('active')) {
+        closeConfirmModal();
+        return;
+      }
       const infoOverlay = document.getElementById('movieInfoOverlay');
       if (infoOverlay.classList.contains('active')) {
         closeMovieInfo();
@@ -2023,6 +2231,11 @@
   // Close on backdrop click
   document.getElementById('movieInfoOverlay').addEventListener('click', function(e) {
     if (e.target === this) closeMovieInfo();
+  });
+
+  // Close confirm modal on backdrop click
+  document.getElementById('confirmModal').addEventListener('click', function(e) {
+    if (e.target === this) closeConfirmModal();
   });
 
   // ==================== BREADCRUMB ====================
@@ -2071,6 +2284,9 @@
 
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
+
+    // Start background download immediately (doesn't depend on video playback)
+    _startBgDownload(filePath);
 
     // Show loading state
     video.style.display = 'none';
@@ -2129,6 +2345,14 @@
       loading.style.display = 'none';
       video.style.display = 'block';
       setStreamStatus('playing', '\u25B6\uFE0F Streaming');
+    };
+
+    // Background download tracker
+    video.onpause = function() {
+      if (video._started) _startBgDownload(filePath);
+    };
+    video.onplay = function() {
+      // Don't stop bg download on play — let it continue in background
     };
 
     video.onprogress = function() {
@@ -2203,8 +2427,20 @@
   }
 
   function closePlayer() {
-    // Confirmação antes de fechar
-    if (!confirm('Deseja realmente fechar o filme?')) return;
+    // Mostra modal de confirmação
+    const modal = document.getElementById('confirmModal');
+    modal.classList.add('active');
+    document.getElementById('confirmYesBtn').onclick = function() {
+      modal.classList.remove('active');
+      _doClosePlayer();
+    };
+  }
+
+  function closeConfirmModal() {
+    document.getElementById('confirmModal').classList.remove('active');
+  }
+
+  function _doClosePlayer() {
     const video = document.getElementById('videoPlayer');
     // Não fecha durante seek
     if (video && video._seeking) {
@@ -2422,6 +2658,17 @@
       if (video.buffered && video.buffered.length > 0 && video.duration > 0) {
         const end = video.buffered.end(video.buffered.length - 1);
         const pct = Math.round((end / video.duration) * 100);
+        // Update cache bar
+        const fill = document.getElementById('cacheBarFill');
+        const txt = document.getElementById('cacheBarText');
+        if (fill) fill.style.width = Math.min(pct, 100) + '%';
+        if (txt) txt.textContent = (pct >= 100) ? '💾 Cache total' : 'Cache: ' + pct + '%';
+        // Mark as offline-cached once we have >= 80% buffer
+        if (currentMovieFolder && pct >= 85 && !_cachedSet.has(currentMovieFolder)) {
+          // Trigger server to verify full cache by fetching the last byte
+          _verifyServerCache(currentMovieFolder, currentVideoPath);
+        }
+        // Update status text
         if (pct < 100) {
           el.textContent = '⬇️ ' + pct + '%';
           el.className = 'stream-status buffering';
@@ -2470,111 +2717,353 @@
     toastTimeout = setTimeout(() => { el.classList.remove('show'); }, 4000);
   }
 
-  // ==================== BACKUP / RESTORE ====================
-  async function backupDb() {
-    const btn = document.getElementById('backupBtn');
-    btn.textContent = '⏳';
-    try {
-      const res = await fetch('/api/backup');
-      if (!res.ok) { showToast('Erro ao exportar banco', 'error'); btn.textContent = '💾'; return; }
-
-      // Get the save path from headers
-      const savePath = res.headers.get('X-Backup-Path') || '';
-
-      // Browser fallback: trigger download
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ticianoflix-backup-' + new Date().toISOString().slice(0,10) + '.db';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      if (savePath) {
-        showToast('💾 Backup salvo em: ' + savePath, 'success');
-      } else {
-        showToast('Banco exportado!', 'success');
-      }
-    } catch(e) {
-      showToast('Erro ao exportar: ' + e.message, 'error');
+  // ==================== OFFLINE CACHE TRACKER ====================
+  const _cachedSet = new Set(JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]'));
+  function _isCached(folderPath) {
+    return _cachedSet.has(folderPath);
+  }
+  function _markCached(folderPath) {
+    if (!_cachedSet.has(folderPath)) {
+      _cachedSet.add(folderPath);
+      localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
     }
-    btn.textContent = '💾';
   }
 
-  async function restoreDb(input) {
-    const file = input.files[0];
-    if (!file) return;
-    if (!file.name.endsWith('.db')) {
-      showToast('Selecione um arquivo .db', 'error');
-      input.value = '';
+  function clearCache() {
+    localStorage.removeItem('ticianoflix_cached');
+    _cachedSet.clear();
+    showToast('🧹 Limpando cache do servidor...', '');
+    fetch('/api/clear-cache').then(r => r.json()).then(d => {
+      if (d.status === 'ok') {
+        showToast('🧹 Cache limpo com sucesso!', 'success');
+        loadPath(currentPath || '');
+      } else {
+        showToast('Erro ao limpar cache: ' + (d.error || 'desconhecido'), 'error');
+      }
+    }).catch(e => {
+      showToast('Erro ao limpar cache: ' + e.message, 'error');
+    });
+  }
+
+  // Background download — keeps fetching chunks even when video is paused
+  let _bgDownloadAbort = null;
+
+  function _startBgDownload(filePath) {
+    if (!filePath || _bgDownloadAbort) return;
+
+    // Derive folder path from file path (remove filename)
+    const folderPath = filePath.substring(0, filePath.lastIndexOf('/'));
+
+    const controller = new AbortController();
+    _bgDownloadAbort = controller;
+
+    // Get file size first
+    fetch('/api/info?path=' + encodeURIComponent(filePath)).then(r => r.json()).then(info => {
+      if (!info || !info.Size) { _bgDownloadAbort = null; return; }
+      const fileSize = info.Size;
+
+      // Fetch the whole file in background via sequential range requests
+      // This forces rclone VFS to cache it even when video is paused
+      let downloaded = 0;
+      const CHUNK = 5 * 1024 * 1024; // 5MB chunks
+
+      function fetchNextChunk() {
+        if (!_bgDownloadAbort || downloaded >= fileSize) {
+          if (downloaded >= fileSize) {
+            // Done — verify and mark as cached
+            if (folderPath) {
+              _markCached(folderPath);
+              _verifyServerCache(folderPath, filePath);
+            }
+          }
+          _bgDownloadAbort = null;
+          return;
+        }
+
+        const end = Math.min(downloaded + CHUNK - 1, fileSize - 1);
+        fetch('/api/stream?path=' + encodeURIComponent(filePath), {
+          headers: { 'Range': 'bytes=' + downloaded + '-' + end },
+          signal: controller.signal
+        }).then(r => {
+          return r.blob();
+        }).then(blob => {
+          downloaded += blob.size;
+          // Update cache bar with download progress
+          const pct = Math.round((downloaded / fileSize) * 100);
+          const fill = document.getElementById('cacheBarFill');
+          const txt = document.getElementById('cacheBarText');
+          if (fill) fill.style.width = Math.min(pct, 100) + '%';
+          if (txt) txt.textContent = '⬇️ Download: ' + Math.min(pct, 100) + '%';
+          fetchNextChunk();
+        }).catch(() => {
+          _bgDownloadAbort = null;
+        });
+      }
+
+      fetchNextChunk();
+    }).catch(() => { _bgDownloadAbort = null; });
+  }
+
+  function _stopBgDownload() {
+    if (_bgDownloadAbort) {
+      try { _bgDownloadAbort.abort(); } catch(e) {}
+      _bgDownloadAbort = null;
+    }
+  }
+
+  function _verifyServerCache(folderPath, filePath) {
+    if (!filePath) return;
+    // Get file size first, then request the last byte
+    fetch('/api/info?path=' + encodeURIComponent(filePath)).then(r => r.json()).then(info => {
+      if (!info || !info.Size) return;
+      const lastByte = info.Size - 1;
+      fetch('/api/stream?path=' + encodeURIComponent(filePath), {
+        headers: { 'Range': 'bytes=' + lastByte + '-' + lastByte }
+      }).then(r => {
+        // If we got a valid response, the file is fully cached
+        if (r.ok || r.status === 206) {
+          _markCached(folderPath);
+          // Also notify server to mark it
+          fetch('/api/check-cached?path=' + encodeURIComponent(filePath)).catch(() => {});
+        }
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+
+  async function _checkServerCached() {
+    // Scan all movies to check which ones are fully cached on the server
+    try {
+      const genresRes = await fetch('/api/genres');
+      const genresData = await genresRes.json();
+      if (!genresData || !genresData.folders) return;
+
+      const allMovies = [];
+      for (const genre of genresData.folders) {
+        const listRes = await fetch('/api/list?path=' + encodeURIComponent('/TicianoFlix/' + genre.Name));
+        const listData = await listRes.json();
+        if (listData && listData.folders) {
+          listData.folders.forEach(f => {
+            allMovies.push('/TicianoFlix/' + genre.Name + '/' + f.Name);
+          });
+        }
+      }
+
+      for (const moviePath of allMovies) {
+        if (_cachedSet.has(moviePath)) continue;
+        const detail = await apiFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath));
+        if (!detail || !detail.video) continue;
+        const video = detail.video;
+        if (!video || !video.Name) continue;
+        const filePath = moviePath + '/' + video.Name;
+        const checkRes = await fetch('/api/check-cached?path=' + encodeURIComponent(filePath));
+        const checkData = await checkRes.json();
+        if (checkData.cached) {
+          _markCached(moviePath);
+        }
+      }
+
+      if (_cachedSet.size > 0) _renderOfflineGrid();
+    } catch(e) {}
+  }
+
+  function _renderOfflineGrid() {
+    const section = document.getElementById('offlineSection');
+    const grid = document.getElementById('offlineGrid');
+    if (!section || !grid) return;
+
+    const paths = [..._cachedSet];
+    if (paths.length === 0) {
+      _checkServerCached();
       return;
     }
 
-    const btn = document.getElementById('restoreBtn');
-    btn.textContent = '⏳';
-    showToast('Enviando backup...', '');
+    section.style.display = 'block';
+    let html = '';
+    let loaded = 0;
+
+    paths.forEach((path, idx) => {
+      const name = path.split('/').pop().replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
+      const safePath = path.replace(/'/g, "\\'");
+      html += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(name) + '">'
+        + '<div class="movie-card-poster-placeholder" style="display:flex">📦</div>'
+        + '<div class="movie-card-overlay">'
+        + '<div class="movie-card-title">' + escHtml(name) + '</div>'
+        + '<div class="movie-card-subtitle">📥 Offline</div>'
+        + '</div></div>';
+
+      // Load poster in background
+      cachedFetch('/api/movie-detail?path=' + encodeURIComponent(path)).then(detail => {
+        if (!detail || !detail.poster) return;
+        const cards = grid.querySelectorAll('.movie-card');
+        if (cards[idx]) {
+          const img = document.createElement('img');
+          img.className = 'movie-card-poster';
+          img.src = posterUrl(path, detail.poster.Name);
+          img.alt = escHtml(name);
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
+          img.onerror = () => img.remove();
+          cards[idx].appendChild(img);
+        }
+      });
+    });
+    grid.innerHTML = html;
+  }
+
+  // ==================== BACKUP MODAL ====================
+  function openBackupModal() {
+    document.getElementById('backupModal').classList.add('active');
+  }
+  function closeBackupModal() {
+    document.getElementById('backupModal').classList.remove('active');
+  }
+
+  async function restoreFromFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    closeBackupModal();
+    showToast('📂 Restaurando backup...', '');
+    const formData = new FormData();
+    formData.append('backup', file);
     try {
-      const formData = new FormData();
-      formData.append('backup', file);
       const res = await fetch('/api/restore', { method: 'POST', body: formData });
       const data = await res.json();
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
       } else {
-        showToast('✅ ' + (data.message || 'Banco restaurado!'), 'success');
+        showToast('✅ ' + (data.message || 'Backup restaurado!'), 'success');
         setTimeout(() => loadPath(''), 3000);
       }
     } catch(e) {
       showToast('Erro ao restaurar: ' + e.message, 'error');
-      console.error('Restore error:', e);
     }
-    btn.textContent = '📂';
     input.value = '';
   }
 
+  async function restoreFromDrive() {
+    closeBackupModal();
+    showToast('☁️ Baixando backup do Google Drive...', '');
+    try {
+      const res = await fetch('/api/restore/drive');
+      const data = await res.json();
+      if (data.error) {
+        showToast('Erro: ' + data.error, 'error');
+      } else {
+        showToast('✅ ' + (data.message || 'Backup restaurado!'), 'success');
+        setTimeout(() => loadPath(''), 3000);
+      }
+    } catch(e) {
+      showToast('Erro ao restaurar: ' + e.message, 'error');
+    }
+  }
+
+  // ==================== BACKUP / DOWNLOAD ====================
+  async function downloadBackup() {
+    try {
+      showToast('📦 Gerando backup...', '');
+      const res = await fetch('/api/backup');
+      if (!res.ok) { showToast('Erro ao gerar backup', 'error'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ticianoflix-backup-' + new Date().toISOString().slice(0,10) + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('📦 Backup baixado!', 'success');
+    } catch(e) {
+      showToast('Erro no backup: ' + e.message, 'error');
+    }
+  }
+
+  async function backupToDrive() {
+    try {
+      showToast('☁️ Enviando backup para o Google Drive...', '');
+      const res = await fetch('/api/backup/drive');
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast('☁️ Backup salvo em: ' + data.path, 'success');
+      } else {
+        showToast('Erro: ' + (data.error || 'falha ao enviar'), 'error');
+      }
+    } catch(e) {
+      showToast('Erro ao enviar: ' + e.message, 'error');
+    }
+  }
+
   // ==================== REFRESH CACHE ====================
+  let _refreshPollTimer = null;
+  let _refreshFallbackTimer = null;
+
   async function refreshCache() {
     const btn = document.getElementById('refreshBtn');
-    btn.classList.add('loading');
-    btn.textContent = '';
+    const icon = btn.querySelector('.icon');
 
     try {
-      await fetch('/api/refresh');
-      // Wait a bit for scan to start, then poll for completion
+      const res = await fetch('/api/refresh');
+      const body = await res.json();
+
+      if (body.status === 'already_scanning') {
+        showToast('Escaneamento já está em andamento...', 'info');
+        return;
+      }
+
+      // Visual feedback: spin icon, highlight text
+      btn.classList.add('loading');
+      if (icon) icon.textContent = '🔄';
+
+      showToast('Escaneando Google Drive...', 'info');
+
+      // Poll cache-status until scan is done
       let attempts = 0;
-      const poll = setInterval(async () => {
+      _refreshPollTimer = setInterval(async () => {
         attempts++;
-        const res = await fetch('/api/cache-status');
-        const status = await res.json();
-        if (status.cached && !status.stale) {
-          clearInterval(poll);
+        try {
+          const r = await fetch('/api/cache-status');
+          const s = await r.json();
+          if (s.cached) {
+            clearInterval(_refreshPollTimer);
+            _refreshPollTimer = null;
+            clearTimeout(_refreshFallbackTimer);
+            _refreshFallbackTimer = null;
+            btn.classList.remove('loading');
+            if (icon) icon.textContent = '🔄';
+            _frontCache = {};
+            showToast('Escaneamento concluído!', 'success');
+            loadPath(currentPath || '');
+          }
+        } catch (_) {}
+        if (attempts > 120) {
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
           btn.classList.remove('loading');
-          btn.textContent = '🔄';
-          loadPath(currentPath);
-        } else if (attempts > 60) {
-          clearInterval(poll);
-          btn.classList.remove('loading');
-          btn.textContent = '🔄';
-          loadPath(currentPath);
+          if (icon) icon.textContent = '🔄';
+          loadPath(currentPath || '');
         }
-      }, 2000);
-      // Fallback: reload after 30s even if poll fails
-      setTimeout(() => {
+      }, 1500);
+
+      _refreshFallbackTimer = setTimeout(() => {
+        if (_refreshPollTimer) {
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
+        }
         btn.classList.remove('loading');
-        btn.textContent = '🔄';
-        loadPath(currentPath);
-      }, 30000);
+        if (icon) icon.textContent = '🔄';
+        _frontCache = {};
+        loadPath(currentPath || '');
+      }, 240000);
+
     } catch(e) {
       btn.classList.remove('loading');
-      btn.textContent = '🔄';
+      if (icon) icon.textContent = '🔄';
       console.error('Refresh failed:', e.message || e);
+      loadPath(currentPath || '');
     }
   }
 
   // ==================== INIT ====================
-  loadPath("");
+  loadPath("", true);
   loadSidebarGenres();
 </script>
 </body>
