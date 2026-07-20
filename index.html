@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TicianoFlix</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="alternate icon" type="image/png" sizes="32x32" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
@@ -41,27 +43,15 @@
   a { color: inherit; text-decoration: none; }
 
   /* ====== HEADER / NAVBAR ====== */
-  .menu-toggle {
-    background: none;
-    border: none;
-    color: var(--text);
-    font-size: 28px;
-    cursor: pointer;
-    padding: 0 16px 0 0;
-    display: flex;
-    align-items: center;
-    line-height: 1;
-  }
-  .menu-toggle:hover { opacity: 0.7; }
   .header {
     position: fixed;
     top: 0;
-    left: 0;
+    left: 220px;
     right: 0;
     z-index: 1000;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     padding: 0 48px;
     height: 68px;
     background: linear-gradient(180deg, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0) 100%);
@@ -71,17 +61,6 @@
     background: rgba(20,20,20,0.98);
     box-shadow: 0 2px 20px rgba(0,0,0,0.5);
   }
-  .logo {
-    font-size: 28px;
-    font-weight: 900;
-    color: var(--primary);
-    letter-spacing: -1px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-  }
-  .logo-icon { font-size: 32px; }
   .header-right {
     display: flex;
     align-items: center;
@@ -114,11 +93,6 @@
     font-size: 18px;
     margin-right: 8px;
     opacity: 0.5;
-  }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
   .toast {
     position: fixed;
@@ -248,25 +222,39 @@
     animation: spin 0.8s linear infinite;
   }
 
-  /* ====== HEADER / NAVBAR ====== */
-  .menu-toggle { display: none; }
-  .header {
-    position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 48px;
-    height: 68px;
-    background: linear-gradient(180deg, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0) 100%);
-    transition: background var(--transition);
+  /* Scan progress bar in sidebar */
+  .scan-progress-container {
+    padding: 6px 20px 12px;
   }
-  .header.scrolled {
-    background: rgba(20,20,20,0.98);
-    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  .scan-progress-bar {
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+  }
+  .scan-progress-fill {
+    background: var(--primary);
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .scan-progress-text {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Cache usage */
+  .sidebar-cache-usage {
+    padding: 10px 20px 6px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4px;
   }
 
   /* ====== MAIN CONTENT ====== */
@@ -342,82 +330,6 @@
     font-weight: 400;
     color: var(--text3);
   }
-  .genre-movies-preview {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scrollbar-width: thin;
-  }
-  .genre-movies-preview::-webkit-scrollbar { height: 4px; }
-  .genre-movies-preview::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
-  .preview-card {
-    flex: 0 0 130px;
-    aspect-ratio: 2/3;
-    border-radius: var(--radius);
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform var(--transition);
-    background: var(--surface);
-  }
-  .preview-card:hover {
-    transform: scale(1.08);
-    z-index: 2;
-  }
-  .preview-card img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .preview-card .placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    color: var(--text3);
-    background: linear-gradient(135deg, var(--bg2), var(--surface));
-  }
-
-  /* ====== EMPTY GENRE ====== */
-  .empty-genre {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 24px 20px;
-    border-radius: var(--radius);
-    background: rgba(255,255,255,0.02);
-    border: 1px dashed rgba(255,255,255,0.08);
-    cursor: pointer;
-    transition: all var(--transition);
-  }
-  .empty-genre:hover {
-    background: rgba(255,255,255,0.04);
-    border-color: rgba(255,255,255,0.15);
-  }
-  .empty-genre-icon {
-    font-size: 32px;
-    opacity: 0.3;
-  }
-  .empty-genre-info h4 {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-  .empty-genre-info p {
-    font-size: 13px;
-    color: var(--text3);
-  }
-  .empty-genre .click-hint {
-    margin-left: auto;
-    font-size: 13px;
-    color: var(--text3);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
   /* ====== MOVIE GRID (dentro do género) ====== */
   .movie-grid {
     display: grid;
@@ -637,6 +549,15 @@
     display: flex;
     flex-direction: column;
   }
+  .player-container:fullscreen,
+  .player-container:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: #000;
+  }
   @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
   .player-loading {
@@ -696,7 +617,7 @@
     max-height: none;
   }
 
-  /* Cinema-style subtitles — amarelo com borda preta */
+  /* Cinema-style subtitles */
   video::cue {
     color: #ffd700;
     background: transparent;
@@ -712,12 +633,8 @@
        0px  0px 8px rgba(0,0,0,0.6);
     line-height: 1.5;
   }
-  video::cue(b) {
-    font-weight: 900;
-  }
-  video::cue(i) {
-    font-style: italic;
-  }
+  video::cue(b) { font-weight: 900; }
+  video::cue(i) { font-style: italic; }
 
   .player-header {
     position: absolute;
@@ -738,7 +655,10 @@
     opacity: 1;
     pointer-events: all;
   }
-  .player-container:hover .player-header .player-close {
+  /* Fullscreen: header sempre visível no hover */
+  .player-container:fullscreen .player-header,
+  .player-container:-webkit-full-screen .player-header {
+    opacity: 1;
     pointer-events: all;
   }
   .player-header .movie-name {
@@ -786,7 +706,7 @@
     border-color: #ffc107;
   }
 
-  .copy-url-btn {
+  .subtitle-color-btn {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--text);
@@ -800,42 +720,35 @@
     pointer-events: all;
     transition: all 0.2s;
   }
-  .copy-url-btn:hover {
+  .subtitle-color-btn:hover {
     background: rgba(255,255,255,0.2);
     border-color: rgba(255,255,255,0.3);
   }
-  .copy-url-btn.copied {
-    background: rgba(46,204,113,0.25);
-    border-color: #2ecc71;
-    color: #2ecc71;
-  }
 
-  .cast-btn {
+  .subtitle-toggle-btn {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--text);
-    padding: 6px 10px;
+    padding: 6px 8px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 12px;
+    font-weight: 700;
     display: flex;
     align-items: center;
     gap: 4px;
     pointer-events: all;
     transition: all 0.2s;
+    letter-spacing: -0.5px;
   }
-  .cast-btn:hover {
-    background: rgba(229,9,20,0.2);
-    border-color: var(--primary);
+  .subtitle-toggle-btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.3);
   }
-  .cast-btn.casting {
-    background: rgba(229,9,20,0.25);
-    border-color: var(--primary);
-    color: var(--primary);
-  }
-  .cast-btn[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .subtitle-toggle-btn.active {
+    background: rgba(0,123,255,0.25);
+    border-color: #007bff;
+    color: #007bff;
   }
 
   .player-info {
@@ -1034,48 +947,6 @@
     background: var(--primary-hover);
     transform: scale(1.02);
   }
-  .btn-close-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(255,255,255,0.08);
-    color: var(--text);
-    border: 1px solid rgba(255,255,255,0.15);
-    padding: 14px 24px;
-    border-radius: 8px;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition);
-  }
-  .btn-close-info:hover {
-    background: rgba(255,255,255,0.15);
-  }
-
-  .movie-info-files {
-    background: rgba(255,255,255,0.03);
-    border-radius: var(--radius);
-    padding: 16px 20px;
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-  .movie-info-files h4 {
-    font-size: 13px;
-    color: var(--text3);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 10px;
-  }
-  .file-list-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 0;
-    font-size: 13px;
-    color: var(--text2);
-  }
-  .file-list-item .icon { font-size: 16px; }
-  .file-list-item .name { flex: 1; }
-
   /* ====== NFO METADATA ====== */
   .movie-plot {
     font-size: 14px;
@@ -1208,7 +1079,6 @@
     .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .search-box input { width: 80px; font-size: 12px; }
     .header-right { gap: 10px; }
-    .preview-card { flex: 0 0 100px; }
   }
 </style>
 </head>
@@ -1280,9 +1150,16 @@
       <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear Google Drive em busca de filmes novos">
         <span class="icon">🔄</span> Atualizar
       </button>
+      <div id="scanProgressBar" class="scan-progress-container" style="display:none">
+        <div class="scan-progress-bar">
+          <div class="scan-progress-fill" id="scanProgressFill"></div>
+        </div>
+        <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
+      </div>
       <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
         <span class="icon">🧹</span> Limpar Cache
       </button>
+      <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span></div>
     </div>
   </div>
 
@@ -1333,13 +1210,16 @@
       <div class="player-header">
         <span class="movie-name" id="playerMovieName">Carregando...</span>
         <div class="player-header-right">
-          <button class="copy-url-btn" id="copyUrlBtn" onclick="copyStreamUrl()" title="Copiar URL da stream">
-            <span>🔗</span>
-            <span class="sub-label">URL</span>
+          <button class="subtitle-toggle-btn" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Ativar/desativar legenda">
+            <span>CC</span>
           </button>
           <button class="subtitle-size-btn" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho da legenda">
-            <span>🔤</span>
+            <span>Aa</span>
             <span class="sub-label" id="subtitleSizeLabel">Méd</span>
+          </button>
+          <button class="subtitle-color-btn" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor da legenda">
+            <span id="subtitleColorIcon">🟡</span>
+            <span class="sub-label" id="subtitleColorLabel">Amarelo</span>
           </button>
           <button class="player-close" onclick="closePlayer()">✕</button>
         </div>
@@ -1758,72 +1638,6 @@
     return icons[key] || '🎬';
   }
 
-  async function fetchGenrePreview(genrePath, idx) {
-    const data = await cachedFetch('/api/list?path=' + encodeURIComponent(genrePath));
-    const el = document.getElementById('preview-' + idx);
-    if (!el) return;
-
-    if (!data) {
-      el.innerHTML = '<div class="empty-genre" onclick="loadGenre(\'' + genrePath.replace(/'/g, "\\'") + '\',\'\')"><div class="empty-genre-icon">❌</div><div class="empty-genre-info"><h4>Erro ao carregar</h4></div></div>';
-      return;
-    }
-
-    const movieFolders = data.folders || [];
-    const directVideos = data.videos || [];
-
-    if (movieFolders.length === 0 && directVideos.length === 0) {
-      el.innerHTML = `<div class="empty-genre" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '')">
-        <div class="empty-genre-icon">📭</div>
-        <div class="empty-genre-info">
-          <h4>Nenhum filme ainda</h4>
-          <p>Adicione filmes nesta pasta para vê-los aqui.</p>
-        </div>
-        <div class="click-hint">Clique para entrar <span class="arrow">→</span></div>
-      </div>`;
-      return;
-    }
-
-    // Show movies as horizontal preview cards
-    let items = movieFolders.slice(0, 8);
-    let html = '';
-    let loadedCount = 0;
-
-    items.forEach((movie, mi) => {
-      const movieName = movie.Name || '';
-      const moviePath = genrePath + '/' + movieName;
-      const uniqueId = 'preview-img-' + idx + '-' + mi;
-
-      html += `<div class="preview-card" onclick="showMovieInfo('${moviePath.replace(/'/g, "\\'")}', event)" title="${escHtml(movieName)}">
-        <div class="placeholder" id="${uniqueId}">🎬</div>
-      </div>`;
-
-      // Load poster lazily
-      cachedFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath)).then(detail => {
-        const imgEl = document.getElementById(uniqueId);
-        if (!imgEl) return;
-        loadedCount++;
-        if (detail && detail.poster) {
-          const img = document.createElement('img');
-          img.src = posterUrl(moviePath, detail.poster.Name);
-          img.alt = escHtml(movieName);
-          img.loading = 'lazy';
-          img.onerror = () => { imgEl.textContent = '🎬'; };
-          imgEl.parentNode.replaceChild(img, imgEl);
-        } else {
-          imgEl.textContent = '🎬';
-        }
-      });
-    });
-
-    if (movieFolders.length > 8) {
-      html += `<div class="preview-card" onclick="loadGenre('${genrePath.replace(/'/g, "\\'")}', '')" style="display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--text2);background:var(--bg2)">
-        +${movieFolders.length - 8}
-      </div>`;
-    }
-
-    el.innerHTML = html;
-  }
-
   // ===== GENRE VIEW: show movie folders as cards =====
   function renderGenreView(container, data) {
     const hero = document.getElementById('hero');
@@ -2011,11 +1825,6 @@
     return html;
   }
 
-  // ===== LOAD GENRE =====
-  function loadGenre(path, name) {
-    loadPath(path);
-  }
-
   // ===== MOVIE INFO =====
   let currentMovieFolder = null;
 
@@ -2191,6 +2000,7 @@
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
             ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
           </div>
+          </div>
         </div>`;
 
       content.innerHTML = html;
@@ -2261,12 +2071,9 @@
   // ==================== PLAYER ====================
   let currentVideoPath = null;
   let currentSubtitlePath = null;
-  let _bufferTimer = null;
-  let _bufferSafetyTimeout = null;
 
   function clearBufferTimer() {
-    if (_bufferTimer) { clearInterval(_bufferTimer); _bufferTimer = null; }
-    if (_bufferSafetyTimeout) { clearTimeout(_bufferSafetyTimeout); _bufferSafetyTimeout = null; }
+    // No-op: _waitForBuffer was removed, but keep for cleanup compatibility
   }
 
   function playMovie(filePath, movieName, subtitlePath) {
@@ -2321,6 +2128,22 @@
         video.style.display = 'block';
         video.play().catch(function() {});
       }
+    };
+
+    // Se já tem dados suficientes (cache local), pula o loading
+    if (video.readyState >= 3) {
+      video._started = true;
+      clearBufferTimer();
+      loading.style.display = 'none';
+      video.style.display = 'block';
+      video.play().catch(function() {});
+    }
+
+    video.onloadeddata = function() {
+      // Fallback: se oncanplay não disparou rápido, esconde loading
+      if (!video._started) return;
+      loading.style.display = 'none';
+      video.style.display = 'block';
     };
 
     video.onwaiting = function() {
@@ -2378,14 +2201,17 @@
       subtitlesEnabled = true;
       const t = document.getElementById('subtitleTrack');
       if (t) t.track.mode = 'showing';
+      document.getElementById('subtitleToggleBtn').classList.add('active');
     } else {
       subtitlesEnabled = false;
+      document.getElementById('subtitleToggleBtn').classList.remove('active');
     }
     updateSubtitleButton(subtitlePath);
 
-    // Start loading video
+    // Start loading video — play() antecipado acelera pipeline de mídia
     video.src = streamUrl(filePath);
     video.load();
+    video.play().catch(function() {});
 
     // Fetch file size in background
     cachedFetch('/api/info?path=' + encodeURIComponent(filePath)).then(info => {
@@ -2405,6 +2231,30 @@
         showPlayerError('O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
       }
     }, 25000);
+
+    // Clique simples = play/pause
+    video.addEventListener('click', function(e) {
+      // Não dispara se for double-click
+      if (e.detail === 1) {
+        if (video.paused) {
+          video.play().catch(function() {});
+        } else {
+          video.pause();
+        }
+      }
+    });
+
+    // Double-click no video = fullscreen no container (mantém header visível)
+    video.addEventListener('dblclick', function(e) {
+      const container = document.querySelector('.player-container');
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(function() {});
+      } else if (container.requestFullscreen) {
+        container.requestFullscreen();
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      }
+    });
   }
 
   function showPlayerError(msg) {
@@ -2423,6 +2273,20 @@
       const movieTitle = document.getElementById('playerMovieName');
       const name = movieTitle.textContent;
       playMovie(currentVideoPath, name, currentSubtitlePath);
+    }
+  }
+
+  function toggleSubtitles() {
+    const track = document.getElementById('subtitleTrack');
+    const btn = document.getElementById('subtitleToggleBtn');
+    if (track && track.track) {
+      if (track.track.mode === 'showing') {
+        track.track.mode = 'disabled';
+        btn.classList.remove('active');
+      } else {
+        track.track.mode = 'showing';
+        btn.classList.add('active');
+      }
     }
   }
 
@@ -2487,160 +2351,22 @@
     document.head.appendChild(style);
   }
 
-  // ══════════════════════════════════════
-  //  Google Cast (Chromecast)
-  // ══════════════════════════════════════
-  let castLoaded = false;
-  let castSession = null;
-  const CAST_APP_ID = 'CC1AD845'; // Default Media Receiver
-
-  function getMimeType(path) {
-    const ext = path.split('.').pop().toLowerCase();
-    const types = {
-      mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska',
-      webm: 'video/webm', mov: 'video/quicktime', avi: 'video/x-msvideo',
-      flv: 'video/x-flv', wmv: 'video/x-ms-wmv', mpg: 'video/mpeg', mpeg: 'video/mpeg',
-    };
-    return types[ext] || 'video/mp4';
-  }
-
-  function loadCastSdk(callback) {
-    if (window.chrome && window.chrome.cast) {
-      callback();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js';
-    script.onload = callback;
-    script.onerror = () => console.warn('[Cast] Falha ao carregar SDK');
-    document.body.appendChild(script);
-  }
-
-  function initCastApi() {
-    if (!window.chrome || !window.chrome.cast) return;
-    const ctx = cast.framework.CastContext.getInstance();
-    ctx.setOptions({
-      receiverApplicationId: CAST_APP_ID,
-      autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-    });
-    ctx.addEventListener(
-      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-      onCastSessionChanged
-    );
-    castLoaded = true;
-    // Enable button if Cast is available
-    const btn = document.getElementById('castBtn');
-    if (btn) btn.disabled = false;
-  }
-
-  function onCastSessionChanged(e) {
-    const btn = document.getElementById('castBtn');
-    const icon = document.getElementById('castIcon');
-    const label = document.getElementById('castLabel');
-    castSession = e.session;
-    if (e.session && e.session.getSessionState() === 'connected') {
-      btn.classList.add('casting');
-      btn.title = 'Conectado ao Chromecast';
-      icon.textContent = '📡';
-      label.textContent = 'Cast';
-    } else {
-      btn.classList.remove('casting');
-      btn.title = 'Transmitir para Chromecast';
-      icon.textContent = '📺';
-    }
-  }
-
-  function startCast() {
-    const path = currentVideoPath;
-    if (!path) return;
-
-    if (!castLoaded) {
-      loadCastSdk(() => {
-        initCastApi();
-        // Small delay for init, then try again
-        setTimeout(() => startCast(), 500);
-      });
-      return;
-    }
-
-    const castCtx = cast.framework.CastContext.getInstance();
-    castCtx.requestSession()
-      .then(() => {
-        const session = castCtx.getCurrentSession();
-        if (!session) return;
-
-        const streamUrl = window.location.origin + '/api/stream?path=' + encodeURIComponent(path);
-        const movieName = document.getElementById('playerMovieName').textContent;
-        const mimeType = getMimeType(path);
-
-        const mediaInfo = new chrome.cast.media.MediaInfo(streamUrl, mimeType);
-        mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
-        mediaInfo.metadata.title = movieName;
-        mediaInfo.metadata.subtitle = 'TicianoFlix';
-
-        // Add subtitle track if available
-        if (currentSubtitlePath) {
-          const subUrl = window.location.origin + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath);
-          const track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
-          track.trackContentId = subUrl;
-          track.trackContentType = 'text/vtt';
-          track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
-          track.name = 'Português';
-          track.language = 'pt-BR';
-          mediaInfo.tracks = [track];
-        }
-
-        const request = new chrome.cast.media.LoadRequest(mediaInfo);
-        if (currentSubtitlePath) {
-          request.activeTrackIds = [1];
-        }
-
-        session.loadMedia(request)
-          .then(() => console.log('[Cast] Mídia enviada com sucesso'))
-          .catch(err => console.warn('[Cast] Erro ao carregar mídia:', err));
-      })
-      .catch(err => {
-        if (err.code === 'cancel' || err.code === 'CANCEL') return;
-        console.warn('[Cast] Erro na sessão:', err);
-      });
-  }
-
-  function copyStreamUrl() {
-    const btn = document.getElementById('copyUrlBtn');
-    const path = currentVideoPath;
-    if (!path) return;
-    const url = window.location.origin + '/api/stream?path=' + encodeURIComponent(path);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        btn.classList.add('copied');
-        btn.title = 'Copiado!';
-        setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copiar URL da stream'; }, 2000);
-      }).catch(() => fallbackCopy(url, btn));
-    } else {
-      fallbackCopy(url, btn);
-    }
-  }
-
-  function fallbackCopy(text, btn) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      btn.classList.add('copied');
-      btn.title = 'Copiado!';
-      setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copiar URL da stream'; }, 2000);
-    } catch (e) {}
-    document.body.removeChild(ta);
-  }
-
-  // Close movie info on Escape
-
-  function updateSubtitleButton(subtitlePath) {
-    // legenda ativada automaticamente, sem botão toggle
+  let subtitleColorIndex = 0;
+  const subtitleColors = [
+    { color: '#ffd700', label: 'Amarelo', icon: '🟡' },
+    { color: '#ffffff', label: 'Branco', icon: '⬜' },
+  ];
+  function cycleSubtitleColor() {
+    subtitleColorIndex = (subtitleColorIndex + 1) % subtitleColors.length;
+    const c = subtitleColors[subtitleColorIndex];
+    document.getElementById('subtitleColorLabel').textContent = c.label;
+    document.getElementById('subtitleColorIcon').textContent = c.icon;
+    const style = document.createElement('style');
+    style.id = 'subDynamicColor';
+    style.textContent = 'video::cue { color: ' + c.color + ' !important; }';
+    const old = document.getElementById('subDynamicColor');
+    if (old) old.remove();
+    document.head.appendChild(style);
   }
 
   function setStreamStatus(type, text) {
@@ -2736,6 +2462,7 @@
     fetch('/api/clear-cache').then(r => r.json()).then(d => {
       if (d.status === 'ok') {
         showToast('🧹 Cache limpo com sucesso!', 'success');
+        document.getElementById('cacheUsageSize').textContent = '0B';
         loadPath(currentPath || '');
       } else {
         showToast('Erro ao limpar cache: ' + (d.error || 'desconhecido'), 'error');
@@ -2995,6 +2722,7 @@
   // ==================== REFRESH CACHE ====================
   let _refreshPollTimer = null;
   let _refreshFallbackTimer = null;
+  let _scanProgressTimer = null;
 
   async function refreshCache() {
     const btn = document.getElementById('refreshBtn');
@@ -3009,13 +2737,59 @@
         return;
       }
 
+      // Show progress bar
+      const pbar = document.getElementById('scanProgressBar');
+      const pfill = document.getElementById('scanProgressFill');
+      const ptext = document.getElementById('scanProgressText');
+      pbar.style.display = 'block';
+      pfill.style.width = '0%';
+      ptext.textContent = 'Preparando...';
+
       // Visual feedback: spin icon, highlight text
       btn.classList.add('loading');
       if (icon) icon.textContent = '🔄';
 
-      showToast('Escaneando Google Drive...', 'info');
+      // Start polling scan-progress
+      if (_scanProgressTimer) clearInterval(_scanProgressTimer);
+      _scanProgressTimer = setInterval(async () => {
+        try {
+          const r = await fetch('/api/scan-progress');
+          const s = await r.json();
+          pfill.style.width = s.percent + '%';
+          if (s.phase === 'genres') {
+            if (s.movie_index > 0) {
+              ptext.textContent = `${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
+            } else {
+              ptext.textContent = `Gênero ${s.genre_index}/${s.genre_total}`;
+            }
+          } else if (s.phase === 'listing_root') {
+            ptext.textContent = 'Listando raiz...';
+          } else if (s.phase === 'done') {
+            clearInterval(_scanProgressTimer);
+            _scanProgressTimer = null;
+            clearInterval(_refreshPollTimer);
+            _refreshPollTimer = null;
+            clearTimeout(_refreshFallbackTimer);
+            _refreshFallbackTimer = null;
+            btn.classList.remove('loading');
+            if (icon) icon.textContent = '🔄';
+            pbar.style.display = 'none';
+            _frontCache = {};
+            showToast('Escaneamento concluído!', 'success');
+            loadPath(currentPath || '');
+          } else if (s.phase === 'error') {
+            clearInterval(_scanProgressTimer);
+            _scanProgressTimer = null;
+            btn.classList.remove('loading');
+            if (icon) icon.textContent = '🔄';
+            pbar.style.display = 'none';
+            showToast('Erro ao escanear Google Drive', 'error');
+            loadPath(currentPath || '');
+          }
+        } catch (_) {}
+      }, 800);
 
-      // Poll cache-status until scan is done
+      // Also poll cache-status as fallback (backward compat)
       let attempts = 0;
       _refreshPollTimer = setInterval(async () => {
         attempts++;
@@ -3025,10 +2799,13 @@
           if (s.cached) {
             clearInterval(_refreshPollTimer);
             _refreshPollTimer = null;
+            clearInterval(_scanProgressTimer);
+            _scanProgressTimer = null;
             clearTimeout(_refreshFallbackTimer);
             _refreshFallbackTimer = null;
             btn.classList.remove('loading');
             if (icon) icon.textContent = '🔄';
+            pbar.style.display = 'none';
             _frontCache = {};
             showToast('Escaneamento concluído!', 'success');
             loadPath(currentPath || '');
@@ -3037,19 +2814,23 @@
         if (attempts > 120) {
           clearInterval(_refreshPollTimer);
           _refreshPollTimer = null;
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
           btn.classList.remove('loading');
           if (icon) icon.textContent = '🔄';
+          pbar.style.display = 'none';
           loadPath(currentPath || '');
         }
       }, 1500);
 
       _refreshFallbackTimer = setTimeout(() => {
-        if (_refreshPollTimer) {
-          clearInterval(_refreshPollTimer);
-          _refreshPollTimer = null;
-        }
+        clearInterval(_refreshPollTimer);
+        _refreshPollTimer = null;
+        clearInterval(_scanProgressTimer);
+        _scanProgressTimer = null;
         btn.classList.remove('loading');
         if (icon) icon.textContent = '🔄';
+        pbar.style.display = 'none';
         _frontCache = {};
         loadPath(currentPath || '');
       }, 240000);
@@ -3057,6 +2838,7 @@
     } catch(e) {
       btn.classList.remove('loading');
       if (icon) icon.textContent = '🔄';
+      document.getElementById('scanProgressBar').style.display = 'none';
       console.error('Refresh failed:', e.message || e);
       loadPath(currentPath || '');
     }
@@ -3065,6 +2847,26 @@
   // ==================== INIT ====================
   loadPath("", true);
   loadSidebarGenres();
+
+  // Fetch cache usage
+  async function updateCacheUsage() {
+    try {
+      const r = await fetch('/api/cache-status');
+      const s = await r.json();
+      if (s.usage) {
+        const t = s.usage.total;
+        let h = '';
+        if (t < 1024) h = t + 'B';
+        else if (t < 1048576) h = (t / 1024).toFixed(1) + 'K';
+        else if (t < 1073741824) h = (t / 1048576).toFixed(1) + 'M';
+        else h = (t / 1073741824).toFixed(2) + 'G';
+        if (s.usage.details.vfs > 0) h += ' (VFS)';
+        document.getElementById('cacheUsageSize').textContent = h;
+      }
+    } catch(_) {}
+  }
+  updateCacheUsage();
+  setInterval(updateCacheUsage, 30000);
 </script>
 </body>
 </html>

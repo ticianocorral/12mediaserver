@@ -40,7 +40,6 @@ CACHE_DIR.mkdir(exist_ok=True)
 IMAGE_CACHE_DIR.mkdir(exist_ok=True)
 SUBS_CACHE_DIR.mkdir(exist_ok=True)
 
-POSTER_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
 SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -49,6 +48,19 @@ rclone_server_proc = None
 _db_lock = threading.Lock()
 _scan_in_progress = False
 _scan_lock = threading.Lock()
+
+# Scan progress tracking
+_scan_progress = {
+    "phase": "",           # "listing_root" | "genres" | "movies" | "done" | "error"
+    "genre_current": "",
+    "genre_index": 0,
+    "genre_total": 0,
+    "movie_current": "",
+    "movie_index": 0,
+    "movie_total": 0,
+    "percent": 0,
+}
+_scan_progress_lock = threading.Lock()
 
 # Set of fully-cached file paths (persisted as JSON)
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
@@ -170,6 +182,30 @@ def is_cache_stale():
     return (int(time.time()) - int(t)) > 3600
 
 
+def get_cache_usage():
+    """Return disk usage of caches in human-readable bytes."""
+    total = 0
+    details = {}
+    for label, path in [
+        ("images", IMAGE_CACHE_DIR),
+        ("subs", SUBS_CACHE_DIR),
+        ("vfs", Path.home() / ".cache" / "rclone" / "vfs"),
+        ("db", DB_PATH),
+    ]:
+        p = Path(path)
+        size = 0
+        if p.is_file():
+            size = p.stat().st_size
+        elif p.is_dir():
+            for f in p.rglob("*"):
+                if f.is_file():
+                    size += f.stat().st_size
+        details[label] = size
+        total += size
+    return {"total": total, "details": details}
+
+
+
 # ═══════════════════════════════════════════════
 #  Drive Scanner
 # ═══════════════════════════════════════════════
@@ -206,8 +242,13 @@ def scan_drive():
     2. For each genre, list its contents
     3. For each movie folder, list its contents
     """
+    global _scan_progress
     print("[TicianoFlix] Scanning Google Drive...", flush=True)
     start = time.time()
+
+    with _scan_progress_lock:
+        _scan_progress["phase"] = "listing_root"
+        _scan_progress["percent"] = 0
 
     conn = get_db()
 
@@ -219,6 +260,8 @@ def scan_drive():
     root_data = list_directory_raw("")
     if isinstance(root_data, dict) and "error" in root_data:
         print(f"[TicianoFlix] ERROR: {root_data['error']}", flush=True)
+        with _scan_progress_lock:
+            _scan_progress["phase"] = "error"
         conn.close()
         return False
 
@@ -236,6 +279,8 @@ def scan_drive():
 
     if not ticianoflix_path:
         print("[TicianoFlix] TicianoFlix folder not found in drive root!", flush=True)
+        with _scan_progress_lock:
+            _scan_progress["phase"] = "error"
         conn.commit()
         conn.close()
         return False
@@ -244,17 +289,31 @@ def scan_drive():
     genres = list_directory_raw(ticianoflix_path)
     if not isinstance(genres, list):
         print(f"[TicianoFlix] Failed to list genres: {genres}", flush=True)
+        with _scan_progress_lock:
+            _scan_progress["phase"] = "error"
         conn.commit()
         conn.close()
         return False
 
-    for genre_item in genres:
-        if not genre_item.get("IsDir"):
-            continue
+    genre_dirs = [g for g in genres if g.get("IsDir")]
+    total_genres = len(genre_dirs)
+    total_genre_tasks = 0
 
+    # Quick first pass: just count genre directories (faster than listing each)
+    # We'll estimate progress by genre weight instead
+    with _scan_progress_lock:
+        _scan_progress["phase"] = "genres"
+        _scan_progress["genre_total"] = total_genres
+
+    for gi, genre_item in enumerate(genre_dirs):
         genre_name = genre_item.get("Name", "")
         genre_path = f"{ticianoflix_path}/{genre_name}"
-        genre_stripped = genre_path.lstrip("/")  # for rclone
+        genre_stripped = genre_path.lstrip("/")
+
+        with _scan_progress_lock:
+            _scan_progress["genre_index"] = gi + 1
+            _scan_progress["genre_current"] = genre_name
+            _scan_progress["percent"] = int(((gi) / total_genres) * 100)
 
         conn.execute(
             "INSERT OR REPLACE INTO folders (path, name, parent, depth) VALUES (?, ?, ?, 1)",
@@ -273,16 +332,18 @@ def scan_drive():
                 ext = Path(item.get("Name", "")).suffix.lower()
                 if ext in VIDEO_EXTENSIONS:
                     has_direct_video = True
-                # Index all files in genre root
                 _index_file(conn, genre_path, item)
 
-        for item in movie_items:
-            if not item.get("IsDir"):
-                continue
+        movie_dirs = [m for m in movie_items if m.get("IsDir")]
 
+        for mi, item in enumerate(movie_dirs):
             movie_name = item.get("Name", "")
             movie_path = f"{genre_path}/{movie_name}"
             movie_stripped = movie_path.lstrip("/")
+
+            with _scan_progress_lock:
+                _scan_progress["movie_index"] += 1
+                _scan_progress["movie_current"] = movie_name
 
             conn.execute(
                 "INSERT OR REPLACE INTO folders (path, name, parent, depth) VALUES (?, ?, ?, 2)",
@@ -349,6 +410,11 @@ def scan_drive():
 
     elapsed = time.time() - start
     print(f"[TicianoFlix] Scan complete: {total_genres} genres, {total_movies} movies, {total_files} files in {elapsed:.1f}s", flush=True)
+
+    with _scan_progress_lock:
+        _scan_progress["phase"] = "done"
+        _scan_progress["percent"] = 100
+
     return True
 
 
@@ -453,8 +519,6 @@ def cached_list_directory(path):
     }
 
 
-
-
 def _parse_nfo(xml_text):
     """Parse Kodi-style NFO XML into a dict of metadata."""
     try:
@@ -548,7 +612,6 @@ def _fetch_nfo_raw(folder_path):
 
 def _save_nfo_to_db(conn, folder_path, nfo_data):
     """Save parsed NFO metadata into movie_meta table."""
-    import json
     conn.execute("""INSERT OR REPLACE INTO movie_meta
         (folder_path, title, year, plot, rating, votes, genres, tagline,
          directors, writers, cast_list, video_info, audio_info, updated_at)
@@ -579,7 +642,6 @@ def _fetch_nfo_from_db(folder_path):
     conn.close()
     if not row:
         return None
-    import json
     return {
         "title": row["title"],
         "year": row["year"],
@@ -814,7 +876,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # Videos and other files: proxy through rclone serve or fallback
-        self._stream_video_proxy(path)
+        self._stream_video_direct(path)
 
     def _stream_image_cached(self, path):
         """Stream an image file, caching it locally on first access."""
@@ -876,34 +938,30 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         sys.stderr.write(f"[TicianoFlix] Image cache proxy failed after retries: {last_error}\n")
         self._stream_file_direct(path)
 
-    def _stream_video_proxy(self, path):
-        """Proxy video through main server (no redirect). Forwards Range
-        requests to rclone serve and streams response back to client.
-        Same-origin = works on mobile browsers without cross-origin issues."""
+    def _stream_video_direct(self, path):
+        """Stream video directly via rclone HTTP serve, proxying through same server.
+        Uses http.client + shutil.copyfileobj for zero-buffer streaming."""
         safe_path = urllib.parse.quote(path.strip("/"), safe="/")
-        rclone_url = f"http://localhost:{RCLONE_SERVE_PORT}/{safe_path}"
-
         range_header = self.headers.get("Range")
         mime = self._guess_mime(path)
 
+        import http.client
         try:
-            req = urllib.request.Request(rclone_url, method="GET")
-            if range_header:
-                req.add_header("Range", range_header)
-            resp = urllib.request.urlopen(req, timeout=None)
+            conn = http.client.HTTPConnection("localhost", RCLONE_SERVE_PORT, timeout=60)
+            conn.request("GET", "/" + safe_path, headers={"Range": range_header} if range_header else {})
+            resp = conn.getresponse()
 
             status = resp.status
-            rsp_headers = resp.headers
+            cl = resp.getheader("Content-Length")
+            cr = resp.getheader("Content-Range")
 
             if status == 206:
                 self.send_response(206)
-                cr = rsp_headers.get("Content-Range", "")
                 if cr:
                     self.send_header("Content-Range", cr)
             else:
                 self.send_response(200)
 
-            cl = rsp_headers.get("Content-Length")
             if cl:
                 self.send_header("Content-Length", cl)
             self.send_header("Content-Type", mime)
@@ -911,13 +969,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
-            while True:
-                buf = resp.read(65536)
-                if not buf:
-                    break
-                self.wfile.write(buf)
+            # Stream direto do socket do rclone pro socket do browser
+            shutil.copyfileobj(resp, self.wfile, 65536)
+            resp.close()
+            conn.close()
 
-            # If the range covered the last byte, mark as VFS-cached
+            # Mark as VFS-cached if range covered the last byte
             if status == 206 and range_header:
                 try:
                     file_info = cached_get_file_info(path)
@@ -929,12 +986,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                             _mark_file_cached(path)
                 except Exception:
                     pass
-
-        except urllib.error.HTTPError as e:
-            sys.stderr.write(f"[ERROR] Video proxy HTTP {e.code}: {e.reason}\n")
-            self._stream_file_direct(path)
         except Exception as e:
-            sys.stderr.write(f"[ERROR] Video proxy failed: {e}\n")
+            sys.stderr.write(f"[ERROR] Video stream failed: {e}\n")
             self._stream_file_direct(path)
 
     def _stream_file_direct(self, path):
@@ -1263,6 +1316,11 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_html(html_content)
             return
 
+        # Favicon (serve from project root)
+        if path == "/favicon.ico" or path == "/favicon.svg":
+            self._serve_file(path)
+            return
+
         # Static files
         if path.startswith("/static/"):
             self._serve_file(path)
@@ -1270,7 +1328,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: Refresh cache (scan drive)
         if path == "/api/refresh":
-            global _scan_in_progress
+            global _scan_in_progress, _scan_progress
             with _scan_lock:
                 if _scan_in_progress:
                     self._send_json({"status": "already_scanning"})
@@ -1278,20 +1336,74 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 _scan_in_progress = True
 
             def scan_wrapper():
-                global _scan_in_progress
+                global _scan_in_progress, _scan_progress
                 try:
                     scan_drive()
+                except Exception as e:
+                    with _scan_progress_lock:
+                        _scan_progress["phase"] = "error"
+                    print(f"[TicianoFlix] Scan error: {e}", flush=True)
                 finally:
                     with _scan_lock:
                         _scan_in_progress = False
+
+            # Reset progress
+            with _scan_progress_lock:
+                _scan_progress = {
+                    "phase": "",
+                    "genre_current": "",
+                    "genre_index": 0,
+                    "genre_total": 0,
+                    "movie_current": "",
+                    "movie_index": 0,
+                    "movie_total": 0,
+                    "percent": 0,
+                }
 
             self._send_json({"status": "scanning"})
             threading.Thread(target=scan_wrapper, daemon=True).start()
             return
 
+        # API: Scan progress
+        if path == "/api/scan-progress":
+            with _scan_progress_lock:
+                self._send_json(dict(_scan_progress))
+            return
+
         # API: Download backup (.zip)
         if path == "/api/backup":
             self._serve_backup()
+            return
+
+        # API: Backup to Drive (salva em ~/Downloads/ + serve)
+        if path == "/api/backup/local":
+            db_path = DB_PATH
+            if not db_path.exists():
+                self._send_error("Database not found", 404)
+                return
+
+            downloads = Path.home() / "Downloads"
+            downloads.mkdir(exist_ok=True)
+            today = time.strftime("%Y-%m-%d")
+            backup_name = f"ticianoflix-backup-{today}.db"
+            backup_path = downloads / backup_name
+
+            try:
+                import shutil as _shutil
+                _shutil.copy2(db_path, backup_path)
+                saved_path = str(backup_path)
+            except Exception:
+                saved_path = str(db_path)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{backup_name}"')
+            self.send_header("Content-Length", str(db_path.stat().st_size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("X-Backup-Path", saved_path)
+            self.end_headers()
+            with open(db_path, "rb") as f:
+                self.wfile.write(f.read())
             return
 
         # API: Backup to Google Drive
@@ -1343,10 +1455,74 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 500)
             return
 
+        # API: Remove single movie from VFS cache
+        if path == "/api/uncache":
+            folder_path = params.get("path", [""])[0]
+            if not folder_path:
+                self._send_json({"status": "error", "error": "Missing path"}, 400)
+                return
+            try:
+                # Get the video file name from the database directly
+                video_name = ""
+                try:
+                    conn = get_db()
+                    folder = folder_path.strip("/")
+                    cur = conn.execute(
+                        "SELECT name FROM files WHERE folder_path = ? AND extension IN ('.mp4','.mkv','.avi','.mov','.webm') LIMIT 1",
+                        (folder,)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        video_name = row[0]
+                    conn.close()
+                except Exception:
+                    pass
+                
+                # Remove from cached_files list
+                with _cached_files_lock:
+                    to_remove = {p for p in _cached_files if folder_path.strip("/") in p}
+                    _cached_files -= to_remove
+                    CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
+
+                # Remove VFS cache files from rclone cache directory
+                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                if vfs_cache.exists():
+                    removed = 0
+                    folder_key = folder_path.strip("/").replace("/", "_")
+                    for entry in vfs_cache.iterdir():
+                        if entry.is_dir() or entry.is_file():
+                            if folder_key in entry.name or folder_path.strip("/").replace("/", "-") in entry.name:
+                                if entry.is_file():
+                                    entry.unlink()
+                                elif entry.is_dir():
+                                    import shutil
+                                    shutil.rmtree(entry, ignore_errors=True)
+                                removed += 1
+                    if removed > 0:
+                        print(f"[TicianoFlix] Removed {removed} VFS cache entries for {folder_path}", flush=True)
+                    else:
+                        # Fallback: clear entire VFS cache for this folder path using simple hash search
+                        for entry in vfs_cache.iterdir():
+                            if entry.is_dir():
+                                for cached_file in entry.rglob("*"):
+                                    if cached_file.is_file():
+                                        cached_str = str(cached_file)
+                                        if folder_path.strip("/").replace("/", "_") in cached_str:
+                                            cached_file.unlink()
+                                            removed += 1
+                        if removed > 0:
+                            print(f"[TicianoFlix] Removed {removed} VFS cache entries (deep) for {folder_path}", flush=True)
+
+                self._send_json({"status": "ok"})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+            return
+
         # API: Cache status
         if path == "/api/cache-status":
             cache_time = get_cache_time()
             stale = is_cache_stale()
+            usage = get_cache_usage()
             conn = get_db()
             genres = conn.execute("SELECT COUNT(*) as c FROM folders WHERE depth=1").fetchone()["c"]
             movies = conn.execute("SELECT COUNT(*) as c FROM folders WHERE has_video=1 AND depth=2").fetchone()["c"]
@@ -1359,6 +1535,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 "genres": genres,
                 "movies": movies,
                 "files": files,
+                "usage": usage,
             })
             return
 
@@ -1467,44 +1644,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("File not found", 404)
             return
 
-        # API: Backup database
-        if path == "/api/backup":
-            db_path = DB_PATH
-            if not db_path.exists():
-                self._send_error("Database not found", 404)
-                return
-
-            # Save a copy to ~/Downloads/
-            downloads = Path.home() / "Downloads"
-            downloads.mkdir(exist_ok=True)
-            today = time.strftime("%Y-%m-%d")
-            backup_name = f"ticianoflix-backup-{today}.db"
-            backup_path = downloads / backup_name
-
-            try:
-                import shutil as _shutil
-                _shutil.copy2(db_path, backup_path)
-                saved_path = str(backup_path)
-            except Exception:
-                saved_path = str(db_path)
-
-            # Also serve the file for browser fallback
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{backup_name}"')
-            self.send_header("Content-Length", str(db_path.stat().st_size))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("X-Backup-Path", saved_path)
-            self.end_headers()
-            with open(db_path, "rb") as f:
-                self.wfile.write(f.read())
-            return
-
+        # Fallback 404
         self._send_error("Not found", 404)
 
-    # ═══════════════════════════════════════════════
-    #  (download removido)
-    # ═══════════════════════════════════════════════
 
 def find_free_port():
     """Find an available port starting from PORT, or use TICIANOFLIX_PORT env."""
@@ -1563,16 +1705,14 @@ def main():
     except Exception:
         # Not running — try to start it
         rclone_was_running = False
-        # Not running — try to start it
         try:
             rclone_serve_proc = subprocess.Popen(
                 ["rclone", "serve", "http", "gdrive:",
-                 "--addr", f"localhost:{rclone_serve_port}",
+                 "--addr", f":{rclone_serve_port}",
                  "--read-only",
                  "--drive-chunk-size", "128M",
                  "--buffer-size", "512M",
                  "--vfs-cache-mode", "full",
-                 "--vfs-cache-max-size", "10G",
                  "--vfs-cache-max-age", "720h",
                  "--vfs-read-chunk-size", "4M",
                  "--vfs-read-chunk-size-limit", "off",
