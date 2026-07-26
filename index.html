@@ -634,11 +634,11 @@
   }
 
   /* Cinema-style subtitles */
-  video::cue {
-    color: #ffd700;
+  .player-overlay video::cue {
+    color: var(--sub-color, #ffd700);
     background: transparent;
     font-family: 'Roboto', sans-serif;
-    font-size: 36px;
+    font-size: var(--sub-size, 36px);
     font-weight: 700;
     text-shadow:
       -2px -2px 0 #000,
@@ -2995,12 +2995,7 @@
     subtitleSizeIndex = (subtitleSizeIndex + 1) % subtitleSizes.length;
     const size = subtitleSizes[subtitleSizeIndex];
     document.getElementById('subtitleSizeLabel').textContent = size.label;
-    const style = document.createElement('style');
-    style.id = 'subDynamicSize';
-    style.textContent = 'video::cue { font-size: ' + size.px + 'px !important; }';
-    const old = document.getElementById('subDynamicSize');
-    if (old) old.remove();
-    document.head.appendChild(style);
+    document.querySelector('.player-overlay').style.setProperty('--sub-size', size.px + 'px');
   }
 
   let subtitleColorIndex = 0;
@@ -3013,12 +3008,7 @@
     const c = subtitleColors[subtitleColorIndex];
     document.getElementById('subtitleColorLabel').textContent = c.label;
     document.getElementById('subtitleColorIcon').textContent = c.icon;
-    const style = document.createElement('style');
-    style.id = 'subDynamicColor';
-    style.textContent = 'video::cue { color: ' + c.color + ' !important; }';
-    const old = document.getElementById('subDynamicColor');
-    if (old) old.remove();
-    document.head.appendChild(style);
+    document.querySelector('.player-overlay').style.setProperty('--sub-color', c.color);
   }
 
   function setStreamStatus(type, text) {
