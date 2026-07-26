@@ -2580,6 +2580,7 @@
     // Add subtitle track if available
     var currentSubPath = currentSubtitlePath;
     if (currentSubPath) {
+      console.log('[Cast] Adding subtitle track:', currentSubPath);
       var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath);
       var track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
       track.trackContentId = subUrl;
@@ -2589,6 +2590,9 @@
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
       mediaInfo.activeTrackIds = [1];
+      console.log('[Cast] Subtitle URL:', subUrl);
+    } else {
+      console.log('[Cast] No subtitle track available (currentSubtitlePath is null)');
     }
 
     var request = new chrome.cast.media.LoadRequest(mediaInfo);
