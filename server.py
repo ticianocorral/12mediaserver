@@ -75,9 +75,28 @@ if CACHED_FILES_PATH.exists():
         _cached_files = set()
 
 def _mark_file_cached(file_path):
-    """Register a file as fully cached in rclone VFS."""
+    """Register a file as fully cached in rclone VFS.
+    Batches writes to disk — at most one write per 5 seconds."""
     with _cached_files_lock:
         _cached_files.add(file_path)
+    # Batch write: persist at most once per 5s
+    _schedule_cached_files_save()
+
+_save_timer = None
+_save_timer_lock = threading.Lock()
+
+def _schedule_cached_files_save():
+    global _save_timer
+    with _save_timer_lock:
+        if _save_timer is not None:
+            _save_timer.cancel()
+        _save_timer = threading.Timer(5.0, _flush_cached_files)
+        _save_timer.daemon = True
+        _save_timer.start()
+
+def _flush_cached_files():
+    """Persist the cached_files set to disk."""
+    with _cached_files_lock:
         CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
 def _is_file_cached(file_path):
@@ -90,13 +109,21 @@ def _is_file_cached(file_path):
 # ═══════════════════════════════════════════════
 
 def get_db():
-    """Get a thread-local database connection."""
-    with _db_lock:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        return conn
+    """Get a thread-local database connection with write serialization."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+_db_write_lock = threading.Lock()
+
+def get_db_write():
+    """Get a connection for writes, serialized via _db_write_lock."""
+    conn = get_db()
+    return conn, _db_write_lock
 
 
 def init_db():
@@ -195,6 +222,20 @@ def is_cache_stale():
     if not t:
         return True
     return (int(time.time()) - int(t)) > 3600
+
+
+def _log_notification(level, message):
+    """Log a notification to the DB for user-facing display."""
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)",
+            (f"notification_{int(time.time())}", json.dumps({"level": level, "message": message, "time": time.time()}))
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def get_cache_usage():
@@ -1091,9 +1132,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         cache_path = SUBS_CACHE_DIR / cache_key
 
         # Try local cache first
-        if cache_path.exists():
-            raw = cache_path.read_text(encoding="utf-8", errors="replace")
-        else:
+        try:
+            if cache_path.exists():
+                raw = cache_path.read_text(encoding="utf-8", errors="replace")
+            else:
+                raise FileNotFoundError
+        except (OSError, FileNotFoundError):
             # Fetch via rclone cat
             remote_path = RCLONE_REMOTE + path.strip("/")
             try:
@@ -1169,64 +1213,96 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         return MIME_MAP.get(ext, "application/octet-stream")
 
     def _serve_file(self, path):
-        """Serve a file from the local filesystem."""
-        filepath = Path(__file__).parent / path.lstrip("/")
-        if not filepath.exists() or not filepath.is_file():
+        """Serve a file from the local filesystem. Protects against path traversal."""
+        project_root = Path(__file__).parent.resolve()
+        # Normalize the requested path and ensure it stays within project root
+        try:
+            requested = (project_root / path.lstrip("/")).resolve()
+            requested.relative_to(project_root)
+        except (ValueError, RuntimeError):
+            self._send_error("Forbidden", 403)
+            return
+        if not requested.exists() or not requested.is_file():
             self._send_error("File not found", 404)
             return
-        mime, _ = mimetypes.guess_type(str(filepath))
+        mime, _ = mimetypes.guess_type(str(requested))
         if mime is None:
             mime = "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", mime)
-        self.send_header("Content-Length", str(filepath.stat().st_size))
+        self.send_header("Content-Length", str(requested.stat().st_size))
         self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
-        with open(filepath, "rb") as f:
-            self.wfile.write(f.read())
+        with open(requested, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
 
     def _generate_backup_zip(self):
-        """Generate backup zip in memory. Returns bytes."""
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            db_path = Path(DB_PATH)
-            if db_path.exists():
-                z.write(db_path, "ticianoflix.db")
-            img_dir = Path(IMAGE_CACHE_DIR)
-            if img_dir.exists():
-                for f in sorted(img_dir.iterdir()):
-                    if f.is_file():
-                        z.write(f, f"images/{f.name}")
-            subs_dir = Path(SUBS_CACHE_DIR)
-            if subs_dir.exists():
-                for f in sorted(subs_dir.iterdir()):
-                    if f.is_file():
-                        z.write(f, f"subs/{f.name}")
-        return buf.getvalue()
+        """Generate backup zip to a temporary file. Returns path to temp file."""
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+                db_path = Path(DB_PATH)
+                if db_path.exists():
+                    z.write(db_path, "ticianoflix.db")
+                img_dir = Path(IMAGE_CACHE_DIR)
+                if img_dir.exists():
+                    for f in sorted(img_dir.iterdir()):
+                        if f.is_file():
+                            z.write(f, f"images/{f.name}")
+                subs_dir = Path(SUBS_CACHE_DIR)
+                if subs_dir.exists():
+                    for f in sorted(subs_dir.iterdir()):
+                        if f.is_file():
+                            z.write(f, f"subs/{f.name}")
+            tmp.close()
+            return tmp.name
+        except Exception:
+            tmp.close()
+            os.unlink(tmp.name)
+            raise
 
     def _serve_backup(self):
-        """Generate and serve a zip backup of DB + images + subs."""
-        data = self._generate_backup_zip()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/zip")
-        self.send_header("Content-Disposition", 'attachment; filename="ticianoflix-backup.zip"')
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(data)
+        """Generate and serve a zip backup of DB + images + subs (streamed)."""
+        import tempfile
+        zip_path = None
+        try:
+            zip_path = self._generate_backup_zip()
+            zip_size = os.path.getsize(zip_path)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="ticianoflix-backup.zip"')
+            self.send_header("Content-Length", str(zip_size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(zip_path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+        except Exception as e:
+            sys.stderr.write(f"[TicianoFlix] Backup failed: {e}\n")
+            self._send_error("Failed to generate backup")
+        finally:
+            if zip_path and os.path.exists(zip_path):
+                try:
+                    os.unlink(zip_path)
+                except Exception:
+                    pass
 
     def _backup_to_drive(self):
         """Generate backup zip and upload to Google Drive via rclone."""
+        zip_path = None
         try:
-            data = self._generate_backup_zip()
+            zip_path = self._generate_backup_zip()
             filename = f"ticianoflix-backup-{time.strftime('%Y-%m-%d')}.zip"
             remote_path = f"{RCLONE_REMOTE}TicianoFlix/{filename}"
+
+            with open(zip_path, "rb") as f:
+                data = f.read()
 
             proc = subprocess.run(
                 ["rclone", "rcat", remote_path],
                 input=data,
                 capture_output=True,
-                timeout=60
+                timeout=120
             )
             if proc.returncode != 0:
                 err = proc.stderr.decode(errors="replace").strip()
@@ -1235,6 +1311,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             return {"ok": True, "path": f"TicianoFlix/{filename}"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+        finally:
+            if zip_path and os.path.exists(zip_path):
+                try:
+                    os.unlink(zip_path)
+                except Exception:
+                    pass
 
     def _handle_restore_from_drive(self):
         """Find latest backup zip in Drive, download and restore."""
@@ -1266,14 +1348,19 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                         capture_output=True, timeout=120
                     )
                     if proc.returncode != 0:
-                        print(f"[TicianoFlix] Failed to download backup: {proc.stderr.decode(errors='replace')}", flush=True)
+                        msg = f"Falha ao baixar backup: {proc.stderr.decode(errors='replace')}"
+                        print(f"[TicianoFlix] {msg}", flush=True)
+                        # Log to DB for user to see on next refresh
+                        _log_notification("error", msg)
                         return
 
                     buf = io.BytesIO(proc.stdout)
                     with zipfile.ZipFile(buf, "r") as z:
                         names = z.namelist()
                         if "ticianoflix.db" not in names:
-                            print("[TicianoFlix] Backup zip missing ticianoflix.db", flush=True)
+                            msg = "Backup zip não contém ticianoflix.db"
+                            print(f"[TicianoFlix] {msg}", flush=True)
+                            _log_notification("error", msg)
                             return
                         db_path = Path(DB_PATH)
                         if db_path.exists():
@@ -1289,9 +1376,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                         for n in names:
                             if n.startswith("subs/") and not n.endswith("/"):
                                 (subs_dir / Path(n).name).write_bytes(z.read(n))
-                    print(f"[TicianoFlix] Backup restored from Drive: {name}", flush=True)
+                    msg = f"Backup restaurado com sucesso: {name}"
+                    print(f"[TicianoFlix] {msg}", flush=True)
+                    _log_notification("success", msg)
                 except Exception as e:
-                    print(f"[TicianoFlix] Restore from Drive failed: {e}", flush=True)
+                    msg = f"Falha ao restaurar do Drive: {e}"
+                    print(f"[TicianoFlix] {msg}", flush=True)
+                    _log_notification("error", msg)
 
             threading.Thread(target=_do_restore, daemon=True).start()
 
@@ -1923,9 +2014,24 @@ def find_free_port():
         s.close()
         return port
     except OSError:
-        # Porta ocupada — tentar matar processo via fuser
+        # Porta ocupada — tentar matar processo via fuser (apenas se for nosso)
         import subprocess as _sp
-        _sp.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=5)
+        # Check what process is on the port first
+        try:
+            check = _sp.run(["fuser", f"{port}/tcp"], capture_output=True, timeout=5)
+            if check.returncode == 0:
+                pids = check.stdout.decode().strip().split()
+                # Only kill our own rclone or python processes
+                for pid in pids:
+                    try:
+                        cmdline = Path(f"/proc/{pid}/cmdline").read_text().split("\0") if Path(f"/proc/{pid}/cmdline").exists() else []
+                        cmd_str = " ".join(cmdline)
+                        if "rclone" in cmd_str or "python" in cmd_str or "ticianoflix" in cmd_str:
+                            _sp.run(["kill", pid.strip()], timeout=3)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         time.sleep(1)
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1961,8 +2067,14 @@ def main():
     try:
         import urllib.request as ureq_check
         ureq_check.urlopen(f"http://localhost:{rclone_serve_port}/", timeout=2)
-        print(f"[TicianoFlix] rclone serve already running on localhost:{rclone_serve_port}", flush=True)
-        rclone_was_running = True
+        # Verify actual Drive connectivity by listing the root
+        try:
+            ureq_check.urlopen(f"http://localhost:{rclone_serve_port}/TicianoFlix/?format=json", timeout=5)
+            print(f"[TicianoFlix] rclone serve already running on localhost:{rclone_serve_port}", flush=True)
+            rclone_was_running = True
+        except Exception:
+            print(f"[TicianoFlix] rclone serve responds but Drive remote unreachable — will retry/restart", flush=True)
+            rclone_was_running = False
     except Exception:
         # Not running — try to start it
         rclone_was_running = False

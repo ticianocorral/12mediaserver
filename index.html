@@ -1424,6 +1424,7 @@
   // ==================== SIMPLE FRONTEND CACHE ====================
   let _frontCache = {};
   const _CACHE_TTL = 120000; // 2 min
+  const _CACHE_ERROR_TTL = 5000; // 5s for error responses
 
   function cachedFetch(url) {
     const now = Date.now();
@@ -1432,7 +1433,12 @@
       return Promise.resolve(entry.data);
     }
     return apiFetch(url).then(data => {
-      _frontCache[url] = { data, time: Date.now() };
+      // Don't cache null/error responses for the full TTL — use shorter error TTL
+      if (data === null) {
+        _frontCache[url] = { data, time: Date.now() - (_CACHE_TTL - _CACHE_ERROR_TTL) };
+      } else {
+        _frontCache[url] = { data, time: Date.now() };
+      }
       return data;
     });
   }
@@ -1524,7 +1530,7 @@
       data.folders.forEach(g => {
         const name = g.Name || '';
         const path = '/TicianoFlix/' + name;
-        html += '<button class="sidebar-item" onclick="loadPath(\'' + path.replace(/'/g, "\\'") + '\')">'
+        html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(path) + '\'))">'
           + '<span class="icon">' + genreIcon(name) + '</span> '
           + escHtml(name) + '</button>';
       });
@@ -1623,8 +1629,6 @@
 
     const folders = data.folders || [];
     const totalGenres = folders.length;
-    let totalMovies = 0;
-    folders.forEach(g => { if (g.Name) totalMovies++; });
 
     container.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px">
@@ -1635,7 +1639,7 @@
         </div>
         <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
           <div style="font-size:36px;margin-bottom:8px">📀</div>
-          <div style="font-size:28px;font-weight:800">—</div>
+          <div style="font-size:28px;font-weight:800" id="totalMovieCount">…</div>
           <div style="font-size:13px;color:var(--text3)">Filmes</div>
         </div>
       </div>
@@ -1675,17 +1679,14 @@
       // Show up to 6 newest
       const recent = movies.slice(0, 6);
       // Update total count in stats card
-      const allStatDivs = container.querySelectorAll('div[style*="background:var(--surface)"]');
-      if (allStatDivs.length >= 2) {
-        const countEl = allStatDivs[1].querySelector('div[style*="font-size:28px"]');
-        if (countEl) countEl.textContent = movies.length;
-      }
+      var countEl = document.getElementById('totalMovieCount');
+      if (countEl) countEl.textContent = movies.length;
 
       let html = '';
       recent.forEach((m, idx) => {
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = m.path.replace(/'/g, "\\'");
-        html += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(m.name) + '">'
+        const safePath = encodeURIComponent(m.path);
+        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
@@ -1722,9 +1723,9 @@
       items.forEach((m, idx) => {
         const pct = (m.duration > 0) ? Math.round((m.position / m.duration) * 100) : 0;
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = m.path.replace(/'/g, "\\'");
+        const safePath = encodeURIComponent(m.path);
         const posStr = Math.floor(m.position / 60) + ':' + String(Math.floor(m.position % 60)).padStart(2, '0');
-        html2 += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(m.name) + '">'
+        html2 += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
@@ -1854,10 +1855,10 @@
     const nameClean = name.replace(/[._]/g, ' ');
     const yearMatch = name.match(/(\d{4})/);
     const year = yearMatch ? yearMatch[1] : '';
-    const safePath = folderPath.replace(/'/g, "\\'");
+    const safePath = encodeURIComponent(folderPath);
 
     return `
-      <div class="movie-card" onclick="showMovieInfo('${safePath}', event)" title="${escHtml(name)}">
+      <div class="movie-card" onclick="showMovieInfo(decodeURIComponent('${safePath}'), event)" title="${escHtml(name)}">
         <img class="movie-card-poster" id="poster-${encodedPath}" src="" alt="${escHtml(name)}" style="display:none">
         <div class="movie-card-poster-placeholder" id="ph-${encodedPath}">🎬</div>
         <div class="movie-card-overlay">
@@ -1893,9 +1894,9 @@
       data.folders.forEach(folder => {
         const name = folder.Name || '';
         const folderPath = (data.path ? data.path + '/' : '') + name;
-        const safePath = folderPath.replace(/'/g, "\\'");
+        const safePath = encodeURIComponent(folderPath);
         html += `
-          <div class="movie-card" onclick="loadPath('${safePath}')" title="${escHtml(name)}">
+          <div class="movie-card" onclick="loadPath(decodeURIComponent('${safePath}'))" title="${escHtml(name)}">
             <div class="movie-card-poster-placeholder">📁</div>
             <div class="movie-card-overlay">
               <div class="movie-card-title">${escHtml(name)}</div>
@@ -1936,13 +1937,15 @@
   // ===== MOVIE CARD HTML =====
   function renderMovieCardHtml(name, filePath, size, posterSrc) {
     const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
-    const safePath = filePath.replace(/'/g, "\\'");
-    const safeName = escHtml(name).replace(/'/g, "\\'");
+    // Use encodeURIComponent for safe embedding in onclick attributes
+    // DecodeURIComponent in the handler reverses this safely
+    const safePath = encodeURIComponent(filePath);
+    const safeName = encodeURIComponent(name);
     const yearMatch = name.match(/(\d{4})/);
     const year = yearMatch ? yearMatch[1] : '';
 
     let html = `
-      <div class="movie-card" onclick="playMovie('${safePath}', '${safeName}')" title="${escHtml(name)}">`;
+      <div class="movie-card" onclick="playMovie(decodeURIComponent('${safePath}'), decodeURIComponent('${safeName}'))" title="${escHtml(name)}">`;
 
     if (posterSrc) {
       html += `<img class="movie-card-poster" src="${posterSrc}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`;
@@ -1993,7 +1996,7 @@
       if (i === parts.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(\'' + cur.replace(/'/g, "\\'") + '\')">' + escHtml(name) + '</a>';
+        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(cur) + '\'))">' + escHtml(name) + '</a>';
       }
     });
     bcEl.innerHTML = html;
@@ -2132,9 +2135,9 @@
           </div>
 
           <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + encodeURIComponent(videoPath) + '\'), decodeURIComponent(\'' + encodeURIComponent(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + encodeURIComponent(folderPath + '/' + subtitle.Name) + '\')' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
             ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
-            ${'<button class="btn-watched" onclick="_markAsWatched(\'' + folderPath.replace(/'/g, "\\'") + '\')">✔ Já assisti</button>'}
+            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + encodeURIComponent(folderPath) + '\'))">✔ Já assisti</button>'}
           </div>
           </div>
         </div>`;
@@ -2156,7 +2159,7 @@
         resumeBtn.innerHTML = '⏯ Continuar de ' + posStr + ' <span class="resume-pct">(' + pct + '%)</span>';
         resumeBtn.onclick = function() {
           const vPath = this.getAttribute('data-path');
-          if (vPath) playFromInfo(vPath, escHtml(titleClean).replace(/'/g, "\\'"), subtitle ? (folderPath + '/' + subtitle.Name) : null, prog.position);
+          if (vPath) playFromInfo(vPath, titleClean, subtitle ? (folderPath + '/' + subtitle.Name) : null, prog.position);
         };
         // Insert before the first button
         actionsEl.insertBefore(resumeBtn, actionsEl.firstChild);
@@ -2226,7 +2229,7 @@
       if (i === parts.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(\'' + current.replace(/'/g, "\\'") + '\')">' + escHtml(name) + '</a>';
+        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(current) + '\'))">' + escHtml(name) + '</a>';
       }
     });
     el.innerHTML = html;
@@ -2458,7 +2461,7 @@
         var errMsg = err.code || err.message || String(err);
         var hint = '';
         if (errMsg === 'session_error') {
-          hint = ' — verifique se o Chromecast está na mesma rede Wi-Fi e se o Chrome tem Cast ativo (chrome://flags/#load-media-router-component-extension)';
+          hint = ' — verifique se o Chromecast está na mesma rede Wi-Fi, se o servidor está em HTTPS (localhost:8443) ou HTTP (localhost:8080), e tente abrir chrome://cast no Chrome para testar a conectividade.';
         } else if (errMsg === 'timeout') {
           hint = ' — Chromecast não respondeu a tempo';
         }
@@ -2707,7 +2710,7 @@
     }, 25000);
 
     // Clique simples = play/pause
-    video.addEventListener('click', function(e) {
+    video.onclick = function(e) {
       // Não dispara se for double-click
       if (e.detail === 1) {
         if (video.paused) {
@@ -2716,10 +2719,10 @@
           video.pause();
         }
       }
-    });
+    };
 
     // Double-click no video = fullscreen no container
-    video.addEventListener('dblclick', function(e) {
+    video.ondblclick = function(e) {
       const container = document.querySelector('.player-container');
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(function() {});
@@ -2728,10 +2731,10 @@
       } else if (container.webkitRequestFullscreen) {
         container.webkitRequestFullscreen();
       }
-    });
+    };
 
     // Seek bar + time + play button + volume sync + periodic progress save
-    video.addEventListener('timeupdate', function() {
+    video.ontimeupdate = function() {
       const seek = document.getElementById('seekBar');
       const time = document.getElementById('timeDisplay');
       if (seek && video.duration) seek.value = (video.currentTime / video.duration) * 100;
@@ -2739,15 +2742,15 @@
       // Auto-save progress every ~30 seconds
       if (_progressSaveTimer) clearTimeout(_progressSaveTimer);
       _progressSaveTimer = setTimeout(_saveProgress, 30000);
-    });
-    video.addEventListener('play', function() {
+    };
+    video.onplay = function() {
       document.getElementById('playBtn').textContent = '⏸';
       showControls();
-    });
-    video.addEventListener('pause', function() {
+    };
+    video.onpause = function() {
       document.getElementById('playBtn').textContent = '▶';
-    });
-    video.addEventListener('volumechange', updateMuteBtn);
+    };
+    video.onvolumechange = updateMuteBtn;
 
     document.getElementById('seekBar').oninput = function() {
       const v = document.getElementById('videoPlayer');
@@ -2854,6 +2857,15 @@
     video.onseeking = null;
     video.onseeked = null;
     video.onprogress = null;
+    video.ontimeupdate = null;
+    video.onclick = null;
+    video.ondblclick = null;
+    video.onplay = null;
+    video.onpause = null;
+    video.onvolumechange = null;
+    video.onloadeddata = null;
+    // Stop background download
+    _stopBgDownload();
     loading.style.display = 'none';
     errorEl.style.display = 'none';
     overlay.classList.remove('active');
@@ -3258,8 +3270,8 @@
 
     paths.forEach((path, idx) => {
       const name = path.split('/').pop().replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-      const safePath = path.replace(/'/g, "\\'");
-      html += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(name) + '">'
+      const safePath = encodeURIComponent(path);
+      html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(name) + '">'
         + '<div class="movie-card-poster-placeholder" style="display:flex">📦</div>'
         + '<div class="movie-card-overlay">'
         + '<div class="movie-card-title">' + escHtml(name) + '</div>'
