@@ -2609,26 +2609,24 @@
         video.pause();
         // Force enable subtitle track after load (some receivers ignore activeTrackIds)
         if (currentSubPath) {
-          try {
-            // Give the receiver a moment to process the tracks
-            setTimeout(function() {
-              try {
-                var media = _castSession.getMediaSession();
-                if (media && typeof media.editTracksInfo === 'function') {
-                  var trackReq = new chrome.cast.media.EditTracksInfoRequest([1]);
-                  media.editTracksInfo(trackReq, function() {
-                    console.log('[Cast] Subtitles enabled via editTracksInfo');
-                  }, function(err) {
-                    console.warn('[Cast] editTracksInfo failed:', err);
-                  });
-                }
-              } catch(e) {
-                console.warn('[Cast] editTracksInfo error:', e);
-              }
-            }, 1500);
-          } catch(e) {
-            console.warn('[Cast] Failed to enable subtitles:', e);
-          }
+          console.log('[Cast] Will try to enable subtitles in 3s...');
+          setTimeout(function() {
+            try {
+              var s = cast.framework.CastContext.getInstance().getCurrentSession();
+              if (!s) { console.warn('[Cast] No session'); return; }
+              var m = s.getMediaSession();
+              if (!m) { console.warn('[Cast] No media session'); return; }
+              console.log('[Cast] Media session found, track IDs:', m.activeTrackIds);
+              var trackReq = new chrome.cast.media.EditTracksInfoRequest([1]);
+              s.getMediaSession().editTracksInfo(trackReq, function() {
+                console.log('[Cast] Subtitles enabled via editTracksInfo');
+              }, function(err) {
+                console.warn('[Cast] editTracksInfo failed:', err);
+              });
+            } catch(e) {
+              console.warn('[Cast] editTracksInfo error:', e);
+            }
+          }, 3000);
         }
       })
       .catch(function(err) {
