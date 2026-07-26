@@ -2578,7 +2578,6 @@
     mediaInfo.metadata.title = titleEl ? titleEl.textContent : 'TicianoFlix';
 
     // Add subtitle track if available
-    var subtitleTrack = document.getElementById('subtitleTrack');
     var currentSubPath = currentSubtitlePath;
     if (currentSubPath) {
       var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath);
@@ -2586,13 +2585,9 @@
       track.trackContentId = subUrl;
       track.trackContentType = 'text/vtt';
       track.name = 'Português';
-      track.language = 'pt-BR';
+      track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      mediaInfo.textTrackStyle = new chrome.cast.media.TextTrackStyle();
-      mediaInfo.textTrackStyle.foregroundColor = '#ffd700';
-      mediaInfo.textTrackStyle.backgroundColor = 'rgba(0,0,0,0)';
-      mediaInfo.textTrackStyle.fontSize = 36;
       mediaInfo.activeTrackIds = [1];
     }
 
@@ -2611,10 +2606,22 @@
         // Force enable subtitle track after load (some receivers ignore activeTrackIds)
         if (currentSubPath) {
           try {
-            var media = _castSession.getMediaSession();
-            if (media && typeof media.editTracksInfo === 'function') {
-              media.editTracksInfo([1], null);
-            }
+            // Give the receiver a moment to process the tracks
+            setTimeout(function() {
+              try {
+                var media = _castSession.getMediaSession();
+                if (media && typeof media.editTracksInfo === 'function') {
+                  var trackReq = new chrome.cast.media.EditTracksInfoRequest([1]);
+                  media.editTracksInfo(trackReq, function() {
+                    console.log('[Cast] Subtitles enabled via editTracksInfo');
+                  }, function(err) {
+                    console.warn('[Cast] editTracksInfo failed:', err);
+                  });
+                }
+              } catch(e) {
+                console.warn('[Cast] editTracksInfo error:', e);
+              }
+            }, 1500);
           } catch(e) {
             console.warn('[Cast] Failed to enable subtitles:', e);
           }
