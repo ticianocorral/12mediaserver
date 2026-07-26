@@ -2608,6 +2608,17 @@
         showToast('📡 Transmitindo para Chromecast', 'info');
         // Pause local video while casting
         video.pause();
+        // Force enable subtitle track after load (some receivers ignore activeTrackIds)
+        if (currentSubPath) {
+          try {
+            var media = _castSession.getMediaSession();
+            if (media && typeof media.editTracksInfo === 'function') {
+              media.editTracksInfo([1], null);
+            }
+          } catch(e) {
+            console.warn('[Cast] Failed to enable subtitles:', e);
+          }
+        }
       })
       .catch(function(err) {
         console.warn('[Cast] Load media error:', err);
