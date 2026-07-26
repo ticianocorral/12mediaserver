@@ -392,6 +392,22 @@
     font-size: 12px;
     color: var(--text2);
   }
+  /* Progress bar for continue-watching cards */
+  .progress-bar-wrap {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    z-index: 2;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 0 2px 0 0;
+    transition: width 0.3s;
+  }
 
   /* ====== EMPTY STATE ====== */
   .empty-state {
@@ -622,7 +638,7 @@
     color: #ffd700;
     background: transparent;
     font-family: 'Roboto', sans-serif;
-    font-size: 28px;
+    font-size: 36px;
     font-weight: 700;
     text-shadow:
       -2px -2px 0 #000,
@@ -655,11 +671,12 @@
     opacity: 1;
     pointer-events: all;
   }
-  /* Fullscreen: header sempre visível no hover */
+  /* Fullscreen: header sempre visível (pseudo-classe + fallback classe JS) */
   .player-container:fullscreen .player-header,
-  .player-container:-webkit-full-screen .player-header {
-    opacity: 1;
-    pointer-events: all;
+  .player-container:-webkit-full-screen .player-header,
+  .player-container.is-fullscreen .player-header {
+    opacity: 1 !important;
+    pointer-events: all !important;
   }
   .player-header .movie-name {
     font-size: 16px;
@@ -687,128 +704,175 @@
     gap: 8px;
   }
 
-  .subtitle-size-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    pointer-events: all;
-    transition: all 0.2s;
+  /* ====== CONTROLES NETFLIX-STYLE ====== */
+  .player-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+    padding: 40px 16px 12px;
   }
-  .subtitle-size-btn:hover {
-    background: rgba(255,193,7,0.25);
-    border-color: #ffc107;
+  .player-container:hover .player-controls,
+  .player-container:fullscreen .player-controls,
+  .player-container:-webkit-full-screen .player-controls,
+  .player-container.is-fullscreen .player-controls,
+  .player-controls.force-show {
+    opacity: 1 !important;
+    pointer-events: all !important;
   }
 
-  .subtitle-color-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 6px;
+  /* Seek bar */
+  .controls-progress {
+    position: relative;
+    margin-bottom: 8px;
     cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    pointer-events: all;
-    transition: all 0.2s;
   }
-  .subtitle-color-btn:hover {
+  .seek-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
     background: rgba(255,255,255,0.2);
-    border-color: rgba(255,255,255,0.3);
-  }
-
-  .subtitle-toggle-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--text);
-    padding: 6px 8px;
-    border-radius: 6px;
+    outline: none;
     cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
+    position: relative;
+    z-index: 2;
+    transition: height 0.15s;
+  }
+  .seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+  .seek-bar::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .controls-progress:hover .seek-bar { height: 6px; }
+  .controls-progress:hover .seek-bar::-webkit-slider-thumb { opacity: 1; }
+  .controls-progress:hover .seek-bar::-moz-range-thumb { opacity: 1; }
+  .seek-buffer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.15);
+    pointer-events: none;
+    z-index: 1;
+    transition: width 0.3s;
+  }
+  .controls-progress:hover .seek-buffer { height: 6px; }
+
+  /* Main controls row */
+  .controls-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .controls-left, .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ctrl-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
     display: flex;
     align-items: center;
     gap: 4px;
-    pointer-events: all;
-    transition: all 0.2s;
-    letter-spacing: -0.5px;
+    white-space: nowrap;
   }
-  .subtitle-toggle-btn:hover {
-    background: rgba(255,255,255,0.2);
-    border-color: rgba(255,255,255,0.3);
-  }
-  .subtitle-toggle-btn.active {
-    background: rgba(0,123,255,0.25);
-    border-color: #007bff;
-    color: #007bff;
-  }
-
-  .player-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .ctrl-btn:hover { background: rgba(255,255,255,0.12); }
+  .ctrl-btn.active { color: #007bff; }
+  #playBtn { font-size: 22px; padding: 4px 10px; }
+  .time-display {
     font-size: 13px;
-    color: var(--text2);
-    padding: 0 20px 16px;
+    color: rgba(255,255,255,0.8);
+    font-variant-numeric: tabular-nums;
+    min-width: 100px;
   }
-  .player-info .file-size { color: var(--text3); }
-  .player-info .stream-status {
-    margin-left: auto;
+  .ctrl-sub { font-size: 12px; font-weight: 700; }
+  .ctrl-speed { font-size: 12px; min-width: 32px; text-align: center; }
+  .ctrl-cast { font-size: 16px; }
+  .ctrl-cast.active { color: #4285f4; }
+
+  /* Volume */
+  .volume-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.3);
+    outline: none;
+    cursor: pointer;
+    transition: width 0.2s;
+  }
+  .volume-wrap:hover .volume-slider { width: 60px; }
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    cursor: pointer;
+  }
+  .volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Stream status in controls */
+  .controls-right .stream-status {
     font-size: 11px;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border-radius: 4px;
     background: rgba(255,255,255,0.06);
     color: var(--text3);
     white-space: nowrap;
   }
-  .player-info .stream-status.buffering {
-    color: #ffa726;
-    background: rgba(255,167,38,0.12);
-  }
-  .player-info .stream-status.seeking {
-    color: #42a5f5;
-    background: rgba(66,165,245,0.12);
-  }
-  .player-info .stream-status.cached {
-    color: #66bb6a;
-    background: rgba(102,187,106,0.12);
-  }
+  .controls-right .stream-status.cached  { color: #66bb6a; background: rgba(102,187,106,0.12); }
 
-  /* ====== PLAYER CACHE BAR ====== */
-  .player-cache-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 20px 12px;
-  }
-  .cache-bar-track {
-    flex: 1;
-    height: 4px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .cache-bar-fill {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #42a5f5, #66bb6a);
-    border-radius: 4px;
-    transition: width 0.3s ease;
-  }
-  .cache-bar-text {
+  .controls-right .file-size {
     font-size: 11px;
     color: var(--text3);
     white-space: nowrap;
-    min-width: 70px;
-    text-align: right;
   }
 
   /* ====== MOVIE INFO OVERLAY ====== */
@@ -947,6 +1011,18 @@
     background: var(--primary-hover);
     transform: scale(1.02);
   }
+  .btn-resume {
+    background: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.3) !important;
+  }
+  .btn-resume:hover {
+    background: rgba(255, 193, 7, 0.25) !important;
+  }
+  .btn-resume .resume-pct {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-left: 4px;
+  }
   /* ====== NFO METADATA ====== */
   .movie-plot {
     font-size: 14px;
@@ -1049,6 +1125,26 @@
     border-radius: 6px;
     white-space: nowrap;
   }
+  .btn-watched {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text3);
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-watched:hover {
+    color: #66bb6a;
+    border-color: rgba(102,187,106,0.3);
+    background: rgba(102,187,106,0.08);
+  }
 
   /* ====== RESPONSIVE ====== */
   @media (max-width: 1024px) {
@@ -1118,7 +1214,7 @@
       <div class="modal-body confirm-body">
         <div class="confirm-icon">🍿</div>
         <div class="confirm-title">Sair do filme?</div>
-        <div class="confirm-desc">O progresso do cache será perdido.</div>
+        <div class="confirm-desc">Seu progresso será salvo. Você pode continuar de onde parou depois.</div>
         <div class="confirm-actions">
           <button class="confirm-btn cancel" onclick="closeConfirmModal()">Continuar Assistindo</button>
           <button class="confirm-btn confirm" id="confirmYesBtn">Sair</button>
@@ -1210,17 +1306,6 @@
       <div class="player-header">
         <span class="movie-name" id="playerMovieName">Carregando...</span>
         <div class="player-header-right">
-          <button class="subtitle-toggle-btn" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Ativar/desativar legenda">
-            <span>CC</span>
-          </button>
-          <button class="subtitle-size-btn" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho da legenda">
-            <span>Aa</span>
-            <span class="sub-label" id="subtitleSizeLabel">Méd</span>
-          </button>
-          <button class="subtitle-color-btn" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor da legenda">
-            <span id="subtitleColorIcon">🟡</span>
-            <span class="sub-label" id="subtitleColorLabel">Amarelo</span>
-          </button>
           <button class="player-close" onclick="closePlayer()">✕</button>
         </div>
       </div>
@@ -1233,19 +1318,38 @@
         <span class="error-msg">Erro ao carregar vídeo</span>
         <button class="retry-btn" onclick="retryPlay()">Tentar novamente</button>
       </div>
-      <video id="videoPlayer" controls style="display:none">
+      <video id="videoPlayer" style="display:none">
         <track kind="subtitles" id="subtitleTrack" srclang="pt-BR" label="Português" default>
       </video>
-      <div class="player-info">
-        <span id="playerMovieSubtitle"></span>
-        <span class="file-size" id="playerFileSize"></span>
-        <span class="stream-status" id="streamStatus"></span>
-      </div>
-      <div class="player-cache-bar" id="playerCacheBar">
-        <div class="cache-bar-track">
-          <div class="cache-bar-fill" id="cacheBarFill"></div>
+
+      <!-- ====== CONTROLES NETFLIX-STYLE ====== -->
+      <div class="player-controls" id="playerControls">
+        <div class="controls-progress">
+          <input type="range" class="seek-bar" id="seekBar" min="0" max="100" value="0" step="0.1">
+          <div class="seek-buffer" id="seekBuffer"></div>
         </div>
-        <span class="cache-bar-text" id="cacheBarText">Cache: 0%</span>
+        <div class="controls-main">
+          <div class="controls-left">
+            <button class="ctrl-btn" id="playBtn" onclick="togglePlay()" title="Play/Pause">▶</button>
+            <button class="ctrl-btn" onclick="skip(-10)" title="Voltar 10s">⏪</button>
+            <button class="ctrl-btn" onclick="skip(10)" title="Avançar 10s">⏩</button>
+            <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
+          </div>
+          <div class="controls-right">
+            <span class="stream-status" id="streamStatus"></span>
+            <span class="file-size" id="playerFileSize"></span>
+            <div class="volume-wrap">
+              <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()" title="Mudo">🔊</button>
+              <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+            </div>
+            <button class="ctrl-btn" id="speedBtn" onclick="cycleSpeed()" title="Velocidade">1×</button>
+            <button class="ctrl-btn ctrl-sub" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Legenda">CC</button>
+            <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho legenda">Aa <span id="subtitleSizeLabel">Gde</span></button>
+            <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon">🟡</span> <span id="subtitleColorLabel">Amar</span></button>
+            <button class="ctrl-btn ctrl-cast" id="castBtn" onclick="toggleCast()" title="Transmitir" style="display:none">📺</button>
+            <button class="ctrl-btn" onclick="toggleFullscreen()" title="Tela cheia">⛶</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1535,6 +1639,12 @@
           <div style="font-size:13px;color:var(--text3)">Filmes</div>
         </div>
       </div>
+      <div class="genre-section" id="continueWatchingSection" style="display:none">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">▶ Continuar Assistindo</div>
+        </div>
+        <div class="movie-grid" id="continueWatchingGrid"></div>
+      </div>
       <div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title">📥 Últimos Adicionados</div>
@@ -1550,22 +1660,9 @@
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
 
-    // Fetch first movie from each genre to show as "recent"
-    let allMovies = [];
-    let loaded = 0;
-    folders.forEach((genre, gi) => {
-      const genrePath = '/TicianoFlix/' + (genre.Name || '');
-      cachedFetch('/api/list?path=' + encodeURIComponent(genrePath)).then(listData => {
-        if (listData && listData.folders) {
-          listData.folders.forEach(f => {
-            allMovies.push({ path: (genrePath + '/' + f.Name), name: f.Name });
-          });
-        }
-        loaded++;
-        if (loaded === folders.length) {
-          renderRecentMovies(allMovies);
-        }
-      });
+    // Fetch recent movies sorted by actual creation time (from server)
+    cachedFetch('/api/recent-movies?limit=30').then(movies => {
+      renderRecentMovies(movies || []);
     });
 
     function renderRecentMovies(movies) {
@@ -1575,11 +1672,9 @@
         grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Nenhum filme ainda</h3></div>';
         return;
       }
-      // Show last 12 (or fewer)
-      const recent = movies.slice(-12).reverse();
+      // Show up to 6 newest
+      const recent = movies.slice(0, 6);
       // Update total count in stats card
-      const statCards = container.querySelectorAll('div[style*="grid-template-columns"]');
-      // Find the movies count card and update it
       const allStatDivs = container.querySelectorAll('div[style*="background:var(--surface)"]');
       if (allStatDivs.length >= 2) {
         const countEl = allStatDivs[1].querySelector('div[style*="font-size:28px"]');
@@ -1587,32 +1682,72 @@
       }
 
       let html = '';
-      recent.forEach(m => {
-        const nameClean = (m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
+      recent.forEach((m, idx) => {
+        const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
         const safePath = m.path.replace(/'/g, "\\'");
         html += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
           + '</div></div>';
-        // Load poster
-        cachedFetch('/api/movie-detail?path=' + encodeURIComponent(m.path)).then(detail => {
-          if (!detail || !detail.poster) return;
-          const cards = grid.querySelectorAll('.movie-card');
-          const idx = recent.indexOf(m);
-          if (cards[idx]) {
-            const img = document.createElement('img');
-            img.className = 'movie-card-poster';
-            img.src = posterUrl(m.path, detail.poster.Name);
-            img.alt = escHtml(m.name);
-            img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
-            img.onerror = () => img.remove();
-            cards[idx].appendChild(img);
-          }
-        });
+        // Load poster using the poster name from the server response
+        if (m.poster) {
+          const img = document.createElement('img');
+          img.className = 'movie-card-poster';
+          img.src = posterUrl(m.path, m.poster);
+          img.alt = escHtml(m.name);
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
+          img.onerror = () => img.remove();
+          // Attach after card is in DOM
+          setTimeout(() => {
+            const cards = grid.querySelectorAll('.movie-card');
+            if (cards[idx]) cards[idx].appendChild(img);
+          }, 0);
+        }
       });
       grid.innerHTML = html;
     }
+
+    // Carrega "Continuar Assistindo"
+    cachedFetch('/api/continue-watching').then(items => {
+      const section = document.getElementById('continueWatchingSection');
+      const grid = document.getElementById('continueWatchingGrid');
+      if (!section || !grid) return;
+      if (!items || items.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = '';
+      let html2 = '';
+      items.forEach((m, idx) => {
+        const pct = (m.duration > 0) ? Math.round((m.position / m.duration) * 100) : 0;
+        const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
+        const safePath = m.path.replace(/'/g, "\\'");
+        const posStr = Math.floor(m.position / 60) + ':' + String(Math.floor(m.position % 60)).padStart(2, '0');
+        html2 += '<div class="movie-card" onclick="showMovieInfo(\'' + safePath + '\', event)" title="' + escHtml(m.name) + '">'
+          + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
+          + '<div class="movie-card-overlay">'
+          + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
+          + '<div class="movie-card-subtitle">' + posStr + ' assistido</div>'
+          + '</div>'
+          + '<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:' + pct + '%"></div></div>'
+          + '</div>';
+        // Load poster
+        if (m.poster) {
+          const img = document.createElement('img');
+          img.className = 'movie-card-poster';
+          img.src = posterUrl(m.path, m.poster);
+          img.alt = escHtml(m.name);
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
+          img.onerror = () => img.remove();
+          setTimeout(() => {
+            const cards = grid.querySelectorAll('.movie-card');
+            if (cards[idx]) cards[idx].appendChild(img);
+          }, 0);
+        }
+      });
+      grid.innerHTML = html2;
+    });
 
     // Carrega filmes marcados como offline
     _renderOfflineGrid();
@@ -1999,11 +2134,33 @@
           <div class="movie-info-actions">
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(\'' + videoPath.replace(/'/g, "\\'") + '\', \'' + escHtml(titleClean).replace(/'/g, "\\'") + '\' ' + (subtitle ? ', \'' + (folderPath + '/' + subtitle.Name).replace(/'/g, "\\'") + '\'' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
             ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
+            ${'<button class="btn-watched" onclick="_markAsWatched(\'' + folderPath.replace(/'/g, "\\'") + '\')">✔ Já assisti</button>'}
           </div>
           </div>
         </div>`;
 
       content.innerHTML = html;
+
+      // Check progress and show resume button
+      fetch('/api/progress?path=' + encodeURIComponent(folderPath)).then(r => r.json()).then(prog => {
+        if (!prog || !prog.position || prog.position <= 0) return;
+        const actionsEl = content.querySelector('.movie-info-actions');
+        if (!actionsEl) return;
+        const pct = (prog.duration > 0) ? Math.round((prog.position / prog.duration) * 100) : 0;
+        // Don't show resume if >95% done
+        if (pct > 95) return;
+        const posStr = formatTime(prog.position, false);
+        const resumeBtn = document.createElement('button');
+        resumeBtn.className = 'btn-play btn-resume';
+        resumeBtn.setAttribute('data-path', videoPath || '');
+        resumeBtn.innerHTML = '⏯ Continuar de ' + posStr + ' <span class="resume-pct">(' + pct + '%)</span>';
+        resumeBtn.onclick = function() {
+          const vPath = this.getAttribute('data-path');
+          if (vPath) playFromInfo(vPath, escHtml(titleClean).replace(/'/g, "\\'"), subtitle ? (folderPath + '/' + subtitle.Name) : null, prog.position);
+        };
+        // Insert before the first button
+        actionsEl.insertBefore(resumeBtn, actionsEl.firstChild);
+      }).catch(function() {});
     });
   }
 
@@ -2016,9 +2173,9 @@
     document.getElementById('movieInfoBreadcrumb').style.display = 'none';
   }
 
-  function playFromInfo(videoPath, movieName, subtitlePath) {
+  function playFromInfo(videoPath, movieName, subtitlePath, resumePosition) {
     closeMovieInfo();
-    playMovie(videoPath, movieName, subtitlePath);
+    playMovie(videoPath, movieName, subtitlePath, resumePosition);
   }
 
   // Close movie info on Escape
@@ -2048,6 +2205,13 @@
     if (e.target === this) closeConfirmModal();
   });
 
+  // Save progress on page unload (close tab, navigate away)
+  window.addEventListener('beforeunload', function() {
+    if (_currentPlayFolder) {
+      _saveProgress();
+    }
+  });
+
   // ==================== BREADCRUMB ====================
   function renderBreadcrumb(path) {
     const el = document.getElementById('breadcrumb');
@@ -2071,23 +2235,316 @@
   // ==================== PLAYER ====================
   let currentVideoPath = null;
   let currentSubtitlePath = null;
+  let _currentPlayFolder = null;  // folder path for progress tracking
+  let _progressSaveTimer = null;
+
+  // Save watch progress to server
+  function _saveProgress() {
+    const video = document.getElementById('videoPlayer');
+    if (!_currentPlayFolder || !video || !video.duration || video.duration === 0) return;
+    const pos = video.currentTime || 0;
+    if (pos < 5) return;
+    const dur = video.duration;
+    const pct = (pos / dur) * 100;
+    if (pct > 95) {
+      _clearProgress(_currentPlayFolder);
+      return;
+    }
+    fetch('/api/progress', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: _currentPlayFolder, position: pos, duration: dur}),
+      keepalive: true
+    }).catch(() => {});
+  }
+
+  function _clearProgress(folderPath) {
+    fetch('/api/progress', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: folderPath, position: 0, duration: 0}),
+      keepalive: true
+    }).catch(() => {});
+  }
+
+  function _markAsWatched(folderPath) {
+    _clearProgress(folderPath);
+    showToast('✔ Marcado como assistido', 'success');
+    // Refresh the movie info to hide resume button and show watched state
+    const actionsEl = document.querySelector('.movie-info-actions');
+    if (actionsEl) {
+      const resumeBtn = actionsEl.querySelector('.btn-resume');
+      if (resumeBtn) resumeBtn.remove();
+      const watchedBtn = actionsEl.querySelector('.btn-watched');
+      if (watchedBtn) watchedBtn.textContent = '✅ Assistido';
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  //  Google Cast (Chromecast)
+  // ═══════════════════════════════════════════════
+  let _castSession = null;
+  let _castContext = null;
+  /** true once the Cast SDK script has been injected into the page */
+  let _castSdkInjected = false;
+  /** true once __onGCastApiAvailable(true) has fired */
+  let _castReady = false;
+
+  /** Detect if we're inside VS Code / Electron shell (no native Cast support) */
+  function _isVSCodeWebview() {
+    return navigator.userAgent.indexOf('Electron') >= 0
+      || navigator.userAgent.indexOf('VS Code') >= 0
+      || navigator.userAgent.indexOf('Code/') >= 0;
+  }
+
+  function _getBaseUrl() {
+    return window.location.origin;
+  }
+
+  function _loadCastSdk() {
+    if (_castSdkInjected) return;
+    _castSdkInjected = true;
+    if (document.getElementById('castSdkScript')) return;
+    var script = document.createElement('script');
+    script.id = 'castSdkScript';
+    script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+    script.async = true;
+    script.onerror = function() {
+      console.warn('[Cast] Failed to load Cast SDK');
+      _castReady = false;
+      var btn = document.getElementById('castBtn');
+      if (btn) btn.style.display = 'none';
+    };
+    document.head.appendChild(script);
+  }
+
+  // Called by Cast SDK when API is ready
+  window.__onGCastApiAvailable = function(isAvailable) {
+    var btn = document.getElementById('castBtn');
+    if (!isAvailable) {
+      console.log('[Cast] SDK not available on this browser');
+      _castReady = false;
+      if (btn) btn.style.display = 'none';
+      return;
+    }
+    console.log('[Cast] SDK available');
+    _castReady = true;
+    try {
+      _castContext = cast.framework.CastContext.getInstance();
+      _castContext.setOptions({
+        receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+      });
+
+      // Listen for session changes
+      _castContext.addEventListener(
+        cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+        function(event) {
+          _onCastSessionStateChanged(event);
+        }
+      );
+
+      // Initial session check (user might already be casting from another tab)
+      var session = _castContext.getCurrentSession();
+      if (session) {
+        _castSession = session;
+        if (btn) { btn.style.display = ''; btn.textContent = '📡'; btn.classList.add('active'); }
+      } else {
+        if (btn) btn.style.display = '';
+      }
+    } catch (e) {
+      console.warn('[Cast] Init error:', e);
+      _castReady = false;
+      if (btn) btn.style.display = 'none';
+    }
+  };
+
+  function _onCastSessionStateChanged(event) {
+    var btn = document.getElementById('castBtn');
+    switch (event.sessionState) {
+      case cast.framework.SessionState.SESSION_STARTED:
+      case cast.framework.SessionState.SESSION_RESUMED:
+        _castSession = _castContext.getCurrentSession();
+        if (btn) { btn.textContent = '📡'; btn.classList.add('active'); }
+        console.log('[Cast] Session started');
+        break;
+      case cast.framework.SessionState.SESSION_ENDED:
+        _castSession = null;
+        if (btn) { btn.textContent = '📺'; btn.classList.remove('active'); }
+        console.log('[Cast] Session ended');
+        break;
+      case cast.framework.SessionState.SESSION_START_FAILED:
+        console.warn('[Cast] Session start failed');
+        break;
+      default:
+        console.log('[Cast] Session state:', event.sessionState);
+    }
+  }
+
+  function _isCasting() {
+    return _castSession !== null;
+  }
+
+  function toggleCast() {
+    var btn = document.getElementById('castBtn');
+
+    // VS Code / Electron webview doesn't support Chrome Cast SDK
+    if (_isVSCodeWebview()) {
+      showToast('⚠️ Chromecast não funciona no VS Code. Abra no Chrome/Edge.', 'error');
+      return;
+    }
+
+    // First click: inject the Cast SDK script
+    if (!_castSdkInjected) {
+      _loadCastSdk();
+      if (btn) btn.textContent = '⏳';
+      console.log('[Cast] SDK loading, waiting...');
+      // Wait up to 8s for the SDK to become ready
+      var waited = 0;
+      var MAX_WAIT = 40; // 40 * 200ms = 8s
+      var interval = setInterval(function() {
+        waited++;
+        if (_castReady) {
+          clearInterval(interval);
+          console.log('[Cast] SDK ready after ~' + (waited * 200) + 'ms');
+          _doToggleCast();
+        } else if (waited >= MAX_WAIT) {
+          clearInterval(interval);
+          if (btn) btn.textContent = '📺';
+          // Check if the script tag actually exists but callback never fired
+          var scriptTag = document.getElementById('castSdkScript');
+          var hint = scriptTag ? 'SDK loaded but not available' : 'SDK failed to load';
+          console.warn('[Cast] Timeout: ' + hint);
+          showToast('❌ Chromecast não disponível neste navegador (' + hint + ')', 'error');
+        }
+      }, 200);
+      return;
+    }
+
+    // SDK was already injected — if ready, toggle; else show error
+    if (!_castReady) {
+      console.warn('[Cast] SDK was loaded but never became ready');
+      showToast('❌ Chromecast não suportado neste navegador', 'error');
+      return;
+    }
+    _doToggleCast();
+  }
+
+  function _doToggleCast() {
+    if (_isCasting()) {
+      // Stop casting
+      _castSession.endSession(true);
+      return;
+    }
+    // Start casting - Cast SDK shows the device picker
+    if (typeof cast === 'undefined' || !cast.framework) {
+      console.warn('[Cast] Cast SDK not loaded');
+      showToast('❌ SDK do Chromecast não carregado', 'error');
+      return;
+    }
+    console.log('[Cast] requestSession()... contextReady=' + !!_castContext + ' ready=' + _castReady + ' casting=' + _isCasting());
+    cast.framework.CastContext.getInstance().requestSession()
+      .then(function() {
+        // Session started - now load media
+        _castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+        _sendMediaToCast();
+      })
+      .catch(function(err) {
+        if (err.code === 'cancel' || err.code === chrome.cast.ErrorCode.CANCEL) {
+          // User cancelled - do nothing
+          return;
+        }
+        console.warn('[Cast] Session request error:', err);
+        var errMsg = err.code || err.message || String(err);
+        var hint = '';
+        if (errMsg === 'session_error') {
+          hint = ' — verifique se o Chromecast está na mesma rede Wi-Fi e se o Chrome tem Cast ativo (chrome://flags/#load-media-router-component-extension)';
+        } else if (errMsg === 'timeout') {
+          hint = ' — Chromecast não respondeu a tempo';
+        }
+        showToast('❌ ' + errMsg + hint, 'error');
+      });
+  }
+
+  function _sendMediaToCast() {
+    if (!_castSession) return;
+    var video = document.getElementById('videoPlayer');
+    if (!video || !video.src) return;
+
+    // Chromecast must fetch media over HTTP (doesn't trust self-signed certs)
+    // Use __HTTP_BASE__ if available (set by server), fallback to page origin
+    var baseUrl = window.__HTTP_BASE__ || _getBaseUrl();
+
+    // Get the current video stream URL path (relative)
+    var urlObj = new URL(video.src, _getBaseUrl());
+    var streamPath = urlObj.pathname + urlObj.search;
+    // Construct absolute URL for Chromecast (over HTTP)
+    var contentUrl = baseUrl + streamPath;
+
+    // Build media info
+    var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
+    mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
+    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+    var titleEl = document.getElementById('playerMovieName');
+    mediaInfo.metadata.title = titleEl ? titleEl.textContent : 'TicianoFlix';
+
+    // Add subtitle track if available
+    var subtitleTrack = document.getElementById('subtitleTrack');
+    var currentSubPath = currentSubtitlePath;
+    if (currentSubPath) {
+      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath);
+      var track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
+      track.trackContentId = subUrl;
+      track.trackContentType = 'text/vtt';
+      track.name = 'Português';
+      track.language = 'pt-BR';
+      track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
+      mediaInfo.tracks = [track];
+      mediaInfo.textTrackStyle = new chrome.cast.media.TextTrackStyle();
+      mediaInfo.textTrackStyle.foregroundColor = '#ffd700';
+      mediaInfo.textTrackStyle.backgroundColor = 'rgba(0,0,0,0)';
+      mediaInfo.textTrackStyle.fontSize = 36;
+      mediaInfo.activeTrackIds = [1];
+    }
+
+    var request = new chrome.cast.media.LoadRequest(mediaInfo);
+    // Start from current position if the video has played
+    if (video.currentTime > 0) {
+      request.currentTime = video.currentTime;
+    }
+
+    _castSession.loadMedia(request)
+      .then(function() {
+        console.log('[Cast] Media loaded on Chromecast');
+        showToast('📡 Transmitindo para Chromecast', 'info');
+        // Pause local video while casting
+        video.pause();
+      })
+      .catch(function(err) {
+        console.warn('[Cast] Load media error:', err);
+        showToast('❌ Erro ao transmitir', 'error');
+      });
+  }
 
   function clearBufferTimer() {
     // No-op: _waitForBuffer was removed, but keep for cleanup compatibility
   }
 
-  function playMovie(filePath, movieName, subtitlePath) {
+  function playMovie(filePath, movieName, subtitlePath, resumePosition) {
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
     const loading = document.getElementById('playerLoading');
     const movieTitle = document.getElementById('playerMovieName');
-    const movieSubtitle = document.getElementById('playerMovieSubtitle');
 
     currentVideoPath = filePath;
     currentSubtitlePath = subtitlePath || null;
+    // Derive folder path from video file path
+    _currentPlayFolder = filePath.substring(0, filePath.lastIndexOf('/'));
     movieTitle.textContent = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
-    movieSubtitle.textContent = filePath;
     document.getElementById('playerFileSize').textContent = '';
+
+    // Proactively load Cast SDK (non-blocking)
+    _loadCastSdk();
 
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
@@ -2110,6 +2567,17 @@
       const err = video.error;
       // MEDIA_ERR_ABORTED é normal durante seeks — ignora
       if (err && err.code === MediaError.MEDIA_ERR_ABORTED) return;
+
+      // Tenta recarregar até 2x em erro de rede/suporte (rclone pode estar lento)
+      if (!video._retryCount) video._retryCount = 0;
+      if (video._retryCount < 2 && err && (err.code === MediaError.MEDIA_ERR_NETWORK || err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED)) {
+        video._retryCount++;
+        video.src = streamUrl(filePath);
+        video.load();
+        video.play().catch(function() {});
+        return;
+      }
+
       let msg = 'Erro ao carregar vídeo';
       if (err) {
         if (err.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Falha de rede ao carregar vídeo';
@@ -2127,6 +2595,11 @@
         loading.style.display = 'none';
         video.style.display = 'block';
         video.play().catch(function() {});
+        // Seek to saved position if resuming
+        if (resumePosition && resumePosition > 0 && video.duration) {
+          const target = Math.min(resumePosition, video.duration - 1);
+          video.currentTime = target;
+        }
       }
     };
 
@@ -2137,6 +2610,10 @@
       loading.style.display = 'none';
       video.style.display = 'block';
       video.play().catch(function() {});
+      // Seek to saved position if resuming
+      if (resumePosition && resumePosition > 0 && video.duration) {
+        video.currentTime = Math.min(resumePosition, video.duration - 1);
+      }
     }
 
     video.onloadeddata = function() {
@@ -2155,19 +2632,16 @@
 
     video.onplaying = function() {
       loading.style.display = 'none';
-      setStreamStatus('playing', '\u25B6\uFE0F Streaming');
     };
 
     video.onseeking = function() {
       video._seeking = true;
-      setStreamStatus('seeking', '\u23F3 Pulando...');
     };
 
     video.onseeked = function() {
       video._seeking = false;
       loading.style.display = 'none';
       video.style.display = 'block';
-      setStreamStatus('playing', '\u25B6\uFE0F Streaming');
     };
 
     // Background download tracker
@@ -2222,7 +2696,7 @@
 
     // Inicia loading — stream começa assim que oncanplay disparar
     loading.querySelector('span').textContent = 'Carregando...';
-    setStreamStatus('buffering', '⬇️ 0%');
+    setStreamStatus('cached', 'Cache: 0%');
 
     // Timeout: se readyState=0 após 25s, é erro de conexão
     setTimeout(function() {
@@ -2244,7 +2718,7 @@
       }
     });
 
-    // Double-click no video = fullscreen no container (mantém header visível)
+    // Double-click no video = fullscreen no container
     video.addEventListener('dblclick', function(e) {
       const container = document.querySelector('.player-container');
       if (document.fullscreenElement) {
@@ -2255,6 +2729,38 @@
         container.webkitRequestFullscreen();
       }
     });
+
+    // Seek bar + time + play button + volume sync + periodic progress save
+    video.addEventListener('timeupdate', function() {
+      const seek = document.getElementById('seekBar');
+      const time = document.getElementById('timeDisplay');
+      if (seek && video.duration) seek.value = (video.currentTime / video.duration) * 100;
+      if (time) time.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
+      // Auto-save progress every ~30 seconds
+      if (_progressSaveTimer) clearTimeout(_progressSaveTimer);
+      _progressSaveTimer = setTimeout(_saveProgress, 30000);
+    });
+    video.addEventListener('play', function() {
+      document.getElementById('playBtn').textContent = '⏸';
+      showControls();
+    });
+    video.addEventListener('pause', function() {
+      document.getElementById('playBtn').textContent = '▶';
+    });
+    video.addEventListener('volumechange', updateMuteBtn);
+
+    document.getElementById('seekBar').oninput = function() {
+      const v = document.getElementById('videoPlayer');
+      if (v && v.duration) v.currentTime = (this.value / 100) * v.duration;
+    };
+    document.getElementById('volumeSlider').oninput = function() {
+      const v = document.getElementById('videoPlayer');
+      if (v) { v.volume = parseFloat(this.value); v.muted = false; }
+      updateMuteBtn();
+    };
+    const vs = document.getElementById('volumeSlider');
+    if (vs) vs.value = video.volume;
+    updateMuteBtn();
   }
 
   function showPlayerError(msg) {
@@ -2290,12 +2796,30 @@
     }
   }
 
+  function updateSubtitleButton(subtitlePath) {
+    const btn = document.getElementById('subtitleToggleBtn');
+    if (!subtitlePath) {
+      subtitlesEnabled = false;
+      if (btn) btn.classList.remove('active');
+    } else {
+      subtitlesEnabled = true;
+      if (btn) btn.classList.add('active');
+    }
+  }
+
   function closePlayer() {
-    // Mostra modal de confirmação
-    const modal = document.getElementById('confirmModal');
-    modal.classList.add('active');
+    // Se estiver em fullscreen, sai primeiro para o modal ficar visível
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function() {});
+      // Mostra modal depois de sair (curto delay pro browser processar)
+      setTimeout(function() {
+        document.getElementById('confirmModal').classList.add('active');
+      }, 200);
+    } else {
+      document.getElementById('confirmModal').classList.add('active');
+    }
     document.getElementById('confirmYesBtn').onclick = function() {
-      modal.classList.remove('active');
+      document.getElementById('confirmModal').classList.remove('active');
       _doClosePlayer();
     };
   }
@@ -2311,7 +2835,13 @@
       console.log('[closePlayer] ignorado — seeking em andamento');
       return;
     }
+    // Save progress before closing
+    if (_progressSaveTimer) clearTimeout(_progressSaveTimer);
+    _saveProgress();
     clearBufferTimer();
+    clearTimeout(_controlsTimer);
+    const controls = document.getElementById('playerControls');
+    if (controls) controls.classList.remove('force-show');
     const overlay = document.getElementById('playerOverlay');
     const loading = document.getElementById('playerLoading');
     const errorEl = document.getElementById('playerError');
@@ -2328,15 +2858,17 @@
     errorEl.style.display = 'none';
     overlay.classList.remove('active');
     document.body.style.overflow = '';
+    _currentPlayFolder = null;
+    _progressSaveTimer = null;
   }
 
   let subtitlesEnabled = true;
-  let subtitleSizeIndex = 1;
+  let subtitleSizeIndex = 2;
   const subtitleSizes = [
-    { px: 22, label: 'Peq' },
-    { px: 28, label: 'Méd' },
-    { px: 36, label: 'Gde' },
-    { px: 48, label: 'Ext' },
+    { px: 28, label: 'Peq' },
+    { px: 36, label: 'Méd' },
+    { px: 48, label: 'Gde' },
+    { px: 64, label: 'Ext' },
   ];
 
   function cycleSubtitleSize() {
@@ -2384,29 +2916,119 @@
       if (video.buffered && video.buffered.length > 0 && video.duration > 0) {
         const end = video.buffered.end(video.buffered.length - 1);
         const pct = Math.round((end / video.duration) * 100);
-        // Update cache bar
-        const fill = document.getElementById('cacheBarFill');
-        const txt = document.getElementById('cacheBarText');
-        if (fill) fill.style.width = Math.min(pct, 100) + '%';
-        if (txt) txt.textContent = (pct >= 100) ? '💾 Cache total' : 'Cache: ' + pct + '%';
-        // Mark as offline-cached once we have >= 80% buffer
+        // Update seek buffer bar
+        const buf = document.getElementById('seekBuffer');
+        if (buf) buf.style.width = Math.min(pct, 100) + '%';
+        // Mark as offline-cached once >= 80% buffer
         if (currentMovieFolder && pct >= 85 && !_cachedSet.has(currentMovieFolder)) {
-          // Trigger server to verify full cache by fetching the last byte
           _verifyServerCache(currentMovieFolder, currentVideoPath);
         }
-        // Update status text
-        if (pct < 100) {
-          el.textContent = '⬇️ ' + pct + '%';
-          el.className = 'stream-status buffering';
-        } else {
-          el.textContent = '💾 100% cache';
+        // Update cache info in controls
+        if (pct >= 100) {
+          el.textContent = '💾 Cache total';
           el.className = 'stream-status cached';
+        } else {
+          el.textContent = 'Cache: ' + pct + '%';
+          el.className = 'stream-status';
         }
       }
-    } catch(e) {
-      // silencioso
+    } catch(e) {}
+  }
+
+  // ==================== CONTROLES CUSTOMIZADOS ====================
+
+  function formatTime(t) {
+    if (!t || !isFinite(t)) return '00:00';
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = Math.floor(t % 60);
+    const pad = n => String(n).padStart(2, '0');
+    return (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
+  }
+
+  function togglePlay() {
+    const v = document.getElementById('videoPlayer');
+    if (!v) return;
+    if (v.paused) v.play().catch(function() {});
+    else v.pause();
+    document.getElementById('playBtn').textContent = v.paused ? '▶' : '⏸';
+  }
+
+  function skip(sec) {
+    const v = document.getElementById('videoPlayer');
+    if (!v || !v.duration) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + sec));
+  }
+
+  let _volumeBeforeMute = 1;
+  function toggleMute() {
+    const v = document.getElementById('videoPlayer');
+    if (!v) return;
+    if (v.volume === 0) {
+      v.volume = _volumeBeforeMute;
+      v.muted = false;
+    } else {
+      _volumeBeforeMute = v.volume;
+      v.volume = 0;
+      v.muted = true;
+    }
+    updateMuteBtn();
+  }
+
+  function updateMuteBtn() {
+    const v = document.getElementById('videoPlayer');
+    const btn = document.getElementById('muteBtn');
+    if (!v || !btn) return;
+    if (v.volume === 0 || v.muted) {
+      btn.textContent = '🔇';
+    } else if (v.volume < 0.5) {
+      btn.textContent = '🔉';
+    } else {
+      btn.textContent = '🔊';
     }
   }
+
+  const SPEEDS = [1, 1.5, 2, 0.5];
+  let _speedIndex = 0;
+  function cycleSpeed() {
+    _speedIndex = (_speedIndex + 1) % SPEEDS.length;
+    const v = document.getElementById('videoPlayer');
+    if (v) v.playbackRate = SPEEDS[_speedIndex];
+    const btn = document.getElementById('speedBtn');
+    if (btn) btn.textContent = SPEEDS[_speedIndex] + '×';
+  }
+
+  function toggleFullscreen() {
+    const container = document.querySelector('.player-container');
+    if (!container) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function() {});
+    } else if (container.requestFullscreen) {
+      container.requestFullscreen();
+    } else if (container.webkitRequestFullscreen) {
+      container.webkitRequestFullscreen();
+    }
+  }
+
+  // Auto-hide controls
+  let _controlsTimer = null;
+  function showControls() {
+    const bar = document.getElementById('playerControls');
+    if (!bar) return;
+    bar.classList.add('force-show');
+    clearTimeout(_controlsTimer);
+    const v = document.getElementById('videoPlayer');
+    if (v && !v.paused && document.fullscreenElement) {
+      _controlsTimer = setTimeout(function() {
+        bar.classList.remove('force-show');
+      }, 3000);
+    }
+  }
+  // Show on any mouse move over player
+  document.addEventListener('mousemove', function() {
+    const bar = document.getElementById('playerControls');
+    if (bar && bar.closest('.player-overlay.active')) showControls();
+  });
 
   document.getElementById('playerOverlay').onclick = function(e) {
     // Apenas o botão fechar e Escape fecham — clique fora não fecha
@@ -2414,6 +3036,26 @@
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closePlayer();
+    const v = document.getElementById('videoPlayer');
+    if (!v || !v.closest('.player-overlay.active')) return;
+    if (e.key === ' ' || e.key === 'k') { e.preventDefault(); togglePlay(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-10); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); skip(10); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); const s = document.getElementById('volumeSlider'); if (s) { s.value = Math.min(1, parseFloat(s.value) + 0.1); s.oninput(); } }
+    if (e.key === 'ArrowDown') { e.preventDefault(); const s = document.getElementById('volumeSlider'); if (s) { s.value = Math.max(0, parseFloat(s.value) - 0.1); s.oninput(); } }
+    if (e.key === 'f') { e.preventDefault(); toggleFullscreen(); }
+  });
+
+  // Fullscreen: mantém classe .is-fullscreen no container para CSS
+  document.addEventListener('fullscreenchange', function() {
+    const container = document.querySelector('.player-container');
+    if (!container) return;
+    container.classList.toggle('is-fullscreen', !!document.fullscreenElement);
+  });
+  document.addEventListener('webkitfullscreenchange', function() {
+    const container = document.querySelector('.player-container');
+    if (!container) return;
+    container.classList.toggle('is-fullscreen', !!document.webkitFullscreenElement);
   });
 
   // ==================== HEADER SCROLL ====================
@@ -2515,12 +3157,18 @@
           return r.blob();
         }).then(blob => {
           downloaded += blob.size;
-          // Update cache bar with download progress
+          // Update cache percentage in controls
           const pct = Math.round((downloaded / fileSize) * 100);
-          const fill = document.getElementById('cacheBarFill');
-          const txt = document.getElementById('cacheBarText');
-          if (fill) fill.style.width = Math.min(pct, 100) + '%';
-          if (txt) txt.textContent = '⬇️ Download: ' + Math.min(pct, 100) + '%';
+          const el = document.getElementById('streamStatus');
+          if (el) {
+            if (pct >= 100) {
+              el.textContent = '💾 Cache total';
+              el.className = 'stream-status cached';
+            } else {
+              el.textContent = '⬇️ ' + pct + '%';
+              el.className = 'stream-status';
+            }
+          }
           fetchNextChunk();
         }).catch(() => {
           _bgDownloadAbort = null;

@@ -13,6 +13,7 @@ import urllib.request
 import urllib.error
 import mimetypes
 import socket
+import ssl
 import threading
 import sys
 import signal
@@ -27,6 +28,7 @@ from pathlib import Path
 
 HOST = "0.0.0.0"
 PORT = 8080
+HTTPS_PORT_BASE = 8443
 RCLONE_REMOTE = "gdrive:"
 RCLONE_SERVE_PORT = 18082
 FRONTEND_PATH = Path(__file__).parent / "index.html"
@@ -112,7 +114,8 @@ def init_db():
             parent TEXT NOT NULL DEFAULT '',
             is_ticianoflix_root INTEGER NOT NULL DEFAULT 0,
             has_video INTEGER NOT NULL DEFAULT 0,
-            depth INTEGER NOT NULL DEFAULT 0
+            depth INTEGER NOT NULL DEFAULT 0,
+            mod_time TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS files (
@@ -149,7 +152,19 @@ def init_db():
             audio_info TEXT,
             updated_at REAL NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS watch_progress (
+            folder_path TEXT PRIMARY KEY,
+            position_seconds REAL NOT NULL DEFAULT 0,
+            duration_seconds REAL NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL DEFAULT 0
+        );
     """)
+    # Migration: add mod_time column if missing (existing databases)
+    try:
+        conn.execute("ALTER TABLE folders ADD COLUMN mod_time TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -316,8 +331,8 @@ def scan_drive():
             _scan_progress["percent"] = int(((gi) / total_genres) * 100)
 
         conn.execute(
-            "INSERT OR REPLACE INTO folders (path, name, parent, depth) VALUES (?, ?, ?, 1)",
-            (genre_path, genre_name, ticianoflix_path)
+            "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 1, ?)",
+            (genre_path, genre_name, ticianoflix_path, genre_item.get("ModTime", ""))
         )
 
         # Step 3: List movie folders inside genre
@@ -346,8 +361,8 @@ def scan_drive():
                 _scan_progress["movie_current"] = movie_name
 
             conn.execute(
-                "INSERT OR REPLACE INTO folders (path, name, parent, depth) VALUES (?, ?, ?, 2)",
-                (movie_path, movie_name, genre_path)
+                "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 2, ?)",
+                (movie_path, movie_name, genre_path, item.get("ModTime", ""))
             )
 
             # Step 4: List movie folder contents
@@ -484,7 +499,7 @@ def cached_list_directory(path):
             "Name": row["name"],
             "Size": 0,
             "MimeType": "inode/directory",
-            "ModTime": "",
+            "ModTime": row["mod_time"],
             "IsDir": True,
             "has_video": bool(row["has_video"]),
         })
@@ -955,6 +970,15 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             cl = resp.getheader("Content-Length")
             cr = resp.getheader("Content-Range")
 
+            # Se rclone devolveu erro, não repassa o body — retorna erro limpo
+            if status in (404, 500, 502, 503):
+                resp.read()
+                resp.close()
+                conn.close()
+                sys.stderr.write(f"[TicianoFlix] rclone error {status} for {path}\n")
+                self._send_error("Video not available from storage", 502)
+                return
+
             if status == 206:
                 self.send_response(206)
                 if cr:
@@ -1127,11 +1151,22 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if mime:
             return mime
         ext = Path(path).suffix.lower()
-        if ext in VIDEO_EXTENSIONS:
-            return "video/mp4"
-        if ext == ".mkv":
-            return "video/x-matroska"
-        return "application/octet-stream"
+        MIME_MAP = {
+            ".mp4": "video/mp4",
+            ".mkv": "video/x-matroska",
+            ".webm": "video/webm",
+            ".mov": "video/quicktime",
+            ".avi": "video/x-msvideo",
+            ".wmv": "video/x-ms-wmv",
+            ".flv": "video/x-flv",
+            ".m4v": "video/mp4",
+            ".mpg": "video/mpeg",
+            ".mpeg": "video/mpeg",
+            ".ts": "video/mp2t",
+            ".3gp": "video/3gpp",
+            ".ogg": "video/ogg",
+        }
+        return MIME_MAP.get(ext, "application/octet-stream")
 
     def _serve_file(self, path):
         """Serve a file from the local filesystem."""
@@ -1271,6 +1306,32 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._handle_restore()
             return
 
+        if path == "/api/progress":
+            try:
+                content_len = int(self.headers.get("Content-Length", 0))
+                if content_len == 0:
+                    self._send_json({"status": "error", "error": "Empty body"}, 400)
+                    return
+                raw = self.rfile.read(content_len)
+                body = json.loads(raw)
+                folder_path = body.get("path", "").strip()
+                position = float(body.get("position", 0))
+                duration = float(body.get("duration", 0))
+                if not folder_path:
+                    self._send_json({"status": "error", "error": "Missing path"}, 400)
+                    return
+                conn = get_db()
+                conn.execute(
+                    "INSERT OR REPLACE INTO watch_progress (folder_path, position_seconds, duration_seconds, updated_at) VALUES (?, ?, ?, ?)",
+                    (folder_path, position, duration, time.time())
+                )
+                conn.commit()
+                conn.close()
+                self._send_json({"status": "ok"})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+            return
+
         self._send_error("Not found", 404)
 
     def _handle_restore(self):
@@ -1313,6 +1374,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         # Serve frontend
         if path == "/" or path == "/index.html":
             html_content = FRONTEND_PATH.read_text(encoding="utf-8") if FRONTEND_PATH.exists() else "<h1>TicianoFlix</h1><p>Frontend not found.</p>"
+            # Inject HTTP base URL for Chromecast media streaming
+            # (Chromecast doesn't trust self-signed certs, so media must use HTTP)
+            html_content = html_content.replace(
+                "</head>",
+                f"<script>window.__HTTP_BASE__='http://{_get_local_ip()}:{PORT}';</script></head>",
+                1
+            )
             self._send_html(html_content)
             return
 
@@ -1567,6 +1635,92 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(data)
             return
 
+        # API: Recent movies sorted by creation time (from cache)
+        if path == "/api/recent-movies":
+            conn = get_db()
+            limit = 50
+            try:
+                limit = min(int(params.get("limit", ["50"])[0]), 200)
+            except (ValueError, IndexError):
+                pass
+            movie_rows = conn.execute(
+                """SELECT * FROM folders
+                   WHERE depth=2 AND has_video=1
+                   ORDER BY mod_time DESC, name ASC
+                   LIMIT ?""",
+                (limit,)
+            ).fetchall()
+            conn.close()
+
+            movies = []
+            for row in movie_rows:
+                movie_path = row["path"]
+                poster = _find_poster_cached(movie_path)
+                nfo = _fetch_nfo_from_db(movie_path)
+                title = None
+                if nfo and nfo.get("title"):
+                    title = nfo["title"]
+                movies.append({
+                    "path": movie_path,
+                    "name": row["name"],
+                    "mod_time": row["mod_time"],
+                    "poster": poster,
+                    "title": title,
+                })
+            self._send_json(movies)
+            return
+
+        # API: Continue watching — movies with saved progress
+        if path == "/api/continue-watching":
+            conn = get_db()
+            rows = conn.execute(
+                """SELECT p.*, f.name FROM watch_progress p
+                   LEFT JOIN folders f ON f.path = p.folder_path
+                   WHERE p.position_seconds > 0
+                   ORDER BY p.updated_at DESC
+                   LIMIT 20"""
+            ).fetchall()
+            conn.close()
+            result = []
+            for row in rows:
+                folder_path = row["folder_path"]
+                poster = _find_poster_cached(folder_path)
+                nfo = _fetch_nfo_from_db(folder_path)
+                title = None
+                if nfo and nfo.get("title"):
+                    title = nfo["title"]
+                result.append({
+                    "path": folder_path,
+                    "name": row["name"] or folder_path.strip("/").split("/")[-1],
+                    "position": row["position_seconds"],
+                    "duration": row["duration_seconds"],
+                    "poster": poster,
+                    "title": title,
+                })
+            self._send_json(result)
+            return
+
+        # API: Get progress for a single movie
+        if path == "/api/progress":
+            folder_path = params.get("path", [""])[0]
+            if not folder_path:
+                self._send_json({"position": 0, "duration": 0})
+                return
+            conn = get_db()
+            row = conn.execute(
+                "SELECT * FROM watch_progress WHERE folder_path=?",
+                (folder_path,)
+            ).fetchone()
+            conn.close()
+            if row:
+                self._send_json({
+                    "position": row["position_seconds"],
+                    "duration": row["duration_seconds"],
+                })
+            else:
+                self._send_json({"position": 0, "duration": 0})
+            return
+
         # API: List directory (from cache)
         if path == "/api/list":
             dir_path = params.get("path", [""])[0]
@@ -1646,6 +1800,113 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # Fallback 404
         self._send_error("Not found", 404)
+
+
+# ──────────────────────────────────────────────
+#  SSL / HTTPS (self-signed cert for Chromecast)
+# ──────────────────────────────────────────────
+
+def _get_local_ip():
+    """Get the local network IP address for LAN access."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        # Doesn't actually connect — just used to determine the preferred local IP
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        pass
+    return HOST
+
+
+def _ensure_ssl_cert(cert_dir, local_ip):
+    """Generate a locally-trusted SSL cert using mkcert (preferred) or openssl.
+
+    mkcert creates a CA-trusted certificate — required by the Cast SDK
+    (self-signed certs are rejected even with correct SAN).
+    Regenerates if the IP changes.
+    Returns (cert_path, key_path) or (None, None) on failure.
+    """
+    cert_path = cert_dir / "cert.pem"
+    key_path = cert_dir / "key.pem"
+
+    # Check if existing cert is still valid for this IP
+    if cert_path.exists() and key_path.exists():
+        try:
+            existing = subprocess.run(
+                ["openssl", "x509", "-in", str(cert_path), "-noout", "-text"],
+                check=True, capture_output=True, timeout=10, text=True,
+            )
+            if local_ip in existing.stdout:
+                return cert_path, key_path
+            print(f"[TicianoFlix] IP changed ({local_ip}), regenerating SSL cert...", flush=True)
+            cert_path.unlink(missing_ok=True)
+            key_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # Prefer mkcert (CA-trusted = Cast SDK works)
+    mkcert = subprocess.run(["which", "mkcert"], capture_output=True, text=True, timeout=5)
+    if mkcert.returncode == 0:
+        print("[TicianoFlix] Generating CA-trusted SSL certificate via mkcert...", flush=True)
+        try:
+            subprocess.run(
+                ["mkcert", "-key-file", str(key_path), "-cert-file", str(cert_path),
+                 "localhost", local_ip, "ticianoflix.local"],
+                check=True, capture_output=True, timeout=15,
+            )
+            key_path.chmod(0o600)
+            print(f"[TicianoFlix] mkcert cert created: {cert_path}", flush=True)
+            return cert_path, key_path
+        except Exception as e:
+            print(f"[TicianoFlix] mkcert failed ({e}), falling back to openssl...", flush=True)
+
+    # Fallback: openssl self-signed (Cast SDK may not work)
+    print("[TicianoFlix] Generating self-signed SSL certificate via openssl...", flush=True)
+    try:
+        subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", str(key_path),
+                "-out", str(cert_path),
+                "-days", "3650",
+                "-nodes",
+                "-subj", "/CN=TicianoFlix",
+                "-addext", f"subjectAltName=DNS:localhost,DNS:ticianoflix.local,IP:{local_ip}",
+            ],
+            check=True, capture_output=True, timeout=15,
+        )
+        key_path.chmod(0o600)
+        print(f"[TicianoFlix] Self-signed cert created: {cert_path}", flush=True)
+        return cert_path, key_path
+    except Exception as e:
+        print(f"[TicianoFlix] WARNING: Could not generate SSL cert: {e}", flush=True)
+        print("[TicianoFlix] Chromecast discovery will require HTTPS.", flush=True)
+        return None, None
+
+
+def start_https_server(handler_class, host, https_port, cert_path, key_path):
+    """Start an HTTPS server on a daemon thread wrapping the same handler.
+
+    Returns the server object (for cleanup) or None on failure.
+    """
+    try:
+        import ssl as _ssl
+        httpd = http.server.ThreadingHTTPServer((host, https_port), handler_class)
+        httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(cert_path), str(key_path))
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        print(f"[TicianoFlix] HTTPS on https://localhost:{https_port}", flush=True)
+        return httpd
+    except Exception as e:
+        print(f"[TicianoFlix] WARNING: Could not start HTTPS server: {e}", flush=True)
+        print("[TicianoFlix] Continuing with HTTP only.", flush=True)
+        return None
 
 
 def find_free_port():
@@ -1762,17 +2023,59 @@ def main():
     # Permite reuso imediato da porta ao reiniciar
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    print(f"""
+    # ── HTTPS (self-signed cert para Chromecast) ──
+    local_ip = _get_local_ip()
+    https_server = None
+    https_port = None
+    cert_path, key_path = _ensure_ssl_cert(CACHE_DIR, local_ip)
+    if cert_path and key_path:
+        # Try base HTTPS port, fallback to a free port
+        https_port = HTTPS_PORT_BASE
+        s_test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s_test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s_test.bind((HOST, https_port))
+            s_test.close()
+        except OSError:
+            # Port busy — find any free port starting from HTTPS_PORT_BASE
+            https_port = None
+            for hp in range(HTTPS_PORT_BASE, HTTPS_PORT_BASE + 100):
+                try:
+                    s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s2.bind((HOST, hp))
+                    s2.close()
+                    https_port = hp
+                    break
+                except OSError:
+                    continue
+        if https_port:
+            https_server = start_https_server(
+                TicianoFlixHandler, HOST, https_port, cert_path, key_path
+            )
+
+    # Build banner
+    banner = f"""
 ╔══════════════════════════════════════════════╗
 ║            TicianoFlix Server                ║
 ║                                              ║
 ║  🌐 http://localhost:{port}                     ║
+║  🌐 http://{local_ip}:{port}                     ║"""
+    if https_server:
+        banner += f"""
+║  🔒 https://localhost:{https_port}  (Cast/HTTPS)   ║
+║  🔒 https://{local_ip}:{https_port} (LAN - Chromecast)║"""
+    else:
+        banner += """
+║                                              ║"""
+    banner += f"""
 ║  📁 Google Drive via rclone (cached + http)  ║
 ║                                              ║
 ║  ⚡ /api/refresh - rescan drive               ║
 ║  🚀 rclone proxy on localhost:{rclone_serve_port}        ║
 ╚══════════════════════════════════════════════╝
-    """)
+    """
+    print(banner)
 
     # Shutdown imediato — não espera threads de stream terminarem
     def shutdown(sig, frame):

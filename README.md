@@ -208,3 +208,42 @@ systemctl --user restart ticianoflix
 ## 📝 Licença
 
 MIT — veja o arquivo [LICENSE](LICENSE).
+
+---
+
+## 📋 Changelog
+
+### v1.1 — Limpeza de código
+
+- **-469 linhas** de código morto removidas entre `server.py` e `index.html`
+- `server.py`: removidos `_human_size()`, `POSTER_EXTENSIONS`, imports `json` duplicados, código duplicado na inicialização do rclone, comentário residual
+- `index.html` (CSS): removidos blocos `.copy-url-btn`, `.cast-btn`, `.logo`, `.header-actions`, `.btn-close-info`, `.movie-info-files`, `.genre-movies-preview`, `.preview-card`, `.empty-genre`
+- `index.html` (CSS): consolidados dois blocos `.header` duplicados em um único bloco com `left: 220px`
+- `index.html` (JS): removido código Google Cast SDK (~120 linhas, botão 📺 removido anteriormente)
+- `index.html` (JS): removidas funções mortas `fetchGenrePreview`, `loadGenre`, `copyStreamUrl`, `fallbackCopy`, `updateSubtitleButton`, `_bufferTimer`/`_bufferSafetyTimeout`
+- Removidos CSS responsivo residual de `.preview-card`
+
+### v1.0 — Backup modal, cache tracker, player history, offline badges
+
+- Backup em modal com 4 opções (salvar, upload Drive, restaurar de arquivo, restaurar do Drive)
+- Cache tracker visual com barra de progresso em tempo real
+- Navegação com histórico (`pushState` + `popstate`)
+- Badge 📥 Offline para filmes cacheados
+- Seção "Disponíveis Offline" na home
+- Botões de legenda Aa (tamanho) + 🟡/⬜ (cor)
+- Download em background (range requests 5MB)
+- Modal de confirmação ao sair do player
+- Google Fonts Roboto
+- Player loading otimizado: `readyState >= 3` para cache instantâneo, `play()` antecipado
+
+### v0.9 — Scan progress, sidebar fixa, cache VFS
+
+- Barra de progresso do scan em tempo real no sidebar
+- Sidebar fixa 220px (sempre visível, sem toggle)
+- rclone serve com `--vfs-cache-mode full`, chunk 4M, read-ahead 512M
+- ThreadingHTTPServer (multithread) — fim dos travamentos
+- SQLite WAL mode com thread safety
+- `cachedFetch` com TTL 2 min no frontend
+- Scan apenas manual (botão 🔄) — zero requisições automáticas ao Drive
+- Uso de cache (🗄️) no sidebar com atualização a cada 30s
+
