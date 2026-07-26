@@ -1236,6 +1236,9 @@
       <button class="sidebar-item active" onclick="loadPath('')">
         <span class="icon">🏠</span> Início
       </button>
+      <button class="sidebar-item" onclick="loadAZ()">
+        <span class="icon">🔤</span> A-Z
+      </button>
       <div class="sidebar-section-title">Gêneros</div>
       <div id="sidebarGenres"></div>
     </div>
@@ -1573,6 +1576,67 @@
       }
       renderDirectory(data);
     });
+  }
+
+  // ==================== A-Z VIEW ====================
+  function loadAZ() {
+    currentPath = '__az__';
+    document.getElementById('searchInput').value = '';
+    closeMovieInfo();
+    document.getElementById('hero').style.display = 'none';
+    const container = document.getElementById('content');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando filmes...</span></div>';
+    // Invalidate cache so we always get fresh data
+    _invalidateCache('/api/all-movies');
+    cachedFetch('/api/all-movies').then(movies => {
+      if (!movies || movies.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><h3>Nenhum filme encontrado</h3></div>';
+        return;
+      }
+      renderAZView(movies);
+    });
+  }
+
+  function renderAZView(movies) {
+    // Group by first letter
+    const groups = {};
+    movies.forEach(m => {
+      const title = m.title || m.name || '';
+      const letter = title.charAt(0).toUpperCase();
+      if (!groups[letter]) groups[letter] = [];
+      groups[letter].push(m);
+    });
+
+    const letters = Object.keys(groups).sort();
+
+    let html = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:24px;padding:0 4px" id="azJump">';
+    letters.forEach(l => {
+      html += '<a href="#az-' + l + '" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--surface);border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;color:var(--accent);transition:background .2s">' + l + '</a>';
+    });
+    html += '</div>';
+
+    letters.forEach(l => {
+      const items = groups[l];
+      html += '<div class="genre-section" id="az-' + l + '">';
+      html += '<div class="genre-header" style="cursor:default;border:none;position:sticky;top:0;z-index:10;background:var(--bg)">';
+      html += '<div class="genre-title">' + l + ' <span class="genre-count">(' + items.length + ')</span></div>';
+      html += '</div><div class="movie-grid">';
+      items.forEach(m => {
+        const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
+        const safePath = encodeURIComponent(m.path);
+        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">';
+        if (m.poster) {
+          html += '<img class="movie-card-poster" src="' + posterUrl(m.path, m.poster) + '" alt="' + escHtml(nameClean) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
+          html += '<div class="movie-card-poster-placeholder" style="display:none">🎬</div>';
+        } else {
+          html += '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>';
+        }
+        html += '<div class="movie-card-overlay"><div class="movie-card-title">' + escHtml(nameClean) + '</div></div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    });
+    document.getElementById('content').innerHTML = html;
   }
 
   function isHomePage(path) {

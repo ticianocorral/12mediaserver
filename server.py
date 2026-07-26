@@ -884,6 +884,31 @@ def cached_search_files(query):
     return results
 
 
+def cached_all_movies():
+    """Return all movie folders sorted A-Z, with poster and title."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT f.*, m.title FROM folders f
+           LEFT JOIN movie_meta m ON m.folder_path = f.path
+           WHERE f.has_video = 1 AND f.depth >= 2
+           ORDER BY m.title COLLATE NOCASE ASC, f.name COLLATE NOCASE ASC"""
+    ).fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        folder_path = row["path"]
+        poster = _find_poster_cached(folder_path)
+        title = row["title"] or row["name"]
+        results.append({
+            "path": folder_path,
+            "name": row["name"],
+            "title": title,
+            "poster": poster,
+        })
+    return results
+
+
 def _find_poster_cached(folder_path):
     """Find poster name from cache for a given folder."""
     conn = get_db()
@@ -1856,6 +1881,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 return
             results = cached_search_files(query)
             self._send_json({"results": results})
+            return
+
+        # API: All movies A-Z (from cache)
+        if path == "/api/all-movies":
+            results = cached_all_movies()
+            self._send_json(results)
             return
 
         # API: Stream (live from rclone)
