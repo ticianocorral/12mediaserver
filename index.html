@@ -1426,6 +1426,10 @@
   const _CACHE_TTL = 120000; // 2 min
   const _CACHE_ERROR_TTL = 5000; // 5s for error responses
 
+  function _invalidateCache(url) {
+    delete _frontCache[url];
+  }
+
   function cachedFetch(url) {
     const now = Date.now();
     const entry = _frontCache[url];
@@ -2280,6 +2284,24 @@
       if (resumeBtn) resumeBtn.remove();
       const watchedBtn = actionsEl.querySelector('.btn-watched');
       if (watchedBtn) watchedBtn.textContent = '✅ Assistido';
+    }
+    // Invalidate cache so Continue Watching updates on next visit
+    _invalidateCache('/api/continue-watching');
+    // If on the home page, remove the movie from the visible Continue Watching grid
+    var cwSection = document.getElementById('continueWatchingSection');
+    if (cwSection && cwSection.style.display !== 'none') {
+      var cards = cwSection.querySelectorAll('.movie-card');
+      for (var i = 0; i < cards.length; i++) {
+        var onclick = cards[i].getAttribute('onclick') || '';
+        if (onclick.indexOf(folderPath) !== -1 || onclick.indexOf(encodeURIComponent(folderPath)) !== -1) {
+          cards[i].remove();
+          break;
+        }
+      }
+      // Hide the entire section if no cards left
+      if (cwSection.querySelectorAll('.movie-card').length === 0) {
+        cwSection.style.display = 'none';
+      }
     }
   }
 
