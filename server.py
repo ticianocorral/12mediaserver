@@ -47,6 +47,11 @@ SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 rclone_server_proc = None
+rclone_webgui_proc = None
+_webgui_credentials = {"user": "", "pass": ""}
+_webgui_lock = threading.Lock()
+_rclone_serve_lock = threading.Lock()
+RCLONE_WEBGUI_PORT = 5572
 _db_lock = threading.Lock()
 _scan_in_progress = False
 _scan_lock = threading.Lock()
@@ -68,15 +73,29 @@ _scan_progress_lock = threading.Lock()
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
 _cached_files_lock = threading.Lock()
 _cached_files = set()
+
+def _norm_cache_path(file_path):
+    """Normalize a file path for cache bookkeeping.
+
+    Streaming marks files with the URL path (leading slash); the cache manager
+    and manual downloads build paths without it. Normalize to a single canonical
+    form (no leading/trailing slashes) so lookups always match.
+    """
+    return "/".join(part for part in str(file_path).split("/") if part)
+
+# Download progress tracking
+_download_progress = {}  # video_path -> {"percent": int, "status": str, "total": int, "downloaded": int}
+_download_progress_lock = threading.Lock()
 if CACHED_FILES_PATH.exists():
     try:
-        _cached_files = set(json.loads(CACHED_FILES_PATH.read_text()))
+        _cached_files = set(_norm_cache_path(p) for p in json.loads(CACHED_FILES_PATH.read_text()))
     except Exception:
         _cached_files = set()
 
 def _mark_file_cached(file_path):
     """Register a file as fully cached in rclone VFS.
     Batches writes to disk — at most one write per 5 seconds."""
+    file_path = _norm_cache_path(file_path)
     with _cached_files_lock:
         _cached_files.add(file_path)
     # Batch write: persist at most once per 5s
@@ -100,6 +119,7 @@ def _flush_cached_files():
         CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
 def _is_file_cached(file_path):
+    file_path = _norm_cache_path(file_path)
     with _cached_files_lock:
         return file_path in _cached_files
 
@@ -291,15 +311,25 @@ def list_directory_raw(path):
     return run_rclone_cmd(["lsjson", remote_path])
 
 
+def _remove_folder_tree(conn, path):
+    """Remove a folder and everything under it (files, subfolders, NFO meta)."""
+    conn.execute("DELETE FROM folders WHERE path=?", (path,))
+    conn.execute("DELETE FROM folders WHERE parent LIKE ?", (path + '/%',))
+    conn.execute("DELETE FROM files WHERE folder_path=? OR folder_path LIKE ?", (path, path + '/%'))
+    conn.execute("DELETE FROM movie_meta WHERE folder_path=? OR folder_path LIKE ?", (path, path + '/%'))
+
+
 def scan_drive():
     """
-    Full scan of the TicianoFlix drive structure.
-    1. List TicianoFlix root (genres)
-    2. For each genre, list its contents
-    3. For each movie folder, list its contents
+    Incremental scan of the TicianoFlix drive structure using a SINGLE
+    recursive rclone lsjson of the whole tree, then diffing against the DB:
+    - New/changed movies (file set or file size/modtime differs) are re-indexed
+      and their NFO is re-fetched.
+    - Unchanged movies are left completely untouched (no rclone calls, no DB writes).
+    - Folders/files that disappeared from the Drive are removed.
     """
     global _scan_progress
-    print("[TicianoFlix] Scanning Google Drive...", flush=True)
+    print("[TicianoFlix] Scanning Google Drive (incremental)...", flush=True)
     start = time.time()
 
     with _scan_progress_lock:
@@ -307,132 +337,165 @@ def scan_drive():
         _scan_progress["percent"] = 0
 
     conn = get_db()
+    stats = {"added": 0, "changed": 0, "removed": 0, "unchanged": 0}
 
-    # Clear old data
-    conn.execute("DELETE FROM files")
-    conn.execute("DELETE FROM folders")
-
-    # Step 1: Check if TicianoFlix folder exists
-    root_data = list_directory_raw("")
-    if isinstance(root_data, dict) and "error" in root_data:
-        print(f"[TicianoFlix] ERROR: {root_data['error']}", flush=True)
+    # Single recursive listing of the whole TicianoFlix tree (--fast-list uses
+    # the Drive files.list API, ~10x faster than walking the tree per directory)
+    tree = run_rclone_cmd(["lsjson", "--recursive", "--fast-list", f"{RCLONE_REMOTE}/TicianoFlix"])
+    if not isinstance(tree, list):
+        print(f"[TicianoFlix] Failed to list TicianoFlix: {tree}", flush=True)
         with _scan_progress_lock:
             _scan_progress["phase"] = "error"
         conn.close()
         return False
 
-    # Find TicianoFlix folder
-    ticianoflix_path = ""
-    if isinstance(root_data, list):
-        for item in root_data:
-            if item.get("IsDir") and item.get("Name") == "TicianoFlix":
-                ticianoflix_path = "/TicianoFlix"
-                conn.execute(
-                    "INSERT OR REPLACE INTO folders (path, name, parent, is_ticianoflix_root, depth) VALUES (?, ?, '', 1, 0)",
-                    (ticianoflix_path, "TicianoFlix")
-                )
-                break
+    root_path = "/TicianoFlix"
+    conn.execute(
+        "INSERT OR REPLACE INTO folders (path, name, parent, is_ticianoflix_root, depth) VALUES (?, ?, '', 1, 0)",
+        (root_path, "TicianoFlix")
+    )
 
-    if not ticianoflix_path:
-        print("[TicianoFlix] TicianoFlix folder not found in drive root!", flush=True)
-        with _scan_progress_lock:
-            _scan_progress["phase"] = "error"
-        conn.commit()
-        conn.close()
-        return False
+    # Build in-memory tree: dirs by full path, files grouped by parent folder
+    dirs = {}
+    files_by_parent = {}
+    for e in tree:
+        rel = e.get("Path", "")
+        full = f"{root_path}/{rel}" if rel else root_path
+        if e.get("IsDir"):
+            dirs[full] = e
+        else:
+            parent = full.rsplit("/", 1)[0]
+            files_by_parent.setdefault(parent, {})[e.get("Name", "")] = e
 
-    # Step 2: List genres (inside TicianoFlix)
-    genres = list_directory_raw(ticianoflix_path)
-    if not isinstance(genres, list):
-        print(f"[TicianoFlix] Failed to list genres: {genres}", flush=True)
-        with _scan_progress_lock:
-            _scan_progress["phase"] = "error"
-        conn.commit()
-        conn.close()
-        return False
+    genre_dirs = {p: e for p, e in dirs.items() if p.count("/") == 2}
+    movie_dirs = {p: e for p, e in dirs.items() if p.count("/") == 3}
 
-    genre_dirs = [g for g in genres if g.get("IsDir")]
+    # DB state
+    db_genres = {r["path"] for r in conn.execute("SELECT path FROM folders WHERE depth=1").fetchall()}
+    db_movies = {r["path"]: r for r in conn.execute(
+        "SELECT path, name, mod_time, has_video FROM folders WHERE depth=2").fetchall()}
+    db_files = {}
+    for r in conn.execute("SELECT folder_path, name, size, mod_time FROM files").fetchall():
+        db_files[(r["folder_path"], r["name"])] = r
+
+    # Remove genres that no longer exist on the Drive
+    removed_prefixes = []
+    for p in db_genres - set(genre_dirs):
+        _remove_folder_tree(conn, p)
+        removed_prefixes.append(p)
+        stats["removed"] += 1
+
+    # Remove movies that no longer exist (skip ones already removed with their genre)
+    for p in set(db_movies) - set(movie_dirs):
+        if any(p.startswith(rp + "/") for rp in removed_prefixes):
+            continue
+        _remove_folder_tree(conn, p)
+        stats["removed"] += 1
+
+    # Direct files at the TicianoFlix root: upsert + prune deleted
+    root_live = files_by_parent.get(root_path, {})
+    for name, fe in root_live.items():
+        _index_file(conn, root_path, fe)
+    for (fp, name) in list(db_files):
+        if fp == root_path and name not in root_live:
+            conn.execute("DELETE FROM files WHERE folder_path=? AND name=?", (fp, name))
+
     total_genres = len(genre_dirs)
-    total_genre_tasks = 0
-
-    # Quick first pass: just count genre directories (faster than listing each)
-    # We'll estimate progress by genre weight instead
     with _scan_progress_lock:
         _scan_progress["phase"] = "genres"
         _scan_progress["genre_total"] = total_genres
 
-    for gi, genre_item in enumerate(genre_dirs):
-        genre_name = genre_item.get("Name", "")
-        genre_path = f"{ticianoflix_path}/{genre_name}"
-        genre_stripped = genre_path.lstrip("/")
+    for gi, (genre_path, genre_entry) in enumerate(sorted(genre_dirs.items())):
+        genre_name = genre_entry.get("Name", "")
 
         with _scan_progress_lock:
             _scan_progress["genre_index"] = gi + 1
             _scan_progress["genre_current"] = genre_name
-            _scan_progress["percent"] = int(((gi) / total_genres) * 100)
+            _scan_progress["percent"] = int((gi / total_genres) * 100) if total_genres else 0
 
         conn.execute(
             "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 1, ?)",
-            (genre_path, genre_name, ticianoflix_path, genre_item.get("ModTime", ""))
+            (genre_path, genre_name, root_path, genre_entry.get("ModTime", ""))
         )
 
-        # Step 3: List movie folders inside genre
-        movie_items = list_directory_raw(f"/{genre_stripped}")
-        if not isinstance(movie_items, list):
-            continue
-
-        # Check for direct video files (unstructured)
+        # Direct files in genre folder (unstructured): upsert + prune deleted
         has_direct_video = False
-        for item in movie_items:
-            if not item.get("IsDir"):
-                ext = Path(item.get("Name", "")).suffix.lower()
-                if ext in VIDEO_EXTENSIONS:
-                    has_direct_video = True
-                _index_file(conn, genre_path, item)
+        live_genre_files = files_by_parent.get(genre_path, {})
+        for name, fe in live_genre_files.items():
+            if Path(name).suffix.lower() in VIDEO_EXTENSIONS:
+                has_direct_video = True
+            _index_file(conn, genre_path, fe)
+        for (fp, name) in list(db_files):
+            if fp == genre_path and name not in live_genre_files:
+                conn.execute("DELETE FROM files WHERE folder_path=? AND name=?", (fp, name))
 
-        movie_dirs = [m for m in movie_items if m.get("IsDir")]
+        # Movies under this genre
+        for movie_path in sorted(m for m in movie_dirs if m.startswith(genre_path + "/")):
+            movie_entry = movie_dirs[movie_path]
+            movie_name = movie_entry.get("Name", "")
+            live_movie_files = files_by_parent.get(movie_path, {})
+            prev = db_movies.get(movie_path)
 
-        for mi, item in enumerate(movie_dirs):
-            movie_name = item.get("Name", "")
-            movie_path = f"{genre_path}/{movie_name}"
-            movie_stripped = movie_path.lstrip("/")
+            # File-level change detection: name set + size/modtime of each file
+            new = prev is None
+            changed = new
+            if not changed:
+                db_keys = {name for (fp, name) in db_files if fp == movie_path}
+                live_keys = set(live_movie_files)
+                if db_keys != live_keys:
+                    changed = True
+                else:
+                    for name in live_keys:
+                        fe = live_movie_files[name]
+                        dr = db_files[(movie_path, name)]
+                        if fe.get("Size", 0) != dr["size"] or fe.get("ModTime", "") != dr["mod_time"]:
+                            changed = True
+                            break
+
+            if prev is not None and not changed:
+                # Unchanged: keep the folder row (preserve has_video), touch nothing else
+                conn.execute(
+                    "INSERT INTO folders (path, name, parent, depth, mod_time, has_video) "
+                    "VALUES (?, ?, ?, 2, ?, ?) "
+                    "ON CONFLICT(path) DO UPDATE SET mod_time=excluded.mod_time",
+                    (movie_path, movie_name, genre_path, movie_entry.get("ModTime", ""), prev["has_video"])
+                )
+                stats["unchanged"] += 1
+                continue
+
+            # New or changed: rebuild folder contents from the same listing
+            conn.execute(
+                "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 2, ?)",
+                (movie_path, movie_name, genre_path, movie_entry.get("ModTime", ""))
+            )
 
             with _scan_progress_lock:
                 _scan_progress["movie_index"] += 1
                 _scan_progress["movie_current"] = movie_name
 
-            conn.execute(
-                "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 2, ?)",
-                (movie_path, movie_name, genre_path, item.get("ModTime", ""))
-            )
+            conn.execute("DELETE FROM files WHERE folder_path=?", (movie_path,))
+            for name, fe in live_movie_files.items():
+                _index_file(conn, movie_path, fe)
 
-            # Step 4: List movie folder contents
-            movie_contents = list_directory_raw(f"/{movie_stripped}")
-            if not isinstance(movie_contents, list):
-                continue
-
-            has_video = False
-            for file_item in movie_contents:
-                if file_item.get("IsDir"):
-                    continue
-                fname = file_item.get("Name", "")
-                ext = Path(fname).suffix.lower()
-                if ext in VIDEO_EXTENSIONS:
-                    has_video = True
-                _index_file(conn, movie_path, file_item)
-
-            if has_video:
+            if any(Path(n).suffix.lower() in VIDEO_EXTENSIONS for n in live_movie_files):
                 conn.execute(
                     "UPDATE folders SET has_video=1 WHERE path=?",
                     (movie_path,)
                 )
 
-                # Parse NFO and save metadata to DB
-                nfo_raw = _fetch_nfo_raw(movie_path)
-                if nfo_raw:
-                    nfo_data = _parse_nfo(nfo_raw)
-                    if nfo_data:
-                        _save_nfo_to_db(conn, movie_path, nfo_data)
+                # NFO only for new/changed movies AND only if the folder really
+                # has one (avoids a slow rclone cat on a missing file)
+                if any(n.lower().endswith(".nfo") for n in live_movie_files):
+                    nfo_raw = _fetch_nfo_raw(movie_path)
+                    if nfo_raw:
+                        nfo_data = _parse_nfo(nfo_raw)
+                        if nfo_data:
+                            _save_nfo_to_db(conn, movie_path, nfo_data)
+
+            if new:
+                stats["added"] += 1
+            else:
+                stats["changed"] += 1
 
         # Mark genre as having content if any movie folder has video
         genre_has_video = conn.execute(
@@ -449,11 +512,6 @@ def scan_drive():
                 (genre_path,)
             )
 
-    # Also index any files directly in TicianoFlix root
-    for item in genres:
-        if not item.get("IsDir"):
-            _index_file(conn, ticianoflix_path, item)
-
     conn.commit()
 
     # Mark ticianoflix root
@@ -465,7 +523,12 @@ def scan_drive():
     set_cache_time()
 
     elapsed = time.time() - start
-    print(f"[TicianoFlix] Scan complete: {total_genres} genres, {total_movies} movies, {total_files} files in {elapsed:.1f}s", flush=True)
+    print(
+        f"[TicianoFlix] Scan complete: {total_genres} genres, {total_movies} movies, {total_files} files "
+        f"in {elapsed:.1f}s (+{stats['added']} novos, ~{stats['changed']} alterados, -{stats['removed']} removidos, "
+        f"{stats['unchanged']} inalterados)",
+        flush=True
+    )
 
     with _scan_progress_lock:
         _scan_progress["phase"] = "done"
@@ -853,13 +916,13 @@ def cached_get_file_info(file_path):
 
 
 def cached_search_files(query):
-    """Search files from cache."""
+    """Search video files from cache (only videos, no poster/fanart dupes)."""
     conn = get_db()
     like = f"%{query}%"
     rows = conn.execute(
         """SELECT * FROM files
            WHERE name LIKE ?
-           AND file_type IN ('video', 'image', 'poster', 'fanart')
+           AND file_type = 'video'
            ORDER BY size DESC
            LIMIT 100""",
         (like,)
@@ -876,10 +939,9 @@ def cached_search_files(query):
             "ModTime": row["mod_time"],
             "IsDir": False,
         }
-        if row["file_type"] == "video":
-            poster = _find_poster_cached(row["folder_path"])
-            if poster:
-                entry["poster"] = poster
+        poster = _find_poster_cached(row["folder_path"])
+        if poster:
+            entry["poster"] = poster
         results.append(entry)
     return results
 
@@ -1449,6 +1511,18 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 500)
             return
 
+        if path == "/api/rclone/webgui/start":
+            self._send_json(start_rclone_webgui())
+            return
+
+        if path == "/api/rclone/webgui/stop":
+            self._send_json(stop_rclone_webgui())
+            return
+
+        if path == "/api/rclone/serve/restart":
+            self._send_json(restart_rclone_serve())
+            return
+
         self._send_error("Not found", 404)
 
     def _handle_restore(self):
@@ -1605,6 +1679,186 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._handle_restore_from_drive()
             return
 
+        # API: Cache manager — returns all movies with cached status
+        if path == "/api/cache-manager":
+            try:
+                movies = cached_all_movies()
+                result = []
+                for m in movies:
+                    folder_path = m["path"]
+                    cached = False
+                    # Check if any video file in this folder is cached
+                    conn_ck = get_db()
+                    rows_ck = conn_ck.execute(
+                        "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                        (folder_path,)
+                    ).fetchall()
+                    if not rows_ck:
+                        rows_ck = conn_ck.execute(
+                            "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                            (folder_path.strip("/"),)
+                        ).fetchall()
+                    conn_ck.close()
+                    for row_ck in rows_ck:
+                        file_path = folder_path.strip("/") + "/" + row_ck["name"]
+                        if _is_file_cached(file_path):
+                            cached = True
+                            break
+                    result.append({
+                        "path": folder_path,
+                        "name": m["name"],
+                        "title": m["title"],
+                        "poster": m["poster"],
+                        "cached": cached,
+                    })
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        # API: Download a movie file to cache (forces VFS caching in background)
+        if path == "/api/cache-download":
+            folder_path = params.get("path", [""])[0]
+            if not folder_path:
+                self._send_json({"status": "error", "error": "Missing path"}, 400)
+                return
+            try:
+                # Find the video file for this folder
+                conn = get_db()
+                row = conn.execute(
+                    "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                    (folder_path,)
+                ).fetchone()
+                conn.close()
+                if not row:
+                    # Try without leading slash
+                    conn2 = get_db()
+                    row2 = conn2.execute(
+                        "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                        (folder_path.strip("/"),)
+                    ).fetchone()
+                    conn2.close()
+                    if not row2:
+                        self._send_json({"status": "error", "error": "No video found"}, 404)
+                        return
+                    row = row2
+                video_name = row["name"]
+                video_path = folder_path.strip("/") + "/" + video_name
+
+                # Check if already cached
+                if _is_file_cached(video_path):
+                    self._send_json({"status": "already_cached", "path": video_path})
+                    return
+
+                # Start background download (forces VFS caching via rclone serve HTTP)
+                def _do_cache_download(file_path, total_bytes):
+                    try:
+                        print(f"[TicianoFlix] Cache download starting: {file_path} ({total_bytes}B)", flush=True)
+
+                        with _download_progress_lock:
+                            _download_progress[file_path] = {"percent": 0, "status": "downloading", "total": total_bytes, "downloaded": 0}
+
+                        if total_bytes <= 0:
+                            # Can't track progress without size, just mark as cached
+                            _mark_file_cached(file_path)
+                            with _download_progress_lock:
+                                _download_progress[file_path] = {"percent": 100, "status": "done"}
+                            print(f"[TicianoFlix] Cache marked (no size info): {file_path}", flush=True)
+                            return
+
+                        # Use HTTP range requests against rclone serve to force VFS caching
+                        safe_url_path = urllib.parse.quote(file_path, safe="/")
+                        rclone_url = f"http://localhost:{RCLONE_SERVE_PORT}/{safe_url_path}"
+                        CHUNK = 5 * 1024 * 1024  # 5MB chunks (same as frontend)
+                        downloaded = 0
+
+                        while downloaded < total_bytes:
+                            end = min(downloaded + CHUNK - 1, total_bytes - 1)
+                            range_hdr = f"bytes={downloaded}-{end}"
+                            try:
+                                req = urllib.request.Request(rclone_url, method="GET")
+                                req.add_header("Range", range_hdr)
+                                with urllib.request.urlopen(req, timeout=120) as resp:
+                                    while True:
+                                        buf = resp.read(65536)
+                                        if not buf:
+                                            break
+                                        downloaded += len(buf)
+                                        pct = min(99, int((downloaded / total_bytes) * 100))
+                                        with _download_progress_lock:
+                                            _download_progress[file_path] = {
+                                                "percent": pct, "status": "downloading",
+                                                "total": total_bytes, "downloaded": downloaded
+                                            }
+                            except Exception as chunk_err:
+                                print(f"[TicianoFlix] Cache chunk error at {downloaded}: {chunk_err}", flush=True)
+                                # Retry once
+                                try:
+                                    req2 = urllib.request.Request(rclone_url, method="GET")
+                                    req2.add_header("Range", range_hdr)
+                                    with urllib.request.urlopen(req2, timeout=120) as resp2:
+                                        while True:
+                                            buf = resp2.read(65536)
+                                            if not buf:
+                                                break
+                                            downloaded += len(buf)
+                                            pct = min(99, int((downloaded / total_bytes) * 100))
+                                            with _download_progress_lock:
+                                                _download_progress[file_path] = {
+                                                    "percent": pct, "status": "downloading",
+                                                    "total": total_bytes, "downloaded": downloaded
+                                                }
+                                except Exception:
+                                    raise
+
+                        # Mark as fully cached
+                        _mark_file_cached(file_path)
+                        with _download_progress_lock:
+                            _download_progress[file_path] = {"percent": 100, "status": "done"}
+                        print(f"[TicianoFlix] Cache download complete: {file_path}", flush=True)
+                    except Exception as e:
+                        print(f"[TicianoFlix] Cache download error: {e}", flush=True)
+                        with _download_progress_lock:
+                            _download_progress[file_path] = {"percent": 0, "status": "error"}
+
+                # Get file size first (needed for progress tracking)
+                file_size = 0
+                # Prefer DB size (fastest, most reliable)
+                try:
+                    conn_sz = get_db()
+                    row_sz = conn_sz.execute(
+                        "SELECT size FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                        (folder_path.strip("/"),)
+                    ).fetchone()
+                    if not row_sz:
+                        row_sz = conn_sz.execute(
+                            "SELECT size FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
+                            (folder_path,)
+                        ).fetchone()
+                    conn_sz.close()
+                    if row_sz and row_sz["size"] > 0:
+                        file_size = row_sz["size"]
+                except Exception:
+                    pass
+
+                t = threading.Thread(target=_do_cache_download, args=(video_path, file_size), daemon=True)
+                t.start()
+                self._send_json({"status": "started", "path": video_path, "name": video_name, "size": file_size})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+            return
+
+        # API: Download progress for a video being cached
+        if path == "/api/cache-download-progress":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_json({"percent": 0, "status": "unknown"})
+                return
+            with _download_progress_lock:
+                prog = dict(_download_progress.get(file_path, {"percent": 0, "status": "unknown"}))
+            self._send_json(prog)
+            return
+
         # API: Check if file is fully cached in rclone VFS
         if path == "/api/check-cached":
             file_path = params.get("path", [""])[0]
@@ -1673,15 +1927,25 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
                 if vfs_cache.exists():
                     removed = 0
-                    folder_key = folder_path.strip("/").replace("/", "_")
-                    for entry in vfs_cache.iterdir():
-                        if entry.is_dir() or entry.is_file():
-                            if folder_key in entry.name or folder_path.strip("/").replace("/", "-") in entry.name:
-                                if entry.is_file():
-                                    entry.unlink()
-                                elif entry.is_dir():
-                                    import shutil
-                                    shutil.rmtree(entry, ignore_errors=True)
+                    # rclone VFS cache stores files under gdrive{hash}/<full remote path>
+                    # Search recursively for any file/dir containing the folder path
+                    folder_stripped = folder_path.strip("/")
+                    for entry in vfs_cache.rglob("*"):
+                        if entry.is_file():
+                            if folder_stripped in str(entry):
+                                entry.unlink()
+                                removed += 1
+                        elif entry.is_dir() and folder_stripped in str(entry):
+                            import shutil
+                            shutil.rmtree(entry, ignore_errors=True)
+                            removed += 1
+                    # Also try matching just the folder name (last path component)
+                    folder_last = folder_stripped.split("/")[-1]
+                    for entry in vfs_cache.rglob("*"):
+                        if entry.is_file() and folder_last in str(entry):
+                            # Check if it's a parent match (not already deleted)
+                            if entry.exists():
+                                entry.unlink()
                                 removed += 1
                     if removed > 0:
                         print(f"[TicianoFlix] Removed {removed} VFS cache entries for {folder_path}", flush=True)
@@ -1921,6 +2185,11 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("File not found", 404)
             return
 
+        # API: rclone status (instalação, remote gdrive, streaming, web UI)
+        if path == "/api/rclone/status":
+            self._send_json(get_rclone_status())
+            return
+
         # Fallback 404
         self._send_error("Not found", 404)
 
@@ -2085,35 +2354,73 @@ def find_free_port():
             return PORT
 
 
-def main():
-    # Initialize database
-    init_db()
-    db_path_abs = DB_PATH.resolve()
+# ═══════════════════════════════════════════════
+#  rclone management (serve, web GUI, status)
+# ═══════════════════════════════════════════════
 
-    # Start rclone serve http (persistent connection = much faster streams)
-    rclone_serve_port = RCLONE_SERVE_PORT
-    rclone_serve_proc = None
-
-    # Check if rclone serve is already running (e.g., started by app.py)
-    rclone_was_running = False
+def _urlopen_ok(url, timeout=2):
+    """True se a URL responder HTTP sem erro."""
     try:
-        import urllib.request as ureq_check
-        ureq_check.urlopen(f"http://localhost:{rclone_serve_port}/", timeout=2)
-        # Verify actual Drive connectivity by listing the root
-        try:
-            ureq_check.urlopen(f"http://localhost:{rclone_serve_port}/TicianoFlix/?format=json", timeout=5)
-            print(f"[TicianoFlix] rclone serve already running on localhost:{rclone_serve_port}", flush=True)
-            rclone_was_running = True
-        except Exception:
-            print(f"[TicianoFlix] rclone serve responds but Drive remote unreachable — will retry/restart", flush=True)
-            rclone_was_running = False
+        import urllib.request as _ur
+        _ur.urlopen(url, timeout=timeout)
+        return True
     except Exception:
-        # Not running — try to start it
-        rclone_was_running = False
+        return False
+
+
+def _kill_rclone_on_port(port):
+    """Best-effort: mata processos rclone ouvindo em 'port' (Linux, via fuser+/proc)."""
+    try:
+        if not Path("/proc").exists():
+            return
+        check = subprocess.run(["fuser", f"{port}/tcp"], capture_output=True, timeout=5)
+        if check.returncode != 0:
+            return
+        for pid in check.stdout.decode().strip().split():
+            try:
+                cmdline_path = Path(f"/proc/{pid}/cmdline")
+                if not cmdline_path.exists():
+                    continue
+                cmd_str = " ".join(cmdline_path.read_text().split("\0"))
+                if "rclone" in cmd_str:
+                    subprocess.run(["kill", pid.strip()], timeout=3)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def start_rclone_serve():
+    """Garante que o 'rclone serve http' esteja rodando na porta 18082.
+
+    Retorna o Popen se este processo iniciou, "external" se já havia um
+    servidor respondendo com o Drive acessível, ou None em caso de falha.
+    """
+    global rclone_server_proc
+    with _rclone_serve_lock:
+        # Já temos um processo vivo iniciado por nós?
+        if rclone_server_proc is not None and rclone_server_proc.poll() is None:
+            return rclone_server_proc
+
+        # Já existe um serve respondendo (ex.: iniciado externamente)?
         try:
-            rclone_serve_proc = subprocess.Popen(
+            import urllib.request as ureq_check
+            ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
+            try:
+                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/TicianoFlix/?format=json", timeout=5)
+                print(f"[TicianoFlix] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
+                return "external"
+            except Exception:
+                print(f"[TicianoFlix] rclone serve responde mas o Drive está inacessível — tentando reiniciar", flush=True)
+                _kill_rclone_on_port(RCLONE_SERVE_PORT)
+                time.sleep(1)
+        except Exception:
+            pass
+
+        try:
+            proc = subprocess.Popen(
                 ["rclone", "serve", "http", "gdrive:",
-                 "--addr", f":{rclone_serve_port}",
+                 "--addr", f":{RCLONE_SERVE_PORT}",
                  "--read-only",
                  "--drive-chunk-size", "128M",
                  "--buffer-size", "512M",
@@ -2127,24 +2434,175 @@ def main():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            print(f"[TicianoFlix] Starting rclone serve http on localhost:{rclone_serve_port}...", end=" ", flush=True)
+            rclone_server_proc = proc
+            print(f"[TicianoFlix] Starting rclone serve http on localhost:{RCLONE_SERVE_PORT}...", end=" ", flush=True)
 
-            # Wait for rclone serve to be ready (up to 10s)
-            import urllib.request as ureq_health
-            for _ in range(10):
+            # Wait for rclone serve to be ready (up to 25s — cold start pode
+            # demorar enquanto o rclone inicializa o VFS e conecta no Drive)
+            for _ in range(25):
                 time.sleep(1)
-                try:
-                    ureq_health.urlopen(f"http://localhost:{rclone_serve_port}/", timeout=2)
+                if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
                     print("ready!", flush=True)
                     break
-                except Exception:
-                    continue
             else:
                 print("timed out, streams may use fallback", flush=True)
+            return proc
         except FileNotFoundError:
             print("[TicianoFlix] WARNING: rclone not found, streams will use fallback method", flush=True)
+            return None
         except Exception as e:
             print(f"[TicianoFlix] WARNING: could not start rclone serve: {e}", flush=True)
+            return None
+
+
+def restart_rclone_serve():
+    """Mata o serve atual (se houver) e sobe um novo. Usado após configurar o remote."""
+    global rclone_server_proc
+    if rclone_server_proc is not None and rclone_server_proc.poll() is None:
+        try:
+            rclone_server_proc.terminate()
+            rclone_server_proc.wait(timeout=5)
+        except Exception:
+            try:
+                rclone_server_proc.kill()
+            except Exception:
+                pass
+    rclone_server_proc = None
+    _kill_rclone_on_port(RCLONE_SERVE_PORT)
+    time.sleep(1)
+
+    proc = start_rclone_serve()
+    if proc is None:
+        return {"status": "error", "error": "Não foi possível iniciar o rclone serve (rclone está instalado?)."}
+    return {"status": "ok", "serve_running": True, "external": proc == "external"}
+
+
+def start_rclone_webgui():
+    """Sobe o 'rclone rcd --rc-web-gui' (configurador oficial do rclone) na porta 5572."""
+    global rclone_webgui_proc
+    with _webgui_lock:
+        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
+            return {
+                "status": "ok", "running": True,
+                "url": f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/",
+                **_webgui_credentials,
+            }
+        import secrets
+        _webgui_credentials["user"] = "ticianoflix"
+        _webgui_credentials["pass"] = secrets.token_urlsafe(9)
+        try:
+            proc = subprocess.Popen(
+                ["rclone", "rcd",
+                 "--rc-web-gui",
+                 "--rc-web-gui-no-open-browser",
+                 "--rc-addr", f":{RCLONE_WEBGUI_PORT}",
+                 "--rc-user", _webgui_credentials["user"],
+                 "--rc-pass", _webgui_credentials["pass"]],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            return {"status": "error", "error": "rclone não está instalado."}
+        rclone_webgui_proc = proc
+
+        # Espera o rcd responder (primeira execução pode baixar os assets da GUI)
+        for _ in range(40):
+            time.sleep(0.5)
+            if proc.poll() is not None:
+                break
+            if _urlopen_ok(f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/", timeout=2):
+                break
+        if proc.poll() is not None:
+            return {"status": "error", "error": f"rclone rcd encerrou com código {proc.returncode}."}
+        return {
+            "status": "ok", "running": True,
+            "url": f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/",
+            **_webgui_credentials,
+        }
+
+
+def stop_rclone_webgui():
+    """Encerra o rclone rcd (web GUI), se estiver rodando."""
+    global rclone_webgui_proc
+    with _webgui_lock:
+        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
+            try:
+                rclone_webgui_proc.terminate()
+                rclone_webgui_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    rclone_webgui_proc.kill()
+                except Exception:
+                    pass
+        rclone_webgui_proc = None
+    return {"status": "ok", "running": False}
+
+
+def get_rclone_status():
+    """Status completo do rclone para o modal da UI."""
+    status = {
+        "installed": False,
+        "version": None,
+        "remote_configured": False,
+        "remote_ok": False,
+        "remote_error": None,
+        "serve_running": False,
+        "webgui": {"running": False, "port": RCLONE_WEBGUI_PORT},
+    }
+    # Instalado? Versão?
+    try:
+        res = subprocess.run(["rclone", "version"], capture_output=True, text=True, timeout=15)
+        if res.returncode == 0 and res.stdout.strip():
+            status["installed"] = True
+            status["version"] = res.stdout.strip().splitlines()[0]
+    except Exception:
+        pass
+
+    if not status["installed"]:
+        return status
+
+    # Remote gdrive: configurado?
+    try:
+        res = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True, timeout=15)
+        remotes = res.stdout.strip().splitlines()
+        status["remote_configured"] = "gdrive:" in remotes
+    except Exception:
+        status["remote_error"] = "Falha ao listar remotes"
+
+    # Remote acessível (autenticação OK)?
+    if status["remote_configured"]:
+        try:
+            res = subprocess.run(["rclone", "lsd", "gdrive:", "--max-depth", "1"],
+                                 capture_output=True, text=True, timeout=20)
+            status["remote_ok"] = res.returncode == 0
+            if not status["remote_ok"]:
+                lines = [l for l in res.stderr.strip().splitlines() if l.strip()]
+                status["remote_error"] = lines[-1] if lines else "Falha na conexão"
+        except subprocess.TimeoutExpired:
+            status["remote_error"] = "Timeout ao testar conexão"
+        except Exception as e:
+            status["remote_error"] = str(e)
+
+    # Serve de streaming ativo?
+    status["serve_running"] = _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
+
+    # Web GUI ativa?
+    if rclone_webgui_proc is not None:
+        status["webgui"]["running"] = rclone_webgui_proc.poll() is None
+        if status["webgui"]["running"]:
+            status["webgui"]["url"] = f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/"
+            status["webgui"]["user"] = _webgui_credentials["user"]
+            status["webgui"]["pass"] = _webgui_credentials["pass"]
+    return status
+
+
+def main():
+    # Initialize database
+    init_db()
+    db_path_abs = DB_PATH.resolve()
+
+    # Start rclone serve http (persistent connection = much faster streams)
+    start_rclone_serve()
 
     # No auto-scan on startup — user must click refresh manually
     conn = get_db()
@@ -2216,7 +2674,7 @@ def main():
 ║  📁 Google Drive via rclone (cached + http)  ║
 ║                                              ║
 ║  ⚡ /api/refresh - rescan drive               ║
-║  🚀 rclone proxy on localhost:{rclone_serve_port}        ║
+║  🚀 rclone proxy on localhost:{RCLONE_SERVE_PORT}        ║
 ╚══════════════════════════════════════════════╝
     """
     print(banner)
@@ -2235,13 +2693,15 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        if rclone_serve_proc:
-            rclone_serve_proc.terminate()
+        if rclone_server_proc is not None and rclone_server_proc.poll() is None:
+            rclone_server_proc.terminate()
             try:
-                rclone_serve_proc.wait(timeout=1)
+                rclone_server_proc.wait(timeout=1)
             except subprocess.TimeoutExpired:
-                rclone_serve_proc.kill()
-                rclone_serve_proc.wait(timeout=1)
+                rclone_server_proc.kill()
+                rclone_server_proc.wait(timeout=1)
+        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
+            rclone_webgui_proc.terminate()
         server.server_close()
         print("[TicianoFlix] Servidor parado.")
 

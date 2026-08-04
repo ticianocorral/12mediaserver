@@ -4,7 +4,7 @@
   <p>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
-    <img src="https://img.shields.io/badge/version-1.0-red" alt="v1.0">
+    <img src="https://img.shields.io/badge/version-1.5-red" alt="v1.5">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
   </p>
 </div>
@@ -40,7 +40,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 
 - **Python 3.10+**
 - **rclone** (com remote `gdrive:` configurado)
-- Linux com systemd (user services)
+- Linux (systemd) · macOS (LaunchAgent) · Windows — veja abaixo
 
 ### 1. Configurar o Google Drive no rclone
 
@@ -53,7 +53,14 @@ Crie um remote chamado `gdrive:` com:
 - Escopo: `drive` (acesso completo) ou `drive.file`
 - Autenticação via OAuth no navegador
 
+> 💡 Depois de instalado, dá pra configurar pelo próprio TicianoFlix:
+> clique em **☁️ rclone** no menu lateral — ele mostra o status (instalado,
+> remote `gdrive:`, streaming) e abre o configurador oficial do rclone
+> (web GUI) pra criar o remote sem usar o terminal.
+
 ### 2. Clonar e instalar
+
+**Linux (systemd):**
 
 ```bash
 git clone https://github.com/seu-usuario/ticianoflix.git
@@ -66,6 +73,38 @@ O instalador cuida de:
 - Criar o serviço systemd
 - Ativar persistência mesmo sem login (`linger`)
 - Iniciar o servidor
+
+**macOS (LaunchAgent):**
+
+```bash
+git clone https://github.com/seu-usuario/ticianoflix.git
+cd ticianoflix
+bash install-macos.sh
+```
+
+O instalador verifica/instala Python e rclone (Homebrew ou script oficial),
+cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair) e
+grava os logs em `~/.cache/ticianoflix/ticianoflix.log`.
+
+Comandos úteis:
+```bash
+# Reiniciar
+launchctl kickstart gui/$(id -u)/com.ticianoflix
+# Parar/desativar
+launchctl bootout gui/$(id -u)/com.ticianoflix
+```
+
+**Windows (Task Scheduler opcional):**
+
+```bat
+git clone https://github.com/seu-usuario/ticianoflix.git
+cd ticianoflix
+install-windows.bat
+```
+
+O instalador verifica/instala Python e rclone (winget ou download oficial),
+cria o `TicianoFlix.bat` na pasta do projeto e pergunta se você quer iniciar
+junto com o Windows (tarefa agendada no login) e se quer iniciar agora.
 
 ### 3. Acessar
 
@@ -212,6 +251,16 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 ---
 
 ## 📋 Changelog
+
+### v1.5 — Busca na sidebar, scan incremental, home reorganizada
+
+- Busca movida para a sidebar (acima de Início), com resultados ao vivo enquanto digita e botão limpar (✕)
+- Resultados de busca em grade única, sem mostrar as pastas dos filmes
+- Atualização (scan) incremental: só busca filmes novos/alterados e remove os apagados — ~2s em vez de ~40s
+- Barra de progresso do scan mais compacta
+- Home reorganizada: Últimos Adicionados (máx. 7) → Continuar Assistindo → Offline
+- Acesso rápido ao rclone via ☁️ ao lado do uso de cache; menu: Atualizar, Backup, Gerenciar Cache, Limpar Cache
+- Versão clicável (v1.5) abre o changelog da última versão
 
 ### v1.1 — Limpeza de código
 

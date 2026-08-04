@@ -42,58 +42,48 @@
   ::-webkit-scrollbar-thumb:hover { background: #555; }
   a { color: inherit; text-decoration: none; }
 
-  /* ====== HEADER / NAVBAR ====== */
-  .header {
-    position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    z-index: 1000;
+  /* ====== SIDEBAR SEARCH ====== */
+  .sidebar-search {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 0 48px;
-    height: 68px;
-    background: linear-gradient(180deg, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0) 100%);
-    transition: background var(--transition);
-  }
-  .header.scrolled {
-    background: rgba(20,20,20,0.98);
-    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-  .search-box {
-    display: flex;
-    align-items: center;
+    margin: 4px 12px 10px;
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 24px;
-    padding: 6px 16px;
+    border-radius: 20px;
+    padding: 7px 12px;
     transition: all var(--transition);
   }
-  .search-box:focus-within {
+  .sidebar-search:focus-within {
     background: rgba(255,255,255,0.15);
     border-color: rgba(255,255,255,0.3);
   }
-  .search-box input {
+  .sidebar-search input {
     background: none;
     border: none;
     outline: none;
     color: var(--text);
-    font-size: 14px;
-    width: 200px;
-    padding: 6px 0;
+    font-size: 13px;
+    width: 100%;
+    padding: 0;
   }
-  .search-box input::placeholder { color: var(--text3); }
-  .search-box .search-icon {
-    font-size: 18px;
+  .sidebar-search input::placeholder { color: var(--text3); }
+  .sidebar-search .search-icon {
+    font-size: 15px;
     margin-right: 8px;
     opacity: 0.5;
   }
+  .sidebar-search .search-clear {
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 2px 0 2px 6px;
+    color: var(--text3);
+    user-select: none;
+  }
+  .sidebar-search .search-clear.show { opacity: 0.7; }
+  .sidebar-search .search-clear:hover { opacity: 1; color: var(--text); }
   .toast {
     position: fixed;
     bottom: 24px;
@@ -165,6 +155,13 @@
     margin-left: 6px;
     align-self: flex-end;
     padding-bottom: 4px;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+  }
+  .sidebar-header .logo-version:hover {
+    color: var(--text);
+    text-decoration: underline;
   }
   .sidebar-nav {
     flex: 1;
@@ -224,12 +221,12 @@
 
   /* Scan progress bar in sidebar */
   .scan-progress-container {
-    padding: 6px 20px 12px;
+    padding: 2px 20px 6px;
   }
   .scan-progress-bar {
     background: rgba(255,255,255,0.1);
     border-radius: 4px;
-    height: 4px;
+    height: 2px;
     overflow: hidden;
   }
   .scan-progress-fill {
@@ -240,9 +237,9 @@
     transition: width 0.4s ease;
   }
   .scan-progress-text {
-    font-size: 11px;
+    font-size: 10px;
     color: rgba(255,255,255,0.5);
-    margin-top: 4px;
+    margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -256,10 +253,21 @@
     border-top: 1px solid rgba(255,255,255,0.06);
     margin-top: 4px;
   }
+  .sidebar-cache-usage .rclone-link {
+    margin-left: 6px;
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s;
+  }
+  .sidebar-cache-usage .rclone-link:hover {
+    opacity: 1;
+  }
 
   /* ====== MAIN CONTENT ====== */
   .main {
-    padding-top: 90px;
+    padding-top: 28px;
     padding-left: 48px;
     padding-right: 48px;
     padding-bottom: 80px;
@@ -438,6 +446,144 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ====== CACHE MANAGER MODAL ====== */
+  .cache-manager-search {
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 24px;
+    padding: 8px 16px;
+    margin-bottom: 16px;
+    transition: all var(--transition);
+  }
+  .cache-manager-search:focus-within {
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .cache-manager-search input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 13px;
+    width: 100%;
+    padding: 4px 0;
+  }
+  .cache-manager-search input::placeholder { color: var(--text3); }
+  .cache-manager-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cache-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    transition: background var(--transition);
+    cursor: default;
+  }
+  .cache-item:hover { background: rgba(255,255,255,0.05); }
+  .cache-item-poster {
+    width: 36px;
+    height: 54px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--bg3);
+    flex-shrink: 0;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cache-item-title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cache-item-status {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cache-item-status.cached {
+    background: rgba(76,175,80,0.15);
+    color: #4caf50;
+  }
+  .cache-item-status.uncached {
+    background: rgba(255,255,255,0.06);
+    color: var(--text3);
+  }
+  .cache-item-status.downloading {
+    background: rgba(33,150,243,0.15);
+    color: #2196f3;
+  }
+  .cache-item-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text2);
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cache-item-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+  }
+  .cache-item-btn.download {
+    border-color: rgba(33,150,243,0.3);
+    color: #64b5f6;
+  }
+  .cache-item-btn.download:hover {
+    background: rgba(33,150,243,0.12);
+    border-color: #64b5f6;
+  }
+  .cache-item-btn.delete {
+    border-color: rgba(244,67,54,0.3);
+    color: #ef9a9a;
+  }
+  .cache-item-btn.delete:hover {
+    background: rgba(244,67,54,0.12);
+    border-color: #ef9a9a;
+  }
+  .cache-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    padding: 0 4px;
+  }
+  .cache-stat-box {
+    background: rgba(255,255,255,0.04);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    flex: 1;
+    text-align: center;
+  }
+  .cache-stat-num {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .cache-stat-label {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+  .cache-stat-num.cached-num { color: #4caf50; }
+  .cache-stat-num.total-num { color: var(--text); }
+
   /* ====== BACKUP MODAL ====== */
   .modal-overlay {
     display: none;
@@ -498,6 +644,78 @@
   .backup-icon { font-size: 24px; width: 40px; text-align: center; flex-shrink: 0; }
   .backup-option-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
   .backup-option-desc { font-size: 12px; color: var(--text3); line-height: 1.4; }
+
+  /* ====== RCLONE MODAL ====== */
+  .rclone-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.04);
+  }
+  .rclone-label { font-size: 13px; color: var(--text3); }
+  .rclone-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rclone-badge.ok { background: rgba(76,175,80,0.15); color: #66bb6a; }
+  .rclone-badge.bad { background: rgba(244,67,54,0.15); color: #ef5350; }
+  .rclone-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .rclone-action-btn {
+    flex: 1 1 auto;
+    min-width: 130px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .rclone-action-btn:hover { background: rgba(255,255,255,0.15); }
+  .rclone-action-btn.primary { background: var(--accent); color: #fff; }
+  .rclone-action-btn.primary:hover { filter: brightness(1.15); }
+  .rclone-help {
+    font-size: 12px;
+    color: var(--text3);
+    line-height: 1.5;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed rgba(255,255,255,0.12);
+  }
+  .rclone-help code {
+    background: rgba(0,0,0,0.4);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .rclone-creds {
+    font-size: 12px;
+    color: var(--text2);
+    background: rgba(0,0,0,0.35);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    line-height: 1.6;
+  }
+  .rclone-creds b { color: var(--text); }
+  .rclone-creds a, .rclone-help a { color: var(--accent); }
 
   /* ====== CONFIRM MODAL ====== */
   .confirm-modal { max-width: 380px; }
@@ -1149,7 +1367,6 @@
   /* ====== RESPONSIVE ====== */
   @media (max-width: 1024px) {
     .main { padding-left: 24px; padding-right: 24px; }
-    .header { padding: 0 24px; }
     .hero { padding: 24px 24px; }
     .movie-info-content { flex-direction: column; align-items: center; text-align: center; gap: 24px; }
     .movie-info-poster { flex: 0 0 200px; }
@@ -1157,9 +1374,7 @@
   }
   @media (max-width: 768px) {
     .main { padding-left: 16px; padding-right: 16px; }
-    .header { padding: 0 16px; height: 56px; }
     .logo { font-size: 22px; }
-    .search-box input { width: 120px; font-size: 13px; }
     .hero { height: 200px; border-radius: var(--radius); margin-bottom: 24px; }
     .hero-content { padding: 24px 16px; }
     .hero h1 { font-size: 22px; }
@@ -1173,22 +1388,10 @@
   }
   @media (max-width: 480px) {
     .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .search-box input { width: 80px; font-size: 12px; }
-    .header-right { gap: 10px; }
   }
 </style>
 </head>
 <body>
-
-  <!-- ====== HEADER ====== -->
-  <header class="header" id="header">
-    <div class="header-right" style="flex:1;justify-content:center">
-      <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="Pesquisar filmes..." onkeydown="if(event.key==='Enter') search()">
-      </div>
-    </div>
-  </header>
 
   <!-- ====== BREADCRUMB ====== -->
   <div class="main" id="main">
@@ -1230,9 +1433,14 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text">▶ TicianoFlix</span>
-      <span class="logo-version">v1.0</span>
+      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.5</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
+      <div class="sidebar-search">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Pesquisar filmes..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter') search(); else if(event.key==='Escape') clearSearch()">
+        <span class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpar busca">✕</span>
+      </div>
       <button class="sidebar-item active" onclick="loadPath('')">
         <span class="icon">🏠</span> Início
       </button>
@@ -1243,9 +1451,6 @@
       <div id="sidebarGenres"></div>
     </div>
     <div class="sidebar-footer">
-      <button class="sidebar-item" onclick="openBackupModal()" title="Backup, upload e restauração">
-        <span class="icon">💾</span> Backup
-      </button>
       <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear Google Drive em busca de filmes novos">
         <span class="icon">🔄</span> Atualizar
       </button>
@@ -1255,10 +1460,18 @@
         </div>
         <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
       </div>
+      <button class="sidebar-item" onclick="openBackupModal()" title="Backup, upload e restauração">
+        <span class="icon">💾</span> Backup
+      </button>
+      <button class="sidebar-item" onclick="openCacheManager()" title="Gerenciar cache offline — baixar ou apagar filmes">
+        <span class="icon">📦</span> Gerenciar Cache
+      </button>
       <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
         <span class="icon">🧹</span> Limpar Cache
       </button>
-      <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span></div>
+      <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span>
+        <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração">☁️</a>
+      </div>
     </div>
   </div>
 
@@ -1302,6 +1515,67 @@
     </div>
   </div>
   <input type="file" id="restoreFileInput" accept=".zip" style="display:none" onchange="restoreFromFile(this)">
+
+  <!-- ====== CACHE MANAGER MODAL ====== -->
+  <div class="modal-overlay" id="cacheManagerModal">
+    <div class="modal" style="width:560px">
+      <div class="modal-header">
+        <span class="modal-title">📦 Gerenciar Cache</span>
+        <button class="modal-close" onclick="closeCacheManager()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="cache-stats" id="cacheStats">
+          <div class="cache-stat-box">
+            <div class="cache-stat-num total-num" id="cmTotalMovies">—</div>
+            <div class="cache-stat-label">Total Filmes</div>
+          </div>
+          <div class="cache-stat-box">
+            <div class="cache-stat-num cached-num" id="cmCachedMovies">0</div>
+            <div class="cache-stat-label">Offline</div>
+          </div>
+          <div class="cache-stat-box">
+            <div class="cache-stat-num" id="cmUsageSize">—</div>
+            <div class="cache-stat-label">Tamanho Cache</div>
+          </div>
+        </div>
+        <div class="cache-manager-search">
+          <span style="font-size:14px;opacity:0.5;margin-right:8px">🔍</span>
+          <input type="text" id="cmSearchInput" placeholder="Filtrar filmes..." oninput="filterCacheList()">
+        </div>
+        <div class="cache-manager-list" id="cmList">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando filmes...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== RCLONE MODAL ====== -->
+  <div class="modal-overlay" id="rcloneModal">
+    <div class="modal" style="width:520px">
+      <div class="modal-header">
+        <span class="modal-title">☁️ rclone</span>
+        <button class="modal-close" onclick="closeRcloneModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="rcloneStatus">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Verificando status...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== CHANGELOG MODAL ====== -->
+  <div class="modal-overlay" id="changelogModal">
+    <div class="modal" style="width:560px">
+      <div class="modal-header">
+        <span class="modal-title">📋 Changelog</span>
+        <button class="modal-close" onclick="closeChangelogModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="changelogContent"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ====== PLAYER OVERLAY ====== -->
   <div class="player-overlay" id="playerOverlay">
@@ -1452,10 +1726,42 @@
 
   // Override apiFetch calls to use cache where possible
   // ==================== SEARCH ====================
+  let _searchTimer = null;
+  let _lastSearchQuery = null;
+
+  function _updateSearchClear() {
+    const clear = document.getElementById('searchClear');
+    if (clear) clear.classList.toggle('show', document.getElementById('searchInput').value.length > 0);
+  }
+
+  // Busca ao vivo: debounce enquanto digita; Enter dispara na hora
+  function onSearchInput() {
+    clearTimeout(_searchTimer);
+    _updateSearchClear();
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) { loadPath(''); return; }
+    _searchTimer = setTimeout(search, 250);
+  }
+
+  function clearSearch() {
+    clearTimeout(_searchTimer);
+    const input = document.getElementById('searchInput');
+    input.value = '';
+    _updateSearchClear();
+    _lastSearchQuery = null;
+    loadPath('');
+    input.focus();
+  }
+
   function search() {
     const q = document.getElementById('searchInput').value.trim();
     if (!q) { loadPath(''); return; }
-    document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Pesquisando...</span></div>';
+    _updateSearchClear();
+    // Só mostra o loading quando o termo mudou (evita flicker ao refinar a busca)
+    if (_lastSearchQuery !== q) {
+      _lastSearchQuery = q;
+      document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Pesquisando...</span></div>';
+    }
 
     cachedFetch('/api/search?q=' + encodeURIComponent(q)).then(data => {
       if (!data || !data.results) {
@@ -1483,37 +1789,20 @@
       return;
     }
 
-    // Group by directory
-    const groups = {};
-    results.forEach(item => {
-      const dir = item.Path ? item.Path.replace('/' + item.Name, '') : '';
-      const key = dir || '/';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
-    });
-
-    const groupKeys = Object.keys(groups);
     let html = `<div class="genre-section">
       <div class="genre-header" style="cursor:default;border:none">
         <div class="genre-title">🔍 Resultados para "${query}" <span class="genre-count">(${results.length})</span></div>
-      </div>`;
+      </div>
+      <div class="movie-grid">`;
 
-    groupKeys.forEach(key => {
-      const items = groups[key];
-      const displayPath = key === '/' ? 'Raiz' : key;
-      html += `<div style="margin-bottom:16px">
-        <div style="font-size:14px;color:var(--text3);margin-bottom:8px;padding:0 4px">📁 ${escHtml(displayPath)}</div>
-        <div class="movie-grid">`;
-      items.forEach(item => {
-        const name = item.Name || '';
-        const filePath = item.Path ? '/' + item.Path : '';
-        const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
-        html += renderMovieCardHtml(name, filePath, item.Size, posterSrc);
-      });
-      html += `</div></div>`;
+    results.forEach(item => {
+      const name = item.Name || '';
+      const filePath = item.Path ? '/' + item.Path : '';
+      const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
+      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc);
     });
 
-    html += `</div>
+    html += `</div></div>
       <div class="genre-section">
         <div class="genre-header" onclick="loadPath('')">
           <div class="genre-title"><span class="arrow">←</span> Voltar ao início</div>
@@ -1562,6 +1851,7 @@
     currentPath = path;
     document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
     document.getElementById('searchInput').value = '';
+    _updateSearchClear();
 
     // Close any open info overlay
     closeMovieInfo();
@@ -1582,6 +1872,7 @@
   function loadAZ() {
     currentPath = '__az__';
     document.getElementById('searchInput').value = '';
+    _updateSearchClear();
     closeMovieInfo();
     document.getElementById('hero').style.display = 'none';
     const container = document.getElementById('content');
@@ -1711,12 +2002,6 @@
           <div style="font-size:13px;color:var(--text3)">Filmes</div>
         </div>
       </div>
-      <div class="genre-section" id="continueWatchingSection" style="display:none">
-        <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">▶ Continuar Assistindo</div>
-        </div>
-        <div class="movie-grid" id="continueWatchingGrid"></div>
-      </div>
       <div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title">📥 Últimos Adicionados</div>
@@ -1724,6 +2009,12 @@
         <div class="movie-grid" id="recentGrid">
           <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
+      </div>
+      <div class="genre-section" id="continueWatchingSection" style="display:none">
+        <div class="genre-header" style="cursor:default;border:none">
+          <div class="genre-title">▶ Continuar Assistindo</div>
+        </div>
+        <div class="movie-grid" id="continueWatchingGrid"></div>
       </div>
       <div class="genre-section" id="offlineSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
@@ -1744,8 +2035,8 @@
         grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Nenhum filme ainda</h3></div>';
         return;
       }
-      // Show up to 6 newest
-      const recent = movies.slice(0, 6);
+      // Show up to 7 newest
+      const recent = movies.slice(0, 7);
       // Update total count in stats card
       var countEl = document.getElementById('totalMovieCount');
       if (countEl) countEl.textContent = movies.length;
@@ -3166,16 +3457,6 @@
     container.classList.toggle('is-fullscreen', !!document.webkitFullscreenElement);
   });
 
-  // ==================== HEADER SCROLL ====================
-  window.addEventListener('scroll', function() {
-    const header = document.getElementById('header');
-    if (window.scrollY > 50) {
-      header.classList.add('scrolled');
-    } else {
-      header.classList.remove('scrolled');
-    }
-  });
-
   // ==================== UTILS ====================
   function escHtml(str) {
     const div = document.createElement('div');
@@ -3203,6 +3484,27 @@
       _cachedSet.add(folderPath);
       localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
     }
+  }
+  // Sync _cachedSet with server's actual cache state (e.g. after server restart)
+  async function _syncCachedFromServer() {
+    try {
+      const res = await fetch('/api/cache-manager');
+      const movies = await res.json();
+      if (!movies) return;
+      let changed = false;
+      movies.forEach(m => {
+        if (m.cached && !_cachedSet.has(m.path)) {
+          _cachedSet.add(m.path);
+          changed = true;
+        } else if (!m.cached && _cachedSet.has(m.path)) {
+          _cachedSet.delete(m.path);
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+      }
+    } catch(_) {}
   }
 
   function clearCache() {
@@ -3356,7 +3658,8 @@
 
     const paths = [..._cachedSet];
     if (paths.length === 0) {
-      _checkServerCached();
+      section.style.display = 'none';
+      grid.innerHTML = '';
       return;
     }
 
@@ -3392,12 +3695,444 @@
     grid.innerHTML = html;
   }
 
+  // ==================== CACHE MANAGER MODAL ====================
+  let _cmMovies = [];
+  let _cmDownloading = new Set();     // folder_paths being downloaded
+  let _cmVideoPaths = {};            // folder_path -> video_path
+  let _cmPollTimers = {};            // folder_path -> timer id
+
+  function openCacheManager() {
+    document.getElementById('cacheManagerModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _cmDownloading.clear();
+    // Sync cached state from server so modal shows accurate status
+    _syncCachedFromServer().then(() => _loadCacheManagerList());
+  }
+
+  function closeCacheManager() {
+    document.getElementById('cacheManagerModal').classList.remove('active');
+    document.body.style.overflow = '';
+    // Stop all poll timers
+    for (const k in _cmPollTimers) {
+      clearInterval(_cmPollTimers[k]);
+    }
+    _cmPollTimers = {};
+  }
+
+  // Close on backdrop click
+  document.getElementById('cacheManagerModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCacheManager();
+  });
+
+  async function _loadCacheManagerList() {
+    const list = document.getElementById('cmList');
+    list.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando filmes...</span></div>';
+    try {
+      const res = await fetch('/api/cache-manager');
+      const movies = await res.json();
+      if (!movies || movies.length === 0) {
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><h3>Nenhum filme encontrado</h3><p>Escaneie o Google Drive primeiro.</p></div>';
+        return;
+      }
+      _cmMovies = movies;
+      _renderCacheList(movies);
+    } catch(e) {
+      list.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3></div>';
+    }
+  }
+
+  function _updateCacheStats() {
+    const total = _cmMovies.length;
+    const cached = _cmMovies.filter(m => m.cached).length;
+    document.getElementById('cmTotalMovies').textContent = total;
+    document.getElementById('cmCachedMovies').textContent = cached;
+    // Fetch cache usage
+    fetch('/api/cache-status').then(r => r.json()).then(s => {
+      if (s && s.usage) {
+        const t = s.usage.total;
+        let h = '';
+        if (t < 1024) h = t + 'B';
+        else if (t < 1048576) h = (t / 1024).toFixed(1) + 'K';
+        else if (t < 1073741824) h = (t / 1048576).toFixed(1) + 'M';
+        else h = (t / 1073741824).toFixed(2) + 'G';
+        document.getElementById('cmUsageSize').textContent = h;
+      }
+    }).catch(() => {});
+  }
+
+  function _renderCacheList(movies) {
+    const list = document.getElementById('cmList');
+    const search = document.getElementById('cmSearchInput').value.toLowerCase().trim();
+    _updateCacheStats();
+
+    let filtered = movies;
+    if (search) {
+      filtered = movies.filter(m => {
+        const title = (m.title || m.name || '').toLowerCase();
+        return title.indexOf(search) !== -1;
+      });
+    }
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-icon">🔍</div><h3>Nenhum filme encontrado</h3></div>';
+      return;
+    }
+
+    let html = '';
+    filtered.forEach((m, idx) => {
+      const title = (m.title || m.name || '').replace(/[._]/g, ' ');
+      const nameClean = title.replace(/\.[^.]+$/, '');
+      const isCached = m.cached;
+      const isDownloading = _cmDownloading.has(m.path);
+      const statusClass = isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached');
+      let statusLabel = isDownloading ? '⬇ 0%' : (isCached ? '📥 Offline' : '☁️ Online');
+      // Reuse cached progress from download tracker if available
+      if (isDownloading && _cmPcts && _cmPcts[m.path] !== undefined) {
+        statusLabel = '⬇ ' + _cmPcts[m.path] + '%';
+      }
+
+      html += '<div class="cache-item" data-path="' + m.path + '">';
+
+      // Poster thumbnail
+      if (m.poster) {
+        html += '<img class="cache-item-poster" src="' + posterUrl(m.path, m.poster) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster>🎬</div>\'">';
+      } else {
+        html += '<div class="cache-item-poster">🎬</div>';
+      }
+
+      html += '<div class="cache-item-title" title="' + escHtml(nameClean) + '">' + escHtml(nameClean) + '</div>';
+      html += '<span class="cache-item-status ' + statusClass + '" id="cmStatus-' + idx + '">' + statusLabel + '</span>';
+
+      if (isDownloading) {
+        html += '<button class="cache-item-btn" disabled style="opacity:0.4">⏳</button>';
+      } else if (isCached) {
+        html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + encodeURIComponent(m.path) + '\', ' + idx + ')">🗑 Apagar</button>';
+      } else {
+        html += '<button class="cache-item-btn download" onclick="_cmDownload(\'' + encodeURIComponent(m.path) + '\', ' + idx + ')">📥 Baixar</button>';
+      }
+
+      html += '</div>';
+    });
+    list.innerHTML = html;
+  }
+
+  let _cmPcts = {};  // folder_path -> percent (shared across renders)
+
+  function filterCacheList() {
+    _renderCacheList(_cmMovies);
+  }
+
+  async function _cmDownload(encodedPath, idx) {
+    const folderPath = decodeURIComponent(encodedPath);
+    _cmDownloading.add(folderPath);
+
+    // Update UI immediately
+    const statusEl = document.getElementById('cmStatus-' + idx);
+    if (statusEl) {
+      statusEl.className = 'cache-item-status downloading';
+      statusEl.textContent = '⬇ 0%';
+    }
+    const btn = statusEl ? statusEl.nextElementSibling : null;
+    if (btn) {
+      btn.outerHTML = '<button class="cache-item-btn" disabled style="opacity:0.4">⏳</button>';
+    }
+
+    showToast('📥 Baixando ' + (folderPath.split('/').pop() || 'filme') + '...', '');
+
+    try {
+      const res = await fetch('/api/cache-download?path=' + encodeURIComponent(folderPath));
+      const data = await res.json();
+      if (data.status === 'already_cached') {
+        _cmDownloading.delete(folderPath);
+        const local = _cmMovies.find(m => m.path === folderPath);
+        if (local) local.cached = true;
+        _renderCacheList(_cmMovies);
+        showToast('📥 Filme já estava em cache', 'success');
+        return;
+      }
+      if (data.status !== 'started') {
+        _cmDownloading.delete(folderPath);
+        _renderCacheList(_cmMovies);
+        showToast('Erro: ' + (data.error || 'desconhecido'), 'error');
+        return;
+      }
+
+      // Store video path for progress polling
+      const videoPath = data.path;
+      _cmVideoPaths[folderPath] = videoPath;
+      showToast('📥 Download iniciado em segundo plano', 'info');
+
+      // Poll progress
+      _cmPcts[folderPath] = 0;
+      let attempts = 0;
+      _cmPollTimers[folderPath] = setInterval(async () => {
+        attempts++;
+        try {
+          const pRes = await fetch('/api/cache-download-progress?path=' + encodeURIComponent(videoPath));
+          const prog = await pRes.json();
+
+          if (prog.status === 'done' || prog.percent >= 100) {
+            // Complete!
+            clearInterval(_cmPollTimers[folderPath]);
+            delete _cmPollTimers[folderPath];
+            _cmDownloading.delete(folderPath);
+            delete _cmPcts[folderPath];
+            // Update local data
+            const local = _cmMovies.find(m => m.path === folderPath);
+            if (local) local.cached = true;
+            // Also update _cachedSet in localStorage
+            _cachedSet.add(folderPath);
+            localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+            _renderCacheList(_cmMovies);
+            // Refresh offline section on home and cache usage
+            _renderOfflineGrid();
+            _invalidateCache('/api/cache-status');
+            updateCacheUsage();
+            showToast('✅ ' + (folderPath.split('/').pop() || 'Filme') + ' está offline!', 'success');
+            return;
+          }
+
+          if (prog.status === 'error') {
+            clearInterval(_cmPollTimers[folderPath]);
+            delete _cmPollTimers[folderPath];
+            _cmDownloading.delete(folderPath);
+            delete _cmPcts[folderPath];
+            _renderCacheList(_cmMovies);
+            showToast('❌ Erro no download', 'error');
+            return;
+          }
+
+          // Update progress percentage on tag
+          if (prog.percent !== undefined) {
+            _cmPcts[folderPath] = prog.percent;
+            const stEl = document.getElementById('cmStatus-' + idx);
+            if (stEl) {
+              stEl.textContent = '⬇ ' + prog.percent + '%';
+            }
+          }
+        } catch(e) {}
+
+        // Timeout after 5 min
+        if (attempts > 300) {
+          clearInterval(_cmPollTimers[folderPath]);
+          delete _cmPollTimers[folderPath];
+          _cmDownloading.delete(folderPath);
+          delete _cmPcts[folderPath];
+          _renderCacheList(_cmMovies);
+        }
+      }, 1000);
+    } catch(e) {
+      _cmDownloading.delete(folderPath);
+      delete _cmPcts[folderPath];
+      _renderCacheList(_cmMovies);
+      showToast('Erro ao iniciar download: ' + e.message, 'error');
+    }
+  }
+
+  async function _cmDeleteCache(encodedPath, idx) {
+    const path = decodeURIComponent(encodedPath);
+    showToast('🗑 Removendo cache de ' + (path.split('/').pop() || 'filme') + '...', '');
+    try {
+      const res = await fetch('/api/uncache?path=' + encodeURIComponent(path));
+      const data = await res.json();
+      if (data.status === 'ok') {
+        // Update local data
+        const local = _cmMovies.find(m => m.path === path);
+        if (local) local.cached = false;
+        _renderCacheList(_cmMovies);
+
+        // Also update _cachedSet in localStorage
+        _cachedSet.delete(path);
+        localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+        // Re-render offline grid on home if visible
+        _renderOfflineGrid();
+
+        showToast('🗑 Cache removido com sucesso!', 'success');
+      } else {
+        showToast('Erro: ' + (data.error || 'falha ao remover'), 'error');
+      }
+    } catch(e) {
+      showToast('Erro ao remover cache: ' + e.message, 'error');
+    }
+    updateCacheUsage();
+  }
+
   // ==================== BACKUP MODAL ====================
   function openBackupModal() {
     document.getElementById('backupModal').classList.add('active');
   }
   function closeBackupModal() {
     document.getElementById('backupModal').classList.remove('active');
+  }
+
+  // ==================== RCLONE MODAL ====================
+  function openRcloneModal() {
+    document.getElementById('rcloneModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _loadRcloneStatus();
+  }
+  function closeRcloneModal() {
+    document.getElementById('rcloneModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('rcloneModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRcloneModal();
+  });
+
+  // ==================== CHANGELOG MODAL ====================
+  // Só a última entrada é exibida no modal (versões anteriores ficam no README)
+  const _CHANGELOG = [
+    {
+      version: '1.5',
+      title: 'Busca na sidebar, scan incremental, home reorganizada',
+      changes: [
+        'Busca movida para a sidebar (acima de Início), com resultados ao vivo enquanto digita e botão limpar (✕)',
+        'Resultados de busca em grade única, sem mostrar as pastas dos filmes',
+        'Atualização (scan) incremental: só busca filmes novos/alterados e remove os apagados — ~2s em vez de ~40s',
+        'Barra de progresso do scan mais compacta',
+        'Home reorganizada: Últimos Adicionados (máx. 7) → Continuar Assistindo → Offline',
+        'Acesso rápido ao rclone via ☁️ ao lado do uso de cache; menu: Atualizar, Backup, Gerenciar Cache, Limpar Cache',
+      ],
+    },
+  ];
+
+  function openChangelogModal() {
+    document.getElementById('changelogModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    const latest = _CHANGELOG[0];
+    let html = '<div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:2px">'
+      + 'v' + escHtml(latest.version) + ' — ' + escHtml(latest.title) + '</div>';
+    html += '<ul style="margin:10px 0 0;padding-left:20px;font-size:13px;color:var(--text2);line-height:1.8">';
+    latest.changes.forEach(c => { html += '<li>' + escHtml(c) + '</li>'; });
+    html += '</ul>';
+    document.getElementById('changelogContent').innerHTML = html;
+  }
+  function closeChangelogModal() {
+    document.getElementById('changelogModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('changelogModal').addEventListener('click', function(e) {
+    if (e.target === this) closeChangelogModal();
+  });
+
+  async function _loadRcloneStatus() {
+    const box = document.getElementById('rcloneStatus');
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Verificando status do rclone...</span></div>';
+    try {
+      const res = await fetch('/api/rclone/status');
+      const s = await res.json();
+      _renderRcloneStatus(box, s);
+    } catch(e) {
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao verificar status</h3></div>';
+    }
+  }
+
+  function _rcloneBadge(ok, textOk, textBad) {
+    return ok
+      ? '<span class="rclone-badge ok">✓ ' + textOk + '</span>'
+      : '<span class="rclone-badge bad">✗ ' + textBad + '</span>';
+  }
+
+  function _renderRcloneStatus(box, s) {
+    let html = '';
+    html += '<div class="rclone-row"><span class="rclone-label">rclone instalado</span>'
+      + (s.installed ? _rcloneBadge(true, s.version || 'ok', '') : _rcloneBadge(false, '', 'não encontrado')) + '</div>';
+    html += '<div class="rclone-row"><span class="rclone-label">Remote gdrive:</span>'
+      + _rcloneBadge(s.remote_configured, 'configurado', 'não configurado') + '</div>';
+    if (s.remote_configured) {
+      html += '<div class="rclone-row"><span class="rclone-label">Conexão com o Drive</span>'
+        + (s.remote_ok ? _rcloneBadge(true, 'ok', '') : _rcloneBadge(false, '', s.remote_error || 'falhou')) + '</div>';
+    }
+    html += '<div class="rclone-row"><span class="rclone-label">Streaming (serve)</span>'
+      + _rcloneBadge(s.serve_running, 'ativo :18082', 'parado') + '</div>';
+    html += '<div class="rclone-row"><span class="rclone-label">Web UI de configuração</span>'
+      + _rcloneBadge(s.webgui.running, 'ativa :' + s.webgui.port, 'fechada') + '</div>';
+
+    html += '<div class="rclone-actions">';
+    if (!s.installed) {
+      html += '<div class="rclone-help">Instale o rclone e reinicie o TicianoFlix.<br>'
+        + '<b>Linux:</b> <code>sudo pacman -S rclone</code> ou <code>sudo apt install rclone</code><br>'
+        + '<b>macOS:</b> <code>brew install rclone</code><br>'
+        + '<b>Windows:</b> <code>winget install Rclone.Rclone</code><br>'
+        + 'Ou baixe em <a href="https://rclone.org/downloads/" target="_blank" rel="noopener">rclone.org/downloads</a></div>';
+    } else {
+      if (!s.remote_configured) {
+        html += '<button class="rclone-action-btn primary" onclick="rcloneStartWebgui()">🔧 Configurar rclone</button>';
+      } else {
+        html += '<button class="rclone-action-btn" onclick="rcloneStartWebgui()">🔧 Abrir configurador</button>';
+      }
+      if (!s.serve_running) {
+        html += '<button class="rclone-action-btn primary" onclick="rcloneRestartServe()">🔄 Reiniciar streaming</button>';
+      }
+      if (s.webgui.running) {
+        html += '<button class="rclone-action-btn" onclick="rcloneStopWebgui()">⏹ Fechar web UI</button>';
+      }
+    }
+    html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Atualizar status</button>';
+    html += '</div>';
+
+    if (s.webgui.running) {
+      html += '<div class="rclone-creds">Web UI aberta — acesse e faça login:<br>'
+        + 'URL: <a href="' + s.webgui.url + '" target="_blank" rel="noopener">' + s.webgui.url + '</a><br>'
+        + 'Usuário: <b>' + (s.webgui.user || 'ticianoflix') + '</b><br>'
+        + 'Senha: <b>' + (s.webgui.pass || '—') + '</b></div>';
+    }
+
+    if (s.installed && !s.remote_configured) {
+      html += '<div class="rclone-help">💡 No configurador: crie um remote chamado <b>gdrive</b> '
+        + '(tipo <b>Google Drive</b>, escopo <b>drive</b> ou <b>drive.file</b>) seguindo o assistente. '
+        + 'Depois volte aqui e clique em <b>🔄 Reiniciar streaming</b>.</div>';
+    }
+    box.innerHTML = html;
+  }
+
+  async function rcloneStartWebgui() {
+    const box = document.getElementById('rcloneStatus');
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Abrindo configurador do rclone...</span></div>';
+    try {
+      const res = await fetch('/api/rclone/webgui/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'ok' && data.url) {
+        box.innerHTML = '<div class="rclone-creds"><b>✅ Configurador aberto!</b><br><br>'
+          + 'URL: <a href="' + data.url + '" target="_blank" rel="noopener">' + data.url + '</a><br>'
+          + 'Usuário: <b>' + data.user + '</b><br>'
+          + 'Senha: <b>' + data.pass + '</b></div>'
+          + '<div class="rclone-help">Se a aba não abrir sozinha, clique no link acima e faça login.<br>'
+          + '💡 Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b>🔄 Reiniciar streaming</b>.</div>'
+          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Verificar status</button></div>';
+        window.open(data.url, '_blank');
+      } else {
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + (data.error || 'Erro desconhecido') + '</p></div>'
+          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">← Voltar</button></div>';
+      }
+    } catch(e) {
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3></div>';
+    }
+  }
+
+  async function rcloneRestartServe() {
+    const box = document.getElementById('rcloneStatus');
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Reiniciando streaming...</span></div>';
+    try {
+      const res = await fetch('/api/rclone/serve/restart', { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast('✅ Streaming reiniciado', 'success');
+      } else {
+        showToast('Erro: ' + (data.error || 'falhou'), 'error');
+      }
+    } catch(e) {
+      showToast('Erro ao reiniciar streaming', 'error');
+    }
+    _loadRcloneStatus();
+  }
+
+  async function rcloneStopWebgui() {
+    try {
+      await fetch('/api/rclone/webgui/stop', { method: 'POST' });
+      showToast('⏹ Web UI fechada', 'info');
+    } catch(e) {}
+    _loadRcloneStatus();
   }
 
   async function restoreFromFile(input) {
@@ -3603,6 +4338,8 @@
   // ==================== INIT ====================
   loadPath("", true);
   loadSidebarGenres();
+  // Sync _cachedSet with server's actual cache state (for offline section on home)
+  _syncCachedFromServer().then(() => _renderOfflineGrid());
 
   // Fetch cache usage
   async function updateCacheUsage() {
