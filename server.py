@@ -1255,9 +1255,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # SRT → WebVTT conversion (browsers don't support SRT natively)
         if ext == ".srt":
-            # Replace comma with dot in timestamps, add WEBVTT header
-            lines = raw.split("\n")
-            vtt = ["WEBVTT\n"]
+            # Normalize line endings (CRLF de SRTs de Windows)
+            text = raw.replace("\r\n", "\n").replace("\r", "\n").lstrip("\n")
+            lines = text.split("\n")
+            # Cabeçalho WEBVTT SEMPRE seguido de linha em branco — parsers
+            # estritos (receiver do Chromecast) rejeitam o arquivo sem ela
+            vtt = ["WEBVTT", ""]
             for line in lines:
                 # SRT: 00:00:10,500 --> 00:00:13,000
                 # VTT: 00:00:10.500 --> 00:00:13.000

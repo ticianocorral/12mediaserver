@@ -2898,26 +2898,11 @@
         showToast('📡 Transmitindo para Chromecast', 'info');
         // Pause local video while casting
         video.pause();
-        // Force enable subtitle track after load (some receivers ignore activeTrackIds)
+        // Force enable subtitle track after load (some receivers ignore activeTrackIds).
+        // Retry a cada 2s até ~30s: o receiver só associa o track depois que o vídeo
+        // carregou/bufferizou (stream via rclone→Drive demora a começar).
         if (currentSubPath) {
-          console.log('[Cast] Will try to enable subtitles in 3s...');
-          setTimeout(function() {
-            try {
-              var s = cast.framework.CastContext.getInstance().getCurrentSession();
-              if (!s) { console.warn('[Cast] No session'); return; }
-              var m = s.getMediaSession();
-              if (!m) { console.warn('[Cast] No media session'); return; }
-              console.log('[Cast] Media session found, track IDs:', m.activeTrackIds);
-              var trackReq = new chrome.cast.media.EditTracksInfoRequest([1]);
-              s.getMediaSession().editTracksInfo(trackReq, function() {
-                console.log('[Cast] Subtitles enabled via editTracksInfo');
-              }, function(err) {
-                console.warn('[Cast] editTracksInfo failed:', err);
-              });
-            } catch(e) {
-              console.warn('[Cast] editTracksInfo error:', e);
-            }
-          }, 3000);
+          _forceCastSubtitles(1, 0);
         }
       })
       .catch(function(err) {
@@ -2928,6 +2913,61 @@
 
   function clearBufferTimer() {
     // No-op: _waitForBuffer was removed, but keep for cleanup compatibility
+  }
+
+  // Tenta habilitar a legenda no receiver até ~30s (a cada 2s).
+  // O receiver do Chromecast só associa o track de texto depois que o vídeo
+  // está carregado — com stream via rclone→Drive isso pode levar vários segundos.
+  function _forceCastSubtitles(trackId, attempt) {
+    if (attempt > 15) {
+      console.warn('[Cast] Subtitles: desistindo após ' + attempt + ' tentativas');
+      return;
+    }
+    try {
+      var s = cast.framework.CastContext.getInstance().getCurrentSession();
+      if (!s) { console.warn('[Cast] Sem sessão (tentativa ' + attempt + '), tentando de novo...'); setTimeout(function() { _forceCastSubtitles(trackId, attempt + 1); }, 2000); return; }
+      var m = s.getMediaSession();
+      if (!m) { console.warn('[Cast] Sem media session (tentativa ' + attempt + '), tentando de novo...'); setTimeout(function() { _forceCastSubtitles(trackId, attempt + 1); }, 2000); return; }
+      console.log('[Cast] Media session OK (tentativa ' + attempt + '), activeTrackIds:', m.activeTrackIds);
+      var trackReq = new chrome.cast.media.EditTracksInfoRequest([trackId]);
+      m.editTracksInfo(trackReq, function() {
+        console.log('[Cast] Legendas habilitadas via editTracksInfo (tentativa ' + attempt + ')');
+      }, function(err) {
+        console.warn('[Cast] editTracksInfo falhou (tentativa ' + attempt + '):', err);
+        setTimeout(function() { _forceCastSubtitles(trackId, attempt + 1); }, 2000);
+      });
+    } catch(e) {
+      console.warn('[Cast] editTracksInfo erro (tentativa ' + attempt + '):', e);
+      setTimeout(function() { _forceCastSubtitles(trackId, attempt + 1); }, 2000);
+    }
+  }
+
+  // Aplica a legenda no <track> do player local (liga automático se houver)
+  function _applySubtitleTrack(subtitlePath) {
+    const track = document.getElementById('subtitleTrack');
+    const parent = track.parentNode;
+    const newTrack = document.createElement('track');
+    newTrack.id = 'subtitleTrack';
+    newTrack.kind = 'subtitles';
+    newTrack.srclang = 'pt-BR';
+    newTrack.label = 'Português';
+    newTrack.default = true;
+    if (subtitlePath) {
+      newTrack.src = '/api/subtitle?path=' + encodeURIComponent(subtitlePath);
+    }
+    parent.replaceChild(newTrack, track);
+
+    // Se houver legenda, já liga automático
+    if (subtitlePath) {
+      subtitlesEnabled = true;
+      const t = document.getElementById('subtitleTrack');
+      if (t) t.track.mode = 'showing';
+      document.getElementById('subtitleToggleBtn').classList.add('active');
+    } else {
+      subtitlesEnabled = false;
+      document.getElementById('subtitleToggleBtn').classList.remove('active');
+    }
+    updateSubtitleButton(subtitlePath);
   }
 
   function playMovie(filePath, movieName, subtitlePath, resumePosition) {
@@ -3056,31 +3096,20 @@
       updateBufferStatus(video);
     };
 
-    // Set up subtitle track
-    const track = document.getElementById('subtitleTrack');
-    const parent = track.parentNode;
-    const newTrack = document.createElement('track');
-    newTrack.id = 'subtitleTrack';
-    newTrack.kind = 'subtitles';
-    newTrack.srclang = 'pt-BR';
-    newTrack.label = 'Português';
-    newTrack.default = true;
-    if (subtitlePath) {
-      newTrack.src = '/api/subtitle?path=' + encodeURIComponent(subtitlePath);
-    }
-    parent.replaceChild(newTrack, track);
+    // Set up subtitle track (and enable automatically if present)
+    _applySubtitleTrack(subtitlePath);
 
-    // Se houver legenda, já liga automático
-    if (subtitlePath) {
-      subtitlesEnabled = true;
-      const t = document.getElementById('subtitleTrack');
-      if (t) t.track.mode = 'showing';
-      document.getElementById('subtitleToggleBtn').classList.add('active');
-    } else {
-      subtitlesEnabled = false;
-      document.getElementById('subtitleToggleBtn').classList.remove('active');
+    // Filme aberto direto (card da busca ou vídeo solto) sem legenda:
+    // resolve pelo detalhe do filme e aplica quando chegar — também garante
+    // que o Cast envie o track de legenda
+    if (!subtitlePath) {
+      cachedFetch('/api/movie-detail?path=' + encodeURIComponent(_currentPlayFolder)).then(detail => {
+        if (detail && detail.subtitle && !currentSubtitlePath) {
+          currentSubtitlePath = _currentPlayFolder + '/' + detail.subtitle.Name;
+          _applySubtitleTrack(currentSubtitlePath);
+        }
+      });
     }
-    updateSubtitleButton(subtitlePath);
 
     // Start loading video — play() antecipado acelera pipeline de mídia
     video.src = streamUrl(filePath);
