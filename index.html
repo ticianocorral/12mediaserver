@@ -885,7 +885,8 @@
     transition: opacity 0.3s;
     pointer-events: none;
   }
-  .player-container:hover .player-header {
+  /* Fora de fullscreen: header aparece no hover. Fullscreen: só via force-show */
+  .player-container:not(:fullscreen):not(:-webkit-full-screen):not(.is-fullscreen):hover .player-header {
     opacity: 1;
     pointer-events: all;
   }
