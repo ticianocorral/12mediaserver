@@ -1914,7 +1914,7 @@
       html += '</div><div class="movie-grid">';
       items.forEach(m => {
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = encodeURIComponent(m.path);
+        const safePath = enc(m.path);
         html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">';
         if (m.poster) {
           html += '<img class="movie-card-poster" src="' + posterUrl(m.path, m.poster) + '" alt="' + escHtml(nameClean) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
@@ -2044,7 +2044,7 @@
       let html = '';
       recent.forEach((m, idx) => {
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = encodeURIComponent(m.path);
+        const safePath = enc(m.path);
         html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
           + '<div class="movie-card-overlay">'
@@ -2082,7 +2082,7 @@
       items.forEach((m, idx) => {
         const pct = (m.duration > 0) ? Math.round((m.position / m.duration) * 100) : 0;
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = encodeURIComponent(m.path);
+        const safePath = enc(m.path);
         const posStr = Math.floor(m.position / 60) + ':' + String(Math.floor(m.position % 60)).padStart(2, '0');
         html2 += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
@@ -3704,7 +3704,7 @@
 
     paths.forEach((path, idx) => {
       const name = path.split('/').pop().replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-      const safePath = encodeURIComponent(path);
+      const safePath = enc(path);
       html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(name) + '">'
         + '<div class="movie-card-poster-placeholder" style="display:flex">📦</div>'
         + '<div class="movie-card-overlay">'
