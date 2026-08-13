@@ -325,6 +325,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.5.3 — botão fechar do player — modal de confirmação abria atrás do player
+
+- Merged via PR #7
+
+
 ### v1.5.2 — bloquear clique no menu lateral durante reprodução
 
 - Merged via PR #6
