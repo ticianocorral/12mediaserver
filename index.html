@@ -1123,7 +1123,14 @@
     background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
     pointer-events: none;
   }
-  .movie-info-breadcrumb a { pointer-events: all; }
+  .movie-info-breadcrumb a {
+    pointer-events: all;
+    cursor: pointer;
+    color: var(--text2);
+    text-decoration: none;
+    transition: color var(--transition);
+  }
+  .movie-info-breadcrumb a:hover { color: var(--text); }
 
   .movie-info-bg {
     position: fixed;
