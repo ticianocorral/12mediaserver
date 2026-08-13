@@ -244,6 +244,47 @@ systemctl --user restart ticianoflix
 
 ---
 
+## 🔀 Fluxo Git — Pull Requests obrigatórios
+
+Mudanças na `main` **só entram via Pull Request**. Push direto é bloqueado por um hook local.
+
+### Instalar o hook (uma vez por clone)
+
+```bash
+cd ~/TicianoFlix
+cp git-hooks/pre-push .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```
+
+O hook bloqueia `git push` para `main`/`master` e mostra o fluxo correto.
+
+### Fluxo padrão
+
+```bash
+# 1. Branch de trabalho (sempre fora da main)
+git checkout -b fix/nome-do-fix        # ou feat/nome
+
+# 2. Commit
+git add . && git commit -m "descrição"
+
+# 3. Push da branch
+git push origin fix/nome-do-fix
+
+# 4. Abrir o PR
+gh pr create --fill --base main        # ou pelo site do GitHub
+```
+
+### Atualizar a main (após o merge do PR)
+
+```bash
+git checkout main
+git pull
+systemctl --user restart ticianoflix    # Linux
+launchctl kickstart -k gui/$(id -u)/com.ticianoflix   # macOS
+```
+
+---
+
 ## 📝 Licença
 
 MIT — veja o arquivo [LICENSE](LICENSE).
