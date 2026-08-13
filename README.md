@@ -244,6 +244,38 @@ systemctl --user restart ticianoflix
 
 ---
 
+## 🏷️ Versionamento (SemVer)
+
+O TicianoFlix segue **Semantic Versioning** (`MAJOR.MINOR.PATCH`) — padrão de mercado.
+
+| Incremento | Quando | Exemplo |
+|---|---|---|
+| **MAJOR** | Quebra de compatibilidade (API diferente, remoção de recurso, formato novo) | 1.5 → **2.0** |
+| **MINOR** | Nova funcionalidade visível ao usuário | 1.5 → **1.6** |
+| **PATCH** | Correção de bug, ajuste visual, melhoria sem recurso novo | 1.5 → **1.5.1** |
+| — (sem bump) | `docs:` / `chore:` / `refactor:` (sem impacto pra quem usa) | 1.5 → 1.5 |
+
+> 📌 **Regra:** TODO PR mergeado na main que seja `feat:` ou `fix:` **DEVE** atualizar o README (changelog) e a versão. O workflow `version-bump` faz isso automaticamente analisando o título do PR.
+
+### Como funciona o bump automático
+
+1. PR mergeado na main → workflow `Auto version bump` dispara
+2. Analisa o título: `feat:` → MINOR, `fix:` → PATCH, `BREAKING`/`!` → MAJOR
+3. Atualiza os 3 lugares: badge da sidebar, changelog do app (`_CHANGELOG`) e README
+
+### Manual (alternativa ao automático)
+
+```bash
+./bump-version.sh <major|minor|patch|none> "Título do changelog" "item 1|item 2"
+```
+
+Exemplo:
+```bash
+./bump-version.sh patch "Fix: auto-hide no fullscreen" "Controles somem com mouse parado"
+```
+
+---
+
 ## 🔀 Fluxo Git — Pull Requests obrigatórios
 
 Mudanças na `main` **só entram via Pull Request**. Push direto é bloqueado por um hook local.
