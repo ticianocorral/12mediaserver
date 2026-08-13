@@ -17,6 +17,10 @@ build/
 *.so
 *.pkl
 
+# ⚙️ Wrapper nativo macOS (compilado via build-macos.sh)
+ticianoflix-server
+zaparoo-watchdog
+
 # ⚙️ Virtualenv
 env/
 venv/

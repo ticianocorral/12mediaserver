@@ -93,7 +93,22 @@ mkdir -p "$HOME/.cache/ticianoflix/subs"
 mkdir -p "$HOME/.cache/rclone"
 ok "Diretórios de cache prontos (~/.cache/ticianoflix)"
 
-# ─── 6. LaunchAgent ─────────────────────────────────────
+# ─── 6. Wrapper nativo (nome legível no Activity Monitor) ──
+WRAPPER="$DIR/ticianoflix-server"
+if [ ! -x "$WRAPPER" ] || [ "$DIR/ticianoflix-server.c" -nt "$WRAPPER" ]; then
+    info "Compilando wrapper nativo (ticianoflix-server)..."
+    if command -v clang >/dev/null 2>&1; then
+        clang -O2 -o "$WRAPPER" "$DIR/ticianoflix-server.c" && chmod +x "$WRAPPER" \
+            && ok "Wrapper compilado" \
+            || aviso "Falha ao compilar wrapper — usará python3 direto"
+    else
+        aviso "clang não encontrado — usará python3 direto (sem nome legível)"
+    fi
+else
+    ok "Wrapper nativo: $WRAPPER"
+fi
+
+# ─── 7. LaunchAgent ─────────────────────────────────────
 LA_DIR="$HOME/Library/LaunchAgents"
 PLIST="$LA_DIR/com.ticianoflix.plist"
 mkdir -p "$LA_DIR"
@@ -109,6 +124,14 @@ else
     LAUNCH_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 fi
 
+# Programa a executar: wrapper nativo (nome legível) ou python3 direto (fallback)
+if [ -x "$WRAPPER" ]; then
+    PROGRAM_ARGS="<string>$WRAPPER</string>"
+else
+    PROGRAM_ARGS="<string>$PYTHON</string>
+        <string>server.py</string>"
+fi
+
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -118,8 +141,7 @@ cat > "$PLIST" <<PLIST_EOF
     <string>com.ticianoflix</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$PYTHON</string>
-        <string>server.py</string>
+        $PROGRAM_ARGS
     </array>
     <key>WorkingDirectory</key>
     <string>$DIR</string>
