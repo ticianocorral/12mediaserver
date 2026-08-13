@@ -1826,7 +1826,7 @@
       data.folders.forEach(g => {
         const name = g.Name || '';
         const path = '/TicianoFlix/' + name;
-        html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(path) + '\'))">'
+        html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
           + '<span class="icon">' + genreIcon(name) + '</span> '
           + escHtml(name) + '</button>';
       });
@@ -2214,7 +2214,7 @@
     const nameClean = name.replace(/[._]/g, ' ');
     const yearMatch = name.match(/(\d{4})/);
     const year = yearMatch ? yearMatch[1] : '';
-    const safePath = encodeURIComponent(folderPath);
+    const safePath = enc(folderPath);
 
     return `
       <div class="movie-card" onclick="showMovieInfo(decodeURIComponent('${safePath}'), event)" title="${escHtml(name)}">
@@ -2253,8 +2253,8 @@
       data.folders.forEach(folder => {
         const name = folder.Name || '';
         const folderPath = (data.path ? data.path + '/' : '') + name;
-        const safePath = encodeURIComponent(folderPath);
-        html += `
+        const safePath = enc(folderPath);
+    html += `
           <div class="movie-card" onclick="loadPath(decodeURIComponent('${safePath}'))" title="${escHtml(name)}">
             <div class="movie-card-poster-placeholder">📁</div>
             <div class="movie-card-overlay">
@@ -2298,8 +2298,8 @@
     const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     // Use encodeURIComponent for safe embedding in onclick attributes
     // DecodeURIComponent in the handler reverses this safely
-    const safePath = encodeURIComponent(filePath);
-    const safeName = encodeURIComponent(name);
+    const safePath = enc(filePath);
+    const safeName = enc(name);
     const yearMatch = name.match(/(\d{4})/);
     const year = yearMatch ? yearMatch[1] : '';
 
@@ -2355,7 +2355,7 @@
       if (i === parts.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(cur) + '\'))">' + escHtml(name) + '</a>';
+        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(cur) + '\'))">' + escHtml(name) + '</a>';
       }
     });
     bcEl.innerHTML = html;
@@ -2494,9 +2494,9 @@
           </div>
 
           <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + encodeURIComponent(videoPath) + '\'), decodeURIComponent(\'' + encodeURIComponent(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + encodeURIComponent(folderPath + '/' + subtitle.Name) + '\')' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
             ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
-            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + encodeURIComponent(folderPath) + '\'))">✔ Já assisti</button>'}
+            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))">✔ Já assisti</button>'}
           </div>
           </div>
         </div>`;
@@ -2588,7 +2588,7 @@
       if (i === parts.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + encodeURIComponent(current) + '\'))">' + escHtml(name) + '</a>';
+        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(current) + '\'))">' + escHtml(name) + '</a>';
       }
     });
     el.innerHTML = html;
@@ -3493,6 +3493,12 @@
     return div.innerHTML;
   }
 
+  // Encoda para URL E escapa aspas — seguro para embutir em atributos onclick
+  // (encodeURIComponent sozinho NÃO escapa ' e " — quebra com nomes como "Toulon's")
+  function enc(str) {
+    return encodeURIComponent(str).replace(/'/g, '%27').replace(/"/g, '%22');
+  }
+
   // ==================== TOAST ====================
   let toastTimeout = null;
   function showToast(msg, type) {
@@ -3835,9 +3841,9 @@
       if (isDownloading) {
         html += '<button class="cache-item-btn" disabled style="opacity:0.4">⏳</button>';
       } else if (isCached) {
-        html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + encodeURIComponent(m.path) + '\', ' + idx + ')">🗑 Apagar</button>';
+        html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + enc(m.path) + '\', ' + idx + ')">🗑 Apagar</button>';
       } else {
-        html += '<button class="cache-item-btn download" onclick="_cmDownload(\'' + encodeURIComponent(m.path) + '\', ' + idx + ')">📥 Baixar</button>';
+        html += '<button class="cache-item-btn download" onclick="_cmDownload(\'' + enc(m.path) + '\', ' + idx + ')">📥 Baixar</button>';
       }
 
       html += '</div>';
