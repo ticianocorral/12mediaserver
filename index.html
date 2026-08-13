@@ -889,12 +889,18 @@
     opacity: 1;
     pointer-events: all;
   }
-  /* Fullscreen: header sempre visível (pseudo-classe + fallback classe JS) */
-  .player-container:fullscreen .player-header,
-  .player-container:-webkit-full-screen .player-header,
-  .player-container.is-fullscreen .player-header {
+  /* Fullscreen: header visível apenas via force-show (auto-hide do JS) */
+  .player-container:fullscreen .player-header.force-show,
+  .player-container:-webkit-full-screen .player-header.force-show,
+  .player-container.is-fullscreen .player-header.force-show {
     opacity: 1 !important;
     pointer-events: all !important;
+  }
+  /* Fullscreen sem controles visíveis: esconde o cursor (estilo Netflix) */
+  .player-container.is-fullscreen:not(.controls-visible),
+  .player-container:fullscreen:not(.controls-visible),
+  .player-container:-webkit-full-screen:not(.controls-visible) {
+    cursor: none;
   }
   .player-header .movie-name {
     font-size: 16px;
@@ -935,10 +941,8 @@
     background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
     padding: 40px 16px 12px;
   }
-  .player-container:hover .player-controls,
-  .player-container:fullscreen .player-controls,
-  .player-container:-webkit-full-screen .player-controls,
-  .player-container.is-fullscreen .player-controls,
+  /* Fora de fullscreen: mostra no hover. Em fullscreen: só via force-show (JS) */
+  .player-container:not(:fullscreen):not(:-webkit-full-screen):not(.is-fullscreen):hover .player-controls,
   .player-controls.force-show {
     opacity: 1 !important;
     pointer-events: all !important;
@@ -3072,6 +3076,7 @@
 
     video.onplaying = function() {
       loading.style.display = 'none';
+      showControls();
     };
 
     video.onseeking = function() {
@@ -3271,6 +3276,10 @@
     clearTimeout(_controlsTimer);
     const controls = document.getElementById('playerControls');
     if (controls) controls.classList.remove('force-show');
+    const hdr = document.querySelector('.player-container .player-header');
+    if (hdr) hdr.classList.remove('force-show');
+    const pcontainer = document.querySelector('.player-container');
+    if (pcontainer) pcontainer.classList.remove('controls-visible');
     const overlay = document.getElementById('playerOverlay');
     const loading = document.getElementById('playerLoading');
     const errorEl = document.getElementById('playerError');
@@ -3442,13 +3451,19 @@
   let _controlsTimer = null;
   function showControls() {
     const bar = document.getElementById('playerControls');
+    const hdr = document.querySelector('.player-container .player-header');
+    const container = document.querySelector('.player-container');
     if (!bar) return;
     bar.classList.add('force-show');
+    if (hdr) hdr.classList.add('force-show');
+    if (container) container.classList.add('controls-visible');
     clearTimeout(_controlsTimer);
     const v = document.getElementById('videoPlayer');
-    if (v && !v.paused && document.fullscreenElement) {
+    if (v && !v.paused) {
       _controlsTimer = setTimeout(function() {
         bar.classList.remove('force-show');
+        if (hdr) hdr.classList.remove('force-show');
+        if (container) container.classList.remove('controls-visible');
       }, 3000);
     }
   }
