@@ -3000,6 +3000,7 @@
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    applySubtitleSize();
 
     // Set up video events
     video.onerror = function() {
@@ -3302,18 +3303,32 @@
 
   let subtitlesEnabled = true;
   let subtitleSizeIndex = 2;
+  // Tamanho proporcional à altura do player (fração da altura visível).
+  // Ex.: 0.05 = 5% da altura → fullscreen grande, janela pequena.
   const subtitleSizes = [
-    { px: 28, label: 'Peq' },
-    { px: 36, label: 'Méd' },
-    { px: 48, label: 'Gde' },
-    { px: 64, label: 'Ext' },
+    { ratio: 0.035, label: 'Peq' },
+    { ratio: 0.045, label: 'Méd' },
+    { ratio: 0.06,  label: 'Gde' },
+    { ratio: 0.08,  label: 'Ext' },
   ];
+
+  // Calcula o px da legenda com base na altura real do player
+  function applySubtitleSize() {
+    const container = document.querySelector('.player-container');
+    const overlay = document.querySelector('.player-overlay');
+    if (!container || !overlay) return;
+    const h = container.clientHeight;
+    if (h <= 0) return;
+    const size = subtitleSizes[subtitleSizeIndex];
+    const px = Math.max(14, Math.round(h * size.ratio));
+    overlay.style.setProperty('--sub-size', px + 'px');
+  }
 
   function cycleSubtitleSize() {
     subtitleSizeIndex = (subtitleSizeIndex + 1) % subtitleSizes.length;
     const size = subtitleSizes[subtitleSizeIndex];
     document.getElementById('subtitleSizeLabel').textContent = size.label;
-    document.querySelector('.player-overlay').style.setProperty('--sub-size', size.px + 'px');
+    applySubtitleSize();
   }
 
   let subtitleColorIndex = 0;
@@ -3479,11 +3494,17 @@
     const container = document.querySelector('.player-container');
     if (!container) return;
     container.classList.toggle('is-fullscreen', !!document.fullscreenElement);
+    applySubtitleSize();
   });
   document.addEventListener('webkitfullscreenchange', function() {
     const container = document.querySelector('.player-container');
     if (!container) return;
     container.classList.toggle('is-fullscreen', !!document.webkitFullscreenElement);
+    applySubtitleSize();
+  });
+  // Recalcula a legenda se a janela mudar de tamanho (player redimensionado)
+  window.addEventListener('resize', function() {
+    applySubtitleSize();
   });
 
   // ==================== UTILS ====================
