@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# pre-push — TicianoFlix: bloqueia push direto na main.
+# Todo push para main deve vir de um Pull Request.
+# Instalado em: .git/hooks/pre-push  (não é versionado — cada clone precisa)
+#
+# Comportamento:
+#   - Push para main (refs/heads/main) → BLOQUEADO com instruções
+#   - Push para qualquer outra branch → permitido normalmente
+set -uo pipefail
+
+VERMELHO='\033[0;31m'
+AMARELO='\033[1;33m'
+CIANO='\033[0;36m'
+VERDE='\033[0;32m'
+RESET='\033[0m'
+
+BLOCKED=0
+
+# stdin do git: "<local ref> <local sha> <remote ref> <remote sha>" por linha
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      BLOCKED=1
+      ;;
+  esac
+done
+
+if [ "$BLOCKED" -eq 1 ]; then
+  echo ""
+  echo -e "${VERMELHO}╔══════════════════════════════════════════════════════════════╗${RESET}"
+  echo -e "${VERMELHO}║  ⛔ PUSH DIRETO PARA A MAIN BLOQUEADO                         ║${RESET}"
+  echo -e "${VERMELHO}╚══════════════════════════════════════════════════════════════╝${RESET}"
+  echo -e "${AMARELO}Neste projeto, mudanças vão para a main SOMENTE via Pull Request.${RESET}"
+  echo ""
+  echo -e "${CIANO}Fluxo correto:${RESET}"
+  echo -e "  ${VERDE}1.${RESET} git checkout -b fix/nome-do-fix"
+  echo -e "  ${VERDE}2.${RESET} git add . && git commit -m \"seu commit\""
+  echo -e "  ${VERDE}3.${RESET} git push origin fix/nome-do-fix"
+  echo -e "  ${VERDE}4.${RESET} gh pr create --fill   (ou pelo site do GitHub)"
+  echo ""
+  echo -e "  ${CIANO}Se você JÁ está numa branch e quer abrir o PR do que fez:${RESET}"
+  echo -e "     gh pr create --fill --base main"
+  echo ""
+  exit 1
+fi
+
+exit 0
