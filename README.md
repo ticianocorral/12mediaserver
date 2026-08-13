@@ -325,6 +325,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.5.2 — bloquear clique no menu lateral durante reprodução
+
+- Merged via PR #6
+
+
 ### v1.5.1 — cursor de clicável no breadcrumb do overlay de detalhes
 
 - Merged via PR #5
