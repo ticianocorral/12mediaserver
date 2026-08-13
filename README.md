@@ -325,6 +325,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.5.1 — cursor de clicável no breadcrumb do overlay de detalhes
+
+- Merged via PR #5
+
+
 ### v1.5 — Busca na sidebar, scan incremental, home reorganizada
 
 - Busca movida para a sidebar (acima de Início), com resultados ao vivo enquanto digita e botão limpar (✕)
