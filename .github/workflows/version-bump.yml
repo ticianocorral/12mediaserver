@@ -1,0 +1,60 @@
+name: Auto version bump
+
+# Bump automático de versão (SemVer) quando um PR é mergeado na main.
+# Regras (padrão de mercado):
+#   - Título com BREAKING CHANGE / !  → MAJOR (1.5 → 2.0)
+#   - Título com feat:               → MINOR (1.5 → 1.6)
+#   - Título com fix:                → PATCH (1.5 → 1.5.1)
+#   - docs:/chore:/refactor:         → sem bump
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Determinar tipo de bump pelo título do PR
+        id: type
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          if echo "$TITLE" | grep -qiE '^.*!:|BREAKING|^feat!'; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$TITLE" | grep -qiE '^feat'; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          elif echo "$TITLE" | grep -qiE '^fix'; then
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=none" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Bump detectado: ${{ steps.type.outputs.type }}"
+
+      - name: Rodar bump-version.sh
+        if: steps.type.outputs.type != 'none'
+        run: |
+          chmod +x bump-version.sh
+          # Título do changelog = título do PR (sem prefixo de tipo)
+          TITLE="${{ github.event.pull_request.title }}"
+          CLEAN="$(echo "$TITLE" | sed -E 's/^[a-z]+(\!)?: *//I; s/\(#[0-9]+\)$//')"
+          ./bump-version.sh "${{ steps.type.outputs.type }}" "$CLEAN" "Merged via PR #${{ github.event.pull_request.number }}"
+
+      - name: Commit do bump (se houver mudança)
+        if: steps.type.outputs.type != 'none'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html README.md
+          git diff --cached --quiet || git commit -m "chore: version bump automático"
+          git push
