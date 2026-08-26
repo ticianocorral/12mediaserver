@@ -18,6 +18,7 @@ import threading
 import sys
 import signal
 import sqlite3
+import base64
 import hashlib
 import hmac
 import secrets
@@ -163,10 +164,16 @@ def _vfs_segment_match(entry_str, needle):
 
 
 # ── Autenticacao ─────────────────────────────────────────────
-# Sessao sem estado: o cookie e um HMAC de (expiracao, epoca). Sobrevive a
-# reinicios do servidor, e trocar a "epoca" desloga todos os dispositivos.
+# Contas com papeis (admin / user). Nao existe auto-cadastro: o primeiro
+# admin e criado no primeiro boot, e so com o codigo de instalacao impresso
+# no log do servidor. Depois disso, contas novas so pelo painel de admin.
+#
+# A sessao e sem estado: o cookie carrega (usuario, expiracao, epoca global,
+# epoca do usuario) assinados por HMAC. Duas epocas permitem derrubar todos
+# os aparelhos de uma vez (global) ou so os de uma pessoa (do usuario).
+#
 # O Chromecast nao manda cookie — para ele o servidor assina uma URL por
-# arquivo, com validade curta (ver _issue_media_token).
+# arquivo (ver _issue_media_token).
 AUTH_PATH = CACHE_DIR / "auth.json"
 SECRET_PATH = CACHE_DIR / "secret.key"
 SESSION_COOKIE = "tflix_session"
@@ -175,9 +182,12 @@ CAST_TOKEN_MAX_AGE = 12 * 3600       # cobre um filme inteiro com folga
 MIN_PASSWORD_LEN = 8
 LOGIN_MAX_ATTEMPTS = 8
 LOGIN_WINDOW = 15 * 60
+USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
 
-_auth_lock = threading.Lock()
+_auth_lock = threading.RLock()
 _login_attempts = {}
+_setup_code = None
+_UNSET = object()
 
 # Rotas alcancaveis sem sessao.
 PUBLIC_PATHS = frozenset({
@@ -186,6 +196,10 @@ PUBLIC_PATHS = frozenset({
 })
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
 TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
+# Rotas restritas a administradores.
+ADMIN_PATHS = frozenset({
+    "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
+})
 
 
 def _server_secret():
@@ -204,16 +218,105 @@ def _server_secret():
         return raw
 
 
-def _load_auth():
+def _setup_code_value():
+    """Codigo de 6 digitos exigido para criar o primeiro admin. Sorteado uma vez
+    por execucao enquanto nao houver conta, e impresso no log do servidor —
+    quem nao ve o terminal do computador nao consegue criar a conta inicial."""
+    global _setup_code
+    with _auth_lock:
+        if _setup_code is None:
+            _setup_code = "%06d" % secrets.randbelow(1000000)
+        return _setup_code
+
+
+def _v1_to_v2(raw):
+    """Formato antigo (senha unica) vira uma conta de admin chamada 'admin'."""
+    now = int(time.time())
+    return {
+        "version": 2,
+        "epoch": int(raw.get("epoch", now)),
+        "users": {
+            "admin": {
+                "role": "admin",
+                "algo": "scrypt", "n": 16384, "r": 8, "p": 1,
+                "salt": raw["salt"], "hash": raw["hash"],
+                "epoch": int(raw.get("epoch", now)),
+                "created": int(raw.get("created", now)),
+            }
+        },
+    }
+
+
+def _auth_data():
+    """Le auth.json ja normalizado para o formato v2. Nao grava."""
     try:
-        return json.loads(AUTH_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(AUTH_PATH.read_text(encoding="utf-8"))
     except Exception:
         return None
+    if not raw:
+        return None
+    if "users" not in raw and raw.get("hash"):
+        return _v1_to_v2(raw)
+    return raw
+
+
+def _save_auth(data):
+    with _auth_lock:
+        AUTH_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        try:
+            AUTH_PATH.chmod(0o600)
+        except OSError:
+            pass
+
+
+def _migrate_auth_if_needed():
+    """Persiste a conversao v1 -> v2 uma unica vez, na subida do servidor."""
+    try:
+        raw = json.loads(AUTH_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if raw and "users" not in raw and raw.get("hash"):
+        _save_auth(_v1_to_v2(raw))
+        print("[TicianoFlix] Senha unica migrada para a conta 'admin'.", flush=True)
 
 
 def _auth_configured():
-    a = _load_auth()
-    return bool(a and a.get("hash"))
+    d = _auth_data()
+    return bool(d and d.get("users"))
+
+
+def _global_epoch():
+    return int((_auth_data() or {}).get("epoch", 0))
+
+
+def _next_epoch(current):
+    """Epoca sempre crescente. So `int(time.time())` nao serve: duas operacoes
+    no mesmo segundo produziriam o mesmo valor, e a sessao que deveria cair
+    continuaria valida — trocar a senha nao derrubaria quem ja estava dentro."""
+    return max(int(current or 0) + 1, int(time.time()))
+
+
+def _norm_username(name):
+    return (name or "").strip().lower()
+
+
+def _get_user(username):
+    d = _auth_data()
+    if not d:
+        return None
+    return (d.get("users") or {}).get(_norm_username(username))
+
+
+def _list_users():
+    d = _auth_data() or {}
+    return [
+        {"username": name, "role": u.get("role", "user"), "created": u.get("created")}
+        for name, u in sorted((d.get("users") or {}).items())
+    ]
+
+
+def _admin_count(d):
+    return sum(1 for u in (d.get("users") or {}).values() if u.get("role") == "admin")
 
 
 def _hash_password(password, salt=None):
@@ -224,46 +327,129 @@ def _hash_password(password, salt=None):
     return salt, dk
 
 
-def _set_password(password):
-    salt, dk = _hash_password(password)
+def _password_problem(password):
+    if len(password or "") < MIN_PASSWORD_LEN:
+        return "A senha precisa ter pelo menos %d caracteres" % MIN_PASSWORD_LEN
+    return None
+
+
+def _username_problem(username):
+    if not USERNAME_RE.match(_norm_username(username)):
+        return ("O usuario deve ter de 2 a 32 caracteres, comecar com letra ou "
+                "numero, e usar apenas letras, numeros, ponto, hifen ou _")
+    return None
+
+
+def _create_user(username, password, role="user"):
+    """Cria a conta. Devolve None em sucesso ou a mensagem de erro."""
+    username = _norm_username(username)
+    problem = _username_problem(username) or _password_problem(password)
+    if problem:
+        return problem
     with _auth_lock:
-        prev = _load_auth() or {}
-        data = {
+        d = _auth_data() or {"version": 2, "epoch": int(time.time()), "users": {}}
+        if username in (d.get("users") or {}):
+            return "Ja existe uma conta com esse nome"
+        salt, dk = _hash_password(password)
+        now = int(time.time())
+        d.setdefault("users", {})[username] = {
+            "role": "admin" if role == "admin" else "user",
             "algo": "scrypt", "n": 16384, "r": 8, "p": 1,
             "salt": salt.hex(), "hash": dk.hex(),
-            # Trocar a senha invalida as sessoes antigas.
-            "epoch": int(time.time()),
-            "created": prev.get("created", int(time.time())),
+            "epoch": now, "created": now,
         }
-        AUTH_PATH.write_text(json.dumps(data), encoding="utf-8")
-        try:
-            AUTH_PATH.chmod(0o600)
-        except OSError:
-            pass
+        _save_auth(d)
+    return None
 
 
-def _check_password(password):
-    a = _load_auth()
-    if not a or not a.get("hash"):
-        return False
+def _remove_user(username, acting):
+    username = _norm_username(username)
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return "Conta nao encontrada"
+        if username == _norm_username(acting):
+            return "Voce nao pode remover a propria conta"
+        if d["users"][username].get("role") == "admin" and _admin_count(d) <= 1:
+            return "Nao da para remover o ultimo administrador"
+        del d["users"][username]
+        _save_auth(d)
+    return None
+
+
+def _set_user_role(username, role, acting):
+    username = _norm_username(username)
+    role = "admin" if role == "admin" else "user"
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return "Conta nao encontrada"
+        user = d["users"][username]
+        if user.get("role") == "admin" and role != "admin" and _admin_count(d) <= 1:
+            return "Nao da para rebaixar o ultimo administrador"
+        if username == _norm_username(acting) and role != "admin":
+            return "Voce nao pode tirar o proprio acesso de administrador"
+        user["role"] = role
+        # Trocar o papel invalida as sessoes daquela conta.
+        user["epoch"] = _next_epoch(user.get("epoch"))
+        _save_auth(d)
+    return None
+
+
+def _set_user_password(username, password):
+    username = _norm_username(username)
+    problem = _password_problem(password)
+    if problem:
+        return problem
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return "Conta nao encontrada"
+        salt, dk = _hash_password(password)
+        user = d["users"][username]
+        user["salt"], user["hash"] = salt.hex(), dk.hex()
+        # Trocar a senha derruba as sessoes daquela conta.
+        user["epoch"] = _next_epoch(user.get("epoch"))
+        _save_auth(d)
+    return None
+
+
+def _check_credentials(username, password):
+    user = _get_user(username)
+    if not user or not user.get("hash"):
+        # Gasta o mesmo tempo de um hash real, para nao vazar quais contas existem.
+        _hash_password(password or "")
+        return None
     try:
-        salt = bytes.fromhex(a["salt"])
-        _, dk = _hash_password(password, salt)
-        return hmac.compare_digest(dk.hex(), a["hash"])
+        salt = bytes.fromhex(user["salt"])
+        _, dk = _hash_password(password or "", salt)
+        if hmac.compare_digest(dk.hex(), user["hash"]):
+            return {"username": _norm_username(username),
+                    "role": user.get("role", "user")}
     except Exception:
-        return False
-
-
-def _session_epoch():
-    return int((_load_auth() or {}).get("epoch", 0))
+        pass
+    return None
 
 
 def _revoke_all_sessions():
-    """Desloga todos os dispositivos mudando a epoca que assina os cookies."""
+    """Desloga todos os aparelhos de todas as contas."""
     with _auth_lock:
-        a = _load_auth() or {}
-        a["epoch"] = int(time.time())
-        AUTH_PATH.write_text(json.dumps(a), encoding="utf-8")
+        d = _auth_data()
+        if not d:
+            return
+        d["epoch"] = _next_epoch(d.get("epoch"))
+        _save_auth(d)
+
+
+def _revoke_user_sessions(username):
+    username = _norm_username(username)
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return
+        d["users"][username]["epoch"] = _next_epoch(
+            d["users"][username].get("epoch"))
+        _save_auth(d)
 
 
 def _sign(msg):
@@ -271,23 +457,43 @@ def _sign(msg):
                     hashlib.sha256).hexdigest()
 
 
-def _issue_session():
-    exp = int(time.time()) + SESSION_MAX_AGE
-    epoch = _session_epoch()
-    return "%d.%d.%s" % (exp, epoch, _sign("s|%d|%d" % (exp, epoch)))
+def _issue_session(username):
+    user = _get_user(username) or {}
+    payload = {
+        "u": _norm_username(username),
+        "e": int(time.time()) + SESSION_MAX_AGE,
+        "g": _global_epoch(),
+        "p": int(user.get("epoch", 0)),
+    }
+    raw = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    return raw + "." + _sign(raw)
 
 
-def _valid_session(token):
-    if not token:
-        return False
+def _session_user(token):
+    """Devolve {'username','role'} da sessao, ou None."""
+    if not token or "." not in token:
+        return None
+    raw, sig = token.rsplit(".", 1)
+    if not hmac.compare_digest(sig, _sign(raw)):
+        return None
     try:
-        exp_s, epoch_s, sig = token.split(".")
-        exp, epoch = int(exp_s), int(epoch_s)
+        payload = json.loads(
+            base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
     except Exception:
-        return False
-    if exp < time.time() or epoch != _session_epoch():
-        return False
-    return hmac.compare_digest(sig, _sign("s|%d|%d" % (exp, epoch)))
+        return None
+    if float(payload.get("e", 0)) < time.time():
+        return None
+    if int(payload.get("g", -1)) != _global_epoch():
+        return None
+    user = _get_user(payload.get("u", ""))
+    if not user:
+        return None
+    if int(payload.get("p", -1)) != int(user.get("epoch", 0)):
+        return None
+    return {"username": _norm_username(payload["u"]),
+            "role": user.get("role", "user")}
 
 
 def _issue_media_token(media_path):
@@ -320,25 +526,40 @@ def _record_login_failure(ip):
 
 
 def _login_page(setup=False):
-    """Tela de login (e de primeiro acesso). Autocontida, sem depender do app."""
+    """Tela de entrada. Em modo setup cria o primeiro administrador, e exige o
+    codigo impresso no log do servidor — assim quem esta na rede mas nao tem
+    acesso ao computador nao consegue tomar a conta inicial."""
     if setup:
-        title = "Criar senha de acesso"
-        sub = ("Este e o primeiro acesso. Escolha uma senha para proteger seu "
-               "acervo — ela vale para todos os aparelhos da casa.")
+        heading = "Criar o administrador"
+        sub = ("Primeiro acesso. O codigo de 6 digitos aparece no terminal onde "
+               "o TicianoFlix esta rodando.")
         action = "/api/auth/setup"
-        btn = "Criar senha e entrar"
-    else:
-        title = "Entrar"
-        sub = "Digite a senha para acessar o seu acervo."
-        action = "/api/auth/login"
-        btn = "Entrar"
-    confirm_field = ""
-    if setup:
-        confirm_field = (
+        button = "Criar conta e entrar"
+        extra_top = (
+            '<label for="code">Codigo de instalacao</label>'
+            '<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" '
+            'maxlength="6" autocomplete="off" required placeholder="000000">')
+        extra_bottom = (
             '<label for="confirm">Repita a senha</label>'
             '<input id="confirm" type="password" autocomplete="new-password" '
             'required minlength="%d">' % MIN_PASSWORD_LEN)
-    return """<!DOCTYPE html>
+        hint = ("Depois disso nao existe auto-cadastro: contas novas so pelo "
+                "painel de administracao.")
+        autocomplete = "new-password"
+    else:
+        heading = "Entrar"
+        sub = "Use a conta que o administrador criou para voce."
+        action = "/api/auth/login"
+        button = "Entrar"
+        extra_top = ""
+        extra_bottom = ""
+        hint = ("Esqueceu a senha? Peca a um administrador para redefinir. "
+                "Se ninguem mais tiver acesso, apague "
+                "<code>~/.cache/ticianoflix/auth.json</code> no computador e o "
+                "primeiro acesso volta.")
+        autocomplete = "current-password"
+
+    page = """<!DOCTYPE html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -356,55 +577,51 @@ def _login_page(setup=False):
     font-family: Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .card {
-    width: 100%; max-width: 380px; background: rgba(20,20,23,.92);
+    width: 100%; max-width: 390px; background: rgba(20,20,23,.92);
     border: 1px solid #2a2a30; border-radius: 14px; padding: 34px 30px 30px;
     box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
   }
-  .brand {
-    font-size: 26px; font-weight: 800; letter-spacing: -.02em;
-    margin: 0 0 4px; color: #e50914;
-  }
+  .brand { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; color: #e50914; }
   h1 { font-size: 19px; font-weight: 600; margin: 18px 0 6px; }
   p.sub { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #a0a0aa; }
   label {
     display: block; font-size: 12px; text-transform: uppercase;
     letter-spacing: .08em; color: #8b8b95; margin: 0 0 6px;
   }
-  input[type=password] {
+  input {
     width: 100%; padding: 12px 13px; margin-bottom: 16px; font-size: 15px;
     color: #f2f2f4; background: #141418; border: 1px solid #33333c;
     border-radius: 8px; font-family: inherit;
   }
-  input[type=password]:focus {
-    outline: none; border-color: #e50914;
-    box-shadow: 0 0 0 3px rgba(229,9,20,.18);
-  }
+  #code { letter-spacing: .5em; font-family: ui-monospace, Menlo, monospace; text-align: center; }
+  input:focus { outline: none; border-color: #e50914; box-shadow: 0 0 0 3px rgba(229,9,20,.18); }
   button {
-    width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
-    color: #fff; background: #e50914; border: 0; border-radius: 8px;
-    cursor: pointer; font-family: inherit;
+    width: 100%; padding: 12px; font-size: 15px; font-weight: 600; color: #fff;
+    background: #e50914; border: 0; border-radius: 8px; cursor: pointer; font-family: inherit;
   }
   button:hover { background: #f6121d; }
   button:disabled { opacity: .6; cursor: default; }
-  .msg {
-    margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
-    line-height: 1.45; display: none;
-  }
+  .msg { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; display: none; }
   .msg.err { display: block; background: #2c1214; color: #f5a19b; border: 1px solid #55211f; }
   .msg.ok  { display: block; background: #10241a; color: #7fce9f; border: 1px solid #1f4a33; }
-  .hint { margin: 20px 0 0; font-size: 12px; line-height: 1.5; color: #6e6e78; }
+  .hint { margin: 20px 0 0; font-size: 12px; line-height: 1.55; color: #6e6e78; }
+  .hint code { color: #9a9aa4; }
 </style>
 </head><body>
   <form class="card" id="form" autocomplete="on">
     <div class="brand">TicianoFlix</div>
-    <h1>__TITLE__</h1>
+    <h1>__HEADING__</h1>
     <p class="sub">__SUB__</p>
+    __EXTRA_TOP__
+    <label for="username">Usuario</label>
+    <input id="username" type="text" autocomplete="username" required
+           autocapitalize="none" spellcheck="false" autofocus>
     <label for="password">Senha</label>
-    <input id="password" type="password" autocomplete="__AC__" required minlength="__MIN__" autofocus>
-    __CONFIRM__
-    <button id="btn" type="submit">__BTN__</button>
+    <input id="password" type="password" autocomplete="__AC__" required minlength="__MIN__">
+    __EXTRA_BOTTOM__
+    <button id="btn" type="submit">__BUTTON__</button>
     <div class="msg" id="msg"></div>
-    <p class="hint">A senha fica guardada como hash scrypt neste computador. Se voce esquecer, apague o arquivo <code>~/.cache/ticianoflix/auth.json</code> e o primeiro acesso volta.</p>
+    <p class="hint">__HINT__</p>
   </form>
 <script>
   var form = document.getElementById('form');
@@ -413,16 +630,25 @@ def _login_page(setup=False):
   function show(text, kind) { msg.textContent = text; msg.className = 'msg ' + kind; }
   form.addEventListener('submit', async function (ev) {
     ev.preventDefault();
-    var pw = document.getElementById('password').value;
-    var cf = document.getElementById('confirm');
-    if (cf && pw !== cf.value) { show('As senhas nao conferem.', 'err'); return; }
-    if (pw.length < __MIN__) { show('A senha precisa ter pelo menos __MIN__ caracteres.', 'err'); return; }
+    var body = {
+      username: document.getElementById('username').value.trim().toLowerCase(),
+      password: document.getElementById('password').value
+    };
+    var confirmEl = document.getElementById('confirm');
+    if (confirmEl && body.password !== confirmEl.value) {
+      show('As senhas nao conferem.', 'err'); return;
+    }
+    if (body.password.length < __MIN__) {
+      show('A senha precisa ter pelo menos __MIN__ caracteres.', 'err'); return;
+    }
+    var codeEl = document.getElementById('code');
+    if (codeEl) body.code = codeEl.value.trim();
     btn.disabled = true;
     try {
       var res = await fetch('__ACTION__', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw })
+        body: JSON.stringify(body)
       });
       var data = await res.json().catch(function () { return {}; });
       if (res.ok && data.status === 'ok') {
@@ -437,14 +663,15 @@ def _login_page(setup=False):
     btn.disabled = false;
   });
 </script>
-</body></html>""" \
-        .replace("__TITLE__", title) \
-        .replace("__SUB__", sub) \
-        .replace("__ACTION__", action) \
-        .replace("__BTN__", btn) \
-        .replace("__CONFIRM__", confirm_field) \
-        .replace("__AC__", "new-password" if setup else "current-password") \
-        .replace("__MIN__", str(MIN_PASSWORD_LEN))
+</body></html>"""
+    for token, value in (
+        ("__HEADING__", heading), ("__SUB__", sub), ("__ACTION__", action),
+        ("__BUTTON__", button), ("__EXTRA_TOP__", extra_top),
+        ("__EXTRA_BOTTOM__", extra_bottom), ("__HINT__", hint),
+        ("__AC__", autocomplete), ("__MIN__", str(MIN_PASSWORD_LEN)),
+    ):
+        page = page.replace(token, value)
+    return page
 
 
 rclone_server_proc = None
@@ -1401,6 +1628,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         sys.stderr.write(f"[TicianoFlix] {args[0]} {args[1]} {args[2]}\n")
 
+    def _reset_request_state(self):
+        """A instancia do handler e reaproveitada em conexoes keep-alive —
+        sem isso, cookies e usuario vazariam de uma requisicao para a seguinte."""
+        self._pending_cookies = []
+        self._user_cache = _UNSET
+
     def _cookies(self):
         jar = {}
         for part in (self.headers.get("Cookie") or "").split(";"):
@@ -1409,8 +1642,17 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 jar[k.strip()] = v.strip()
         return jar
 
+    def _current_user(self):
+        if getattr(self, "_user_cache", _UNSET) is _UNSET:
+            self._user_cache = _session_user(self._cookies().get(SESSION_COOKIE))
+        return self._user_cache
+
     def _has_session(self):
-        return _valid_session(self._cookies().get(SESSION_COOKIE))
+        return self._current_user() is not None
+
+    def _is_admin(self):
+        user = self._current_user()
+        return bool(user and user.get("role") == "admin")
 
     def _wants_html(self):
         return "text/html" in (self.headers.get("Accept") or "")
@@ -1421,15 +1663,16 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def _queue_cookie(self, value):
         self._pending_cookies = list(getattr(self, "_pending_cookies", [])) + [value]
 
-    def _start_session(self):
+    def _start_session(self, username):
+        self._user_cache = _UNSET
         self._queue_cookie("%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax"
-                           % (SESSION_COOKIE, _issue_session(), SESSION_MAX_AGE))
+                           % (SESSION_COOKIE, _issue_session(username), SESSION_MAX_AGE))
 
     def _auth_gate(self, path, params):
         """Decide quem entra. O Chromecast nao manda cookie — para ele o acesso
         vem de um token assinado por arquivo, emitido por /api/cast-token."""
         if not _auth_configured():
-            # Primeiro acesso: so a criacao de senha responde.
+            # Primeiro acesso: so a criacao do administrador responde.
             if path in ("/api/auth/setup", "/api/auth/status",
                         "/favicon.ico", "/favicon.svg"):
                 return True
@@ -1443,6 +1686,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             return True
 
         if self._has_session():
+            if path in ADMIN_PATHS and not self._is_admin():
+                self._send_json(
+                    {"status": "error", "error": "Apenas administradores"}, 403)
+                return False
             return True
 
         if path in TOKEN_PATHS and _valid_media_token(
@@ -1464,19 +1711,35 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             return None
 
+    # ── Entrada ──────────────────────────────────────────────
     def _handle_auth_setup(self):
         if _auth_configured():
-            self._send_json({"status": "error", "error": "Senha ja definida"}, 409)
+            self._send_json({"status": "error",
+                             "error": "O administrador ja foi criado"}, 409)
+            return
+        ip = self._client_ip()
+        if _login_blocked(ip):
+            self._send_json({"status": "error", "error":
+                             "Muitas tentativas. Espere alguns minutos."}, 429)
             return
         body = self._read_json_body() or {}
-        password = str(body.get("password", ""))
-        if len(password) < MIN_PASSWORD_LEN:
+        if not hmac.compare_digest(str(body.get("code", "")).strip(),
+                                   _setup_code_value()):
+            _record_login_failure(ip)
+            sys.stderr.write("[TicianoFlix] codigo de instalacao errado de %s\n" % ip)
             self._send_json({"status": "error", "error":
-                             "A senha precisa ter pelo menos %d caracteres" % MIN_PASSWORD_LEN}, 400)
+                             "Codigo de instalacao incorreto. Ele aparece no "
+                             "terminal onde o TicianoFlix esta rodando."}, 403)
             return
-        _set_password(password)
-        self._start_session()
-        print("[TicianoFlix] Senha de acesso criada.", flush=True)
+        username = str(body.get("username", ""))
+        problem = _create_user(username, str(body.get("password", "")), role="admin")
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        _login_attempts.pop(ip, None)
+        self._start_session(username)
+        print("[TicianoFlix] Administrador '%s' criado." % _norm_username(username),
+              flush=True)
         self._send_json({"status": "ok"})
 
     def _handle_auth_login(self):
@@ -1486,19 +1749,25 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                              "Muitas tentativas. Espere alguns minutos."}, 429)
             return
         body = self._read_json_body() or {}
-        if not _check_password(str(body.get("password", ""))):
+        username = str(body.get("username", ""))
+        user = _check_credentials(username, str(body.get("password", "")))
+        if not user:
             _record_login_failure(ip)
-            sys.stderr.write("[TicianoFlix] senha incorreta de %s\n" % ip)
-            self._send_json({"status": "error", "error": "Senha incorreta"}, 401)
+            sys.stderr.write("[TicianoFlix] login recusado para '%s' de %s\n"
+                             % (_norm_username(username), ip))
+            # Mensagem unica: nao revela se a conta existe.
+            self._send_json({"status": "error",
+                             "error": "Usuario ou senha incorretos"}, 401)
             return
         _login_attempts.pop(ip, None)
-        self._start_session()
-        self._send_json({"status": "ok"})
+        self._start_session(user["username"])
+        self._send_json({"status": "ok", "user": user})
 
     def _handle_auth_logout(self, everywhere=False):
         if everywhere:
             _revoke_all_sessions()
-        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" % SESSION_COOKIE)
+        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+                           % SESSION_COOKIE)
         self._send_json({"status": "ok"})
 
     def _handle_cast_token(self):
@@ -1513,6 +1782,59 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if subtitle:
             out["sub"] = _issue_media_token(subtitle)
         self._send_json(out)
+
+    # ── Painel de administracao ──────────────────────────────
+    def _handle_users_list(self):
+        me = self._current_user() or {}
+        self._send_json({"status": "ok", "me": me.get("username"),
+                         "users": _list_users()})
+
+    def _handle_user_add(self):
+        body = self._read_json_body() or {}
+        problem = _create_user(str(body.get("username", "")),
+                               str(body.get("password", "")),
+                               role=str(body.get("role", "user")))
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        self._send_json({"status": "ok", "users": _list_users()})
+
+    def _handle_user_remove(self):
+        body = self._read_json_body() or {}
+        me = (self._current_user() or {}).get("username", "")
+        problem = _remove_user(str(body.get("username", "")), me)
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        self._send_json({"status": "ok", "users": _list_users()})
+
+    def _handle_user_role(self):
+        body = self._read_json_body() or {}
+        me = (self._current_user() or {}).get("username", "")
+        problem = _set_user_role(str(body.get("username", "")),
+                                 str(body.get("role", "user")), me)
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        self._send_json({"status": "ok", "users": _list_users()})
+
+    def _handle_user_password(self):
+        """Admin redefine a senha de qualquer conta; cada um troca a propria."""
+        body = self._read_json_body() or {}
+        me = self._current_user() or {}
+        target = _norm_username(str(body.get("username", "")) or me.get("username", ""))
+        if target != me.get("username") and me.get("role") != "admin":
+            self._send_json({"status": "error",
+                             "error": "Apenas administradores"}, 403)
+            return
+        problem = _set_user_password(target, str(body.get("password", "")))
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        # Trocar a propria senha derruba as outras sessoes: renova a atual.
+        if target == me.get("username"):
+            self._start_session(target)
+        self._send_json({"status": "ok"})
 
     def _security_gate(self):
         """Bloqueia DNS rebinding (Host publico) e leitura cross-site (Origin de
@@ -2055,6 +2377,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_error(f"Falha ao restaurar do Drive: {e}")
 
     def do_POST(self):
+        self._reset_request_state()
         if not self._security_gate():
             return
         parsed = urllib.parse.urlparse(self.path)
@@ -2082,6 +2405,22 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/cast-token":
             self._handle_cast_token()
+            return
+
+        if path == "/api/users/add":
+            self._handle_user_add()
+            return
+
+        if path == "/api/users/remove":
+            self._handle_user_remove()
+            return
+
+        if path == "/api/users/role":
+            self._handle_user_role()
+            return
+
+        if path == "/api/users/password":
+            self._handle_user_password()
             return
 
         # Rotas que antes eram GET e alteravam estado (scan, cache, restore).
@@ -2186,6 +2525,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_error("Falha ao restaurar o backup")
 
     def do_GET(self):
+        self._reset_request_state()
         if not self._security_gate():
             return
         parsed = urllib.parse.urlparse(self.path)
@@ -2205,8 +2545,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/api/auth/status":
+            user = self._current_user()
             self._send_json({"configured": _auth_configured(),
-                             "authenticated": self._has_session()})
+                             "authenticated": user is not None,
+                             "user": user})
+            return
+
+        if path == "/api/users":
+            self._handle_users_list()
             return
 
         # Rotas de escrita chegam aqui apenas quando redespachadas por do_POST.
@@ -3258,6 +3604,7 @@ def get_rclone_status():
 def main():
     # Initialize database
     init_db()
+    _migrate_auth_if_needed()
     db_path_abs = DB_PATH.resolve()
 
     # Start rclone serve http (persistent connection = much faster streams)
@@ -3336,10 +3683,13 @@ def main():
 ║  🚀 rclone proxy on localhost:{RCLONE_SERVE_PORT}        ║
 ╚══════════════════════════════════════════════╝
     """
-    if not _auth_configured():
-        print("[TicianoFlix] Primeiro acesso: abra o endereco acima e crie a "
-              "senha de acesso.", flush=True)
     print(banner)
+    if not _auth_configured():
+        print("  " + "─" * 46, flush=True)
+        print("  PRIMEIRO ACESSO — crie a conta de administrador", flush=True)
+        print("  Codigo de instalacao: %s" % _setup_code_value(), flush=True)
+        print("  Abra o endereco acima e informe esse codigo.", flush=True)
+        print("  " + "─" * 46 + "\n", flush=True)
 
     # Shutdown imediato — não espera threads de stream terminarem
     def shutdown(sig, frame):
