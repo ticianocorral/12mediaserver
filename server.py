@@ -18,6 +18,9 @@ import threading
 import sys
 import signal
 import sqlite3
+import hashlib
+import hmac
+import secrets
 import re
 import time
 import shutil
@@ -157,6 +160,291 @@ def _vfs_segment_match(entry_str, needle):
     if not n:
         return False
     return ("/" + n + "/") in (entry_str.replace(os.sep, "/") + "/")
+
+
+# ── Autenticacao ─────────────────────────────────────────────
+# Sessao sem estado: o cookie e um HMAC de (expiracao, epoca). Sobrevive a
+# reinicios do servidor, e trocar a "epoca" desloga todos os dispositivos.
+# O Chromecast nao manda cookie — para ele o servidor assina uma URL por
+# arquivo, com validade curta (ver _issue_media_token).
+AUTH_PATH = CACHE_DIR / "auth.json"
+SECRET_PATH = CACHE_DIR / "secret.key"
+SESSION_COOKIE = "tflix_session"
+SESSION_MAX_AGE = 90 * 24 * 3600     # 90 dias por dispositivo
+CAST_TOKEN_MAX_AGE = 12 * 3600       # cobre um filme inteiro com folga
+MIN_PASSWORD_LEN = 8
+LOGIN_MAX_ATTEMPTS = 8
+LOGIN_WINDOW = 15 * 60
+
+_auth_lock = threading.Lock()
+_login_attempts = {}
+
+# Rotas alcancaveis sem sessao.
+PUBLIC_PATHS = frozenset({
+    "/login", "/favicon.ico", "/favicon.svg",
+    "/api/auth/status", "/api/auth/login", "/api/auth/setup",
+})
+# Rotas que o Chromecast busca sozinho: liberadas por token assinado.
+TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
+
+
+def _server_secret():
+    """Chave HMAC persistida, para que reiniciar o servidor nao deslogue ninguem."""
+    with _auth_lock:
+        if SECRET_PATH.exists():
+            raw = SECRET_PATH.read_bytes()
+            if len(raw) >= 32:
+                return raw
+        raw = secrets.token_bytes(32)
+        SECRET_PATH.write_bytes(raw)
+        try:
+            SECRET_PATH.chmod(0o600)
+        except OSError:
+            pass
+        return raw
+
+
+def _load_auth():
+    try:
+        return json.loads(AUTH_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _auth_configured():
+    a = _load_auth()
+    return bool(a and a.get("hash"))
+
+
+def _hash_password(password, salt=None):
+    if salt is None:
+        salt = secrets.token_bytes(16)
+    dk = hashlib.scrypt(password.encode("utf-8"), salt=salt,
+                        n=16384, r=8, p=1, dklen=32)
+    return salt, dk
+
+
+def _set_password(password):
+    salt, dk = _hash_password(password)
+    with _auth_lock:
+        prev = _load_auth() or {}
+        data = {
+            "algo": "scrypt", "n": 16384, "r": 8, "p": 1,
+            "salt": salt.hex(), "hash": dk.hex(),
+            # Trocar a senha invalida as sessoes antigas.
+            "epoch": int(time.time()),
+            "created": prev.get("created", int(time.time())),
+        }
+        AUTH_PATH.write_text(json.dumps(data), encoding="utf-8")
+        try:
+            AUTH_PATH.chmod(0o600)
+        except OSError:
+            pass
+
+
+def _check_password(password):
+    a = _load_auth()
+    if not a or not a.get("hash"):
+        return False
+    try:
+        salt = bytes.fromhex(a["salt"])
+        _, dk = _hash_password(password, salt)
+        return hmac.compare_digest(dk.hex(), a["hash"])
+    except Exception:
+        return False
+
+
+def _session_epoch():
+    return int((_load_auth() or {}).get("epoch", 0))
+
+
+def _revoke_all_sessions():
+    """Desloga todos os dispositivos mudando a epoca que assina os cookies."""
+    with _auth_lock:
+        a = _load_auth() or {}
+        a["epoch"] = int(time.time())
+        AUTH_PATH.write_text(json.dumps(a), encoding="utf-8")
+
+
+def _sign(msg):
+    return hmac.new(_server_secret(), msg.encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def _issue_session():
+    exp = int(time.time()) + SESSION_MAX_AGE
+    epoch = _session_epoch()
+    return "%d.%d.%s" % (exp, epoch, _sign("s|%d|%d" % (exp, epoch)))
+
+
+def _valid_session(token):
+    if not token:
+        return False
+    try:
+        exp_s, epoch_s, sig = token.split(".")
+        exp, epoch = int(exp_s), int(epoch_s)
+    except Exception:
+        return False
+    if exp < time.time() or epoch != _session_epoch():
+        return False
+    return hmac.compare_digest(sig, _sign("s|%d|%d" % (exp, epoch)))
+
+
+def _issue_media_token(media_path):
+    exp = int(time.time()) + CAST_TOKEN_MAX_AGE
+    return "%d.%s" % (exp, _sign("m|%s|%d" % (media_path, exp)))
+
+
+def _valid_media_token(media_path, token):
+    if not token or not media_path:
+        return False
+    try:
+        exp_s, sig = token.split(".")
+        exp = int(exp_s)
+    except Exception:
+        return False
+    if exp < time.time():
+        return False
+    return hmac.compare_digest(sig, _sign("m|%s|%d" % (media_path, exp)))
+
+
+def _login_blocked(ip):
+    now = time.time()
+    hits = [t for t in _login_attempts.get(ip, []) if t > now - LOGIN_WINDOW]
+    _login_attempts[ip] = hits
+    return len(hits) >= LOGIN_MAX_ATTEMPTS
+
+
+def _record_login_failure(ip):
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+
+def _login_page(setup=False):
+    """Tela de login (e de primeiro acesso). Autocontida, sem depender do app."""
+    if setup:
+        title = "Criar senha de acesso"
+        sub = ("Este e o primeiro acesso. Escolha uma senha para proteger seu "
+               "acervo — ela vale para todos os aparelhos da casa.")
+        action = "/api/auth/setup"
+        btn = "Criar senha e entrar"
+    else:
+        title = "Entrar"
+        sub = "Digite a senha para acessar o seu acervo."
+        action = "/api/auth/login"
+        btn = "Entrar"
+    confirm_field = ""
+    if setup:
+        confirm_field = (
+            '<label for="confirm">Repita a senha</label>'
+            '<input id="confirm" type="password" autocomplete="new-password" '
+            'required minlength="%d">' % MIN_PASSWORD_LEN)
+    return """<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>TicianoFlix</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center;
+    justify-content: center; padding: 24px;
+    background: radial-gradient(1200px 600px at 50% -10%, #2a1114 0%, #0b0b0d 60%);
+    color: #f2f2f4;
+    font-family: Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card {
+    width: 100%; max-width: 380px; background: rgba(20,20,23,.92);
+    border: 1px solid #2a2a30; border-radius: 14px; padding: 34px 30px 30px;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
+  }
+  .brand {
+    font-size: 26px; font-weight: 800; letter-spacing: -.02em;
+    margin: 0 0 4px; color: #e50914;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 18px 0 6px; }
+  p.sub { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #a0a0aa; }
+  label {
+    display: block; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .08em; color: #8b8b95; margin: 0 0 6px;
+  }
+  input[type=password] {
+    width: 100%; padding: 12px 13px; margin-bottom: 16px; font-size: 15px;
+    color: #f2f2f4; background: #141418; border: 1px solid #33333c;
+    border-radius: 8px; font-family: inherit;
+  }
+  input[type=password]:focus {
+    outline: none; border-color: #e50914;
+    box-shadow: 0 0 0 3px rgba(229,9,20,.18);
+  }
+  button {
+    width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
+    color: #fff; background: #e50914; border: 0; border-radius: 8px;
+    cursor: pointer; font-family: inherit;
+  }
+  button:hover { background: #f6121d; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg {
+    margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
+    line-height: 1.45; display: none;
+  }
+  .msg.err { display: block; background: #2c1214; color: #f5a19b; border: 1px solid #55211f; }
+  .msg.ok  { display: block; background: #10241a; color: #7fce9f; border: 1px solid #1f4a33; }
+  .hint { margin: 20px 0 0; font-size: 12px; line-height: 1.5; color: #6e6e78; }
+</style>
+</head><body>
+  <form class="card" id="form" autocomplete="on">
+    <div class="brand">TicianoFlix</div>
+    <h1>__TITLE__</h1>
+    <p class="sub">__SUB__</p>
+    <label for="password">Senha</label>
+    <input id="password" type="password" autocomplete="__AC__" required minlength="__MIN__" autofocus>
+    __CONFIRM__
+    <button id="btn" type="submit">__BTN__</button>
+    <div class="msg" id="msg"></div>
+    <p class="hint">A senha fica guardada como hash scrypt neste computador. Se voce esquecer, apague o arquivo <code>~/.cache/ticianoflix/auth.json</code> e o primeiro acesso volta.</p>
+  </form>
+<script>
+  var form = document.getElementById('form');
+  var msg = document.getElementById('msg');
+  var btn = document.getElementById('btn');
+  function show(text, kind) { msg.textContent = text; msg.className = 'msg ' + kind; }
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var pw = document.getElementById('password').value;
+    var cf = document.getElementById('confirm');
+    if (cf && pw !== cf.value) { show('As senhas nao conferem.', 'err'); return; }
+    if (pw.length < __MIN__) { show('A senha precisa ter pelo menos __MIN__ caracteres.', 'err'); return; }
+    btn.disabled = true;
+    try {
+      var res = await fetch('__ACTION__', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (res.ok && data.status === 'ok') {
+        show('Tudo certo, entrando...', 'ok');
+        window.location.replace('/');
+        return;
+      }
+      show(data.error || 'Nao foi possivel entrar.', 'err');
+    } catch (e) {
+      show('Falha de conexao com o servidor.', 'err');
+    }
+    btn.disabled = false;
+  });
+</script>
+</body></html>""" \
+        .replace("__TITLE__", title) \
+        .replace("__SUB__", sub) \
+        .replace("__ACTION__", action) \
+        .replace("__BTN__", btn) \
+        .replace("__CONFIRM__", confirm_field) \
+        .replace("__AC__", "new-password" if setup else "current-password") \
+        .replace("__MIN__", str(MIN_PASSWORD_LEN))
 
 
 rclone_server_proc = None
@@ -1113,6 +1401,119 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         sys.stderr.write(f"[TicianoFlix] {args[0]} {args[1]} {args[2]}\n")
 
+    def _cookies(self):
+        jar = {}
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                jar[k.strip()] = v.strip()
+        return jar
+
+    def _has_session(self):
+        return _valid_session(self._cookies().get(SESSION_COOKIE))
+
+    def _wants_html(self):
+        return "text/html" in (self.headers.get("Accept") or "")
+
+    def _client_ip(self):
+        return self.client_address[0] if self.client_address else "?"
+
+    def _queue_cookie(self, value):
+        self._pending_cookies = list(getattr(self, "_pending_cookies", [])) + [value]
+
+    def _start_session(self):
+        self._queue_cookie("%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax"
+                           % (SESSION_COOKIE, _issue_session(), SESSION_MAX_AGE))
+
+    def _auth_gate(self, path, params):
+        """Decide quem entra. O Chromecast nao manda cookie — para ele o acesso
+        vem de um token assinado por arquivo, emitido por /api/cast-token."""
+        if not _auth_configured():
+            # Primeiro acesso: so a criacao de senha responde.
+            if path in ("/api/auth/setup", "/api/auth/status",
+                        "/favicon.ico", "/favicon.svg"):
+                return True
+            if path in ("/", "/index.html", "/login") or self._wants_html():
+                self._send_html(_login_page(setup=True))
+                return False
+            self._send_json({"status": "error", "error": "setup_required"}, 401)
+            return False
+
+        if path in PUBLIC_PATHS:
+            return True
+
+        if self._has_session():
+            return True
+
+        if path in TOKEN_PATHS and _valid_media_token(
+                params.get("path", [""])[0], params.get("t", [""])[0]):
+            return True
+
+        if self._wants_html():
+            self._send_html(_login_page(setup=False))
+            return False
+        self._send_json({"status": "error", "error": "auth_required"}, 401)
+        return False
+
+    def _read_json_body(self):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0 or length > MAX_JSON_BODY_BYTES:
+            return None
+        try:
+            return json.loads(self.rfile.read(length))
+        except Exception:
+            return None
+
+    def _handle_auth_setup(self):
+        if _auth_configured():
+            self._send_json({"status": "error", "error": "Senha ja definida"}, 409)
+            return
+        body = self._read_json_body() or {}
+        password = str(body.get("password", ""))
+        if len(password) < MIN_PASSWORD_LEN:
+            self._send_json({"status": "error", "error":
+                             "A senha precisa ter pelo menos %d caracteres" % MIN_PASSWORD_LEN}, 400)
+            return
+        _set_password(password)
+        self._start_session()
+        print("[TicianoFlix] Senha de acesso criada.", flush=True)
+        self._send_json({"status": "ok"})
+
+    def _handle_auth_login(self):
+        ip = self._client_ip()
+        if _login_blocked(ip):
+            self._send_json({"status": "error", "error":
+                             "Muitas tentativas. Espere alguns minutos."}, 429)
+            return
+        body = self._read_json_body() or {}
+        if not _check_password(str(body.get("password", ""))):
+            _record_login_failure(ip)
+            sys.stderr.write("[TicianoFlix] senha incorreta de %s\n" % ip)
+            self._send_json({"status": "error", "error": "Senha incorreta"}, 401)
+            return
+        _login_attempts.pop(ip, None)
+        self._start_session()
+        self._send_json({"status": "ok"})
+
+    def _handle_auth_logout(self, everywhere=False):
+        if everywhere:
+            _revoke_all_sessions()
+        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" % SESSION_COOKIE)
+        self._send_json({"status": "ok"})
+
+    def _handle_cast_token(self):
+        """Assina URLs para o Chromecast, que busca a midia sem cookie."""
+        body = self._read_json_body() or {}
+        media_path = str(body.get("path", ""))
+        if not media_path:
+            self._send_json({"status": "error", "error": "Missing path"}, 400)
+            return
+        out = {"status": "ok", "t": _issue_media_token(media_path)}
+        subtitle = str(body.get("subtitle", ""))
+        if subtitle:
+            out["sub"] = _issue_media_token(subtitle)
+        self._send_json(out)
+
     def _security_gate(self):
         """Bloqueia DNS rebinding (Host publico) e leitura cross-site (Origin de
         terceiro). Chromecast e <video> nao mandam Origin e passam normalmente."""
@@ -1154,6 +1555,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-cache")
+        for cookie in getattr(self, "_pending_cookies", ()):
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
@@ -1161,6 +1564,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        for cookie in getattr(self, "_pending_cookies", ()):
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(content.encode("utf-8"))
 
@@ -1657,6 +2063,27 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if not self._require_write_origin():
             return
 
+        # Login e criacao de senha vem antes do gate — sao a porta de entrada.
+        if path == "/api/auth/setup":
+            self._handle_auth_setup()
+            return
+
+        if path == "/api/auth/login":
+            self._handle_auth_login()
+            return
+
+        if not self._auth_gate(path, urllib.parse.parse_qs(parsed.query)):
+            return
+
+        if path == "/api/auth/logout":
+            self._handle_auth_logout(
+                everywhere=(self._read_json_body() or {}).get("everywhere", False))
+            return
+
+        if path == "/api/cast-token":
+            self._handle_cast_token()
+            return
+
         # Rotas que antes eram GET e alteravam estado (scan, cache, restore).
         # O corpo do handler continua em do_GET; aqui so liberamos a execucao.
         if path in WRITE_ROUTES:
@@ -1764,6 +2191,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+
+        if not self._auth_gate(path, params):
+            return
+
+        if path == "/login":
+            if self._has_session():
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            self._send_html(_login_page(setup=not _auth_configured()))
+            return
+
+        if path == "/api/auth/status":
+            self._send_json({"configured": _auth_configured(),
+                             "authenticated": self._has_session()})
+            return
 
         # Rotas de escrita chegam aqui apenas quando redespachadas por do_POST.
         if path in WRITE_ROUTES and not getattr(self, "_write_ok", False):
@@ -2892,6 +3336,9 @@ def main():
 ║  🚀 rclone proxy on localhost:{RCLONE_SERVE_PORT}        ║
 ╚══════════════════════════════════════════════╝
     """
+    if not _auth_configured():
+        print("[TicianoFlix] Primeiro acesso: abra o endereco acima e crie a "
+              "senha de acesso.", flush=True)
     print(banner)
 
     # Shutdown imediato — não espera threads de stream terminarem

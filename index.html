@@ -1481,6 +1481,9 @@
       <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
         <span class="icon">🧹</span> Limpar Cache
       </button>
+      <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
+        <span class="icon">🚪</span> Sair
+      </button>
       <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span>
         <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração">☁️</a>
       </div>
@@ -1651,6 +1654,19 @@
   </div>
 
 <script>
+  // Sessao expirada: qualquer chamada que volte 401 leva de volta ao login.
+  (function () {
+    var _fetch = window.fetch;
+    window.fetch = function () {
+      return _fetch.apply(this, arguments).then(function (res) {
+        if (res.status === 401 && window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
+        return res;
+      });
+    };
+  })();
+
   // ==================== STATE ====================
   let currentPath = "";
 
@@ -2858,7 +2874,7 @@
       });
   }
 
-  function _sendMediaToCast() {
+  async function _sendMediaToCast() {
     if (!_castSession) return;
     var video = document.getElementById('videoPlayer');
     if (!video || !video.src) return;
@@ -2870,8 +2886,26 @@
     // Get the current video stream URL path (relative)
     var urlObj = new URL(video.src, _getBaseUrl());
     var streamPath = urlObj.pathname + urlObj.search;
+
+    // O Chromecast busca a midia sozinho e nao manda o cookie de sessao.
+    // Pedimos ao servidor uma URL assinada, valida so para este arquivo.
+    var mediaPath = urlObj.searchParams.get('path') || '';
+    var castTokens = {};
+    try {
+      var tkRes = await fetch('/api/cast-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: mediaPath, subtitle: currentSubtitlePath || '' })
+      });
+      if (tkRes.ok) castTokens = await tkRes.json();
+    } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
+    if (!castTokens.t) {
+      showToast('❌ Não foi possível autorizar o envio para a TV', 'error');
+      return;
+    }
+
     // Construct absolute URL for Chromecast (over HTTP)
-    var contentUrl = baseUrl + streamPath;
+    var contentUrl = baseUrl + streamPath + '&t=' + encodeURIComponent(castTokens.t);
 
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
@@ -2884,7 +2918,8 @@
     var currentSubPath = currentSubtitlePath;
     if (currentSubPath) {
       console.log('[Cast] Adding subtitle track:', currentSubPath);
-      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath);
+      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath)
+                 + '&t=' + encodeURIComponent(castTokens.sub || '');
       var track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
       track.trackContentId = subUrl;
       track.trackContentType = 'text/vtt';
@@ -3531,6 +3566,17 @@
   });
 
   // ==================== UTILS ====================
+  async function doLogout() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ everywhere: false })
+      });
+    } catch (e) {}
+    window.location.replace('/login');
+  }
+
   function escHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
