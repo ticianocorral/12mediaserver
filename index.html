@@ -1803,7 +1803,7 @@
 
     let html = `<div class="genre-section">
       <div class="genre-header" style="cursor:default;border:none">
-        <div class="genre-title">🔍 Resultados para "${query}" <span class="genre-count">(${results.length})</span></div>
+        <div class="genre-title">🔍 Resultados para "${escHtml(query)}" <span class="genre-count">(${results.length})</span></div>
       </div>
       <div class="movie-grid">`;
 
@@ -2447,12 +2447,12 @@
 
       // Metadata row: runtime, mpaa, country, year, premiered
       let metaParts = [];
-      if (nfo && nfo.runtime) metaParts.push('<span><span class="label">Duração</span> ' + nfo.runtime + ' min</span>');
+      if (nfo && nfo.runtime) metaParts.push('<span><span class="label">Duração</span> ' + escHtml(nfo.runtime) + ' min</span>');
       if (nfo && nfo.mpaa) metaParts.push('<span><span class="label">Classificação</span> ' + escHtml(nfo.mpaa) + '</span>');
       if (year) metaParts.push('<span><span class="label">Ano</span> ' + year + '</span>');
-      if (nfo && nfo.premiered) metaParts.push('<span><span class="label">Estreia</span> ' + nfo.premiered + '</span>');
-      if (nfo && nfo.country && nfo.country.length > 0) metaParts.push('<span><span class="label">País</span> ' + nfo.country.join(', ') + '</span>');
-      if (nfo && nfo.source) metaParts.push('<span><span class="label">Fonte</span> ' + nfo.source + '</span>');
+      if (nfo && nfo.premiered) metaParts.push('<span><span class="label">Estreia</span> ' + escHtml(nfo.premiered) + '</span>');
+      if (nfo && nfo.country && nfo.country.length > 0) metaParts.push('<span><span class="label">País</span> ' + escHtml(nfo.country.join(', ')) + '</span>');
+      if (nfo && nfo.source) metaParts.push('<span><span class="label">Fonte</span> ' + escHtml(nfo.source) + '</span>');
       if (metaParts.length > 0) {
         nfoHtml += '<div class="movie-meta-row">' + metaParts.join('') + '</div>';
       }
@@ -2460,13 +2460,13 @@
       // Directors / Writers
       let creditsHtml = '';
       if (nfo && nfo.directors && nfo.directors.length > 0) {
-        creditsHtml += '<span><span class="label">Diretor</span> ' + nfo.directors.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Diretor</span> ' + escHtml(nfo.directors.join(', ')) + '</span>';
       }
       if (nfo && nfo.writers && nfo.writers.length > 0) {
-        creditsHtml += '<span><span class="label">Roteiro</span> ' + nfo.writers.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Roteiro</span> ' + escHtml(nfo.writers.join(', ')) + '</span>';
       }
       if (nfo && nfo.studios && nfo.studios.length > 0) {
-        creditsHtml += '<span><span class="label">Estúdio</span> ' + nfo.studios.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Estúdio</span> ' + escHtml(nfo.studios.join(', ')) + '</span>';
       }
       if (creditsHtml) {
         nfoHtml += '<div class="movie-meta-row">' + creditsHtml + '</div>';
@@ -3590,7 +3590,7 @@
     localStorage.removeItem('ticianoflix_cached');
     _cachedSet.clear();
     showToast('🧹 Limpando cache do servidor...', '');
-    fetch('/api/clear-cache').then(r => r.json()).then(d => {
+    fetch('/api/clear-cache', { method: 'POST' }).then(r => r.json()).then(d => {
       if (d.status === 'ok') {
         showToast('🧹 Cache limpo com sucesso!', 'success');
         document.getElementById('cacheUsageSize').textContent = '0B';
@@ -3919,7 +3919,7 @@
     showToast('📥 Baixando ' + (folderPath.split('/').pop() || 'filme') + '...', '');
 
     try {
-      const res = await fetch('/api/cache-download?path=' + encodeURIComponent(folderPath));
+      const res = await fetch('/api/cache-download?path=' + encodeURIComponent(folderPath), { method: 'POST' });
       const data = await res.json();
       if (data.status === 'already_cached') {
         _cmDownloading.delete(folderPath);
@@ -4012,7 +4012,7 @@
     const path = decodeURIComponent(encodedPath);
     showToast('🗑 Removendo cache de ' + (path.split('/').pop() || 'filme') + '...', '');
     try {
-      const res = await fetch('/api/uncache?path=' + encodeURIComponent(path));
+      const res = await fetch('/api/uncache?path=' + encodeURIComponent(path), { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok') {
         // Update local data
@@ -4174,10 +4174,9 @@
     html += '</div>';
 
     if (s.webgui.running) {
-      html += '<div class="rclone-creds">Web UI aberta — acesse e faça login:<br>'
-        + 'URL: <a href="' + s.webgui.url + '" target="_blank" rel="noopener">' + s.webgui.url + '</a><br>'
-        + 'Usuário: <b>' + (s.webgui.user || 'ticianoflix') + '</b><br>'
-        + 'Senha: <b>' + (s.webgui.pass || '—') + '</b></div>';
+      html += '<div class="rclone-creds">Web UI aberta — acessível apenas neste computador:<br>'
+        + 'URL: <a href="' + escHtml(s.webgui.url) + '" target="_blank" rel="noopener">' + escHtml(s.webgui.url) + '</a><br>'
+        + 'Sem login: a interface escuta só em 127.0.0.1.</div>';
     }
 
     if (s.installed && !s.remote_configured) {
@@ -4196,15 +4195,14 @@
       const data = await res.json();
       if (data.status === 'ok' && data.url) {
         box.innerHTML = '<div class="rclone-creds"><b>✅ Configurador aberto!</b><br><br>'
-          + 'URL: <a href="' + data.url + '" target="_blank" rel="noopener">' + data.url + '</a><br>'
-          + 'Usuário: <b>' + data.user + '</b><br>'
-          + 'Senha: <b>' + data.pass + '</b></div>'
+          + 'URL: <a href="' + escHtml(data.url) + '" target="_blank" rel="noopener">' + escHtml(data.url) + '</a><br>'
+          + 'Acessível apenas neste computador, sem login.</div>'
           + '<div class="rclone-help">Se a aba não abrir sozinha, clique no link acima e faça login.<br>'
           + '💡 Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b>🔄 Reiniciar streaming</b>.</div>'
           + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Verificar status</button></div>';
         window.open(data.url, '_blank');
       } else {
-        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + (data.error || 'Erro desconhecido') + '</p></div>'
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + escHtml(data.error || 'Erro desconhecido') + '</p></div>'
           + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">← Voltar</button></div>';
       }
     } catch(e) {
@@ -4263,7 +4261,7 @@
     closeBackupModal();
     showToast('☁️ Baixando backup do Google Drive...', '');
     try {
-      const res = await fetch('/api/restore/drive');
+      const res = await fetch('/api/restore/drive', { method: 'POST' });
       const data = await res.json();
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
@@ -4300,7 +4298,7 @@
   async function backupToDrive() {
     try {
       showToast('☁️ Enviando backup para o Google Drive...', '');
-      const res = await fetch('/api/backup/drive');
+      const res = await fetch('/api/backup/drive', { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok') {
         showToast('☁️ Backup salvo em: ' + data.path, 'success');
@@ -4322,7 +4320,7 @@
     const icon = btn.querySelector('.icon');
 
     try {
-      const res = await fetch('/api/refresh');
+      const res = await fetch('/api/refresh', { method: 'POST' });
       const body = await res.json();
 
       if (body.status === 'already_scanning') {

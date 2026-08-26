@@ -46,6 +46,119 @@ VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m
 SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
+# ── Segurança de rede ────────────────────────────────────────
+# O servidor continua ouvindo na LAN (Chromecast e celular precisam disso),
+# mas só aceita requisições cujo Host seja local/privado e cujo Origin, quando
+# presente, também seja. Isso preserva o uso doméstico e fecha DNS rebinding —
+# nesse ataque o Host é um domínio público controlado por terceiros.
+BIND_HOST = os.environ.get("TICIANOFLIX_BIND", HOST)
+
+# Web GUI do rclone: desligada por padrão. Ela expõe a API de controle remoto
+# do rclone, que dá acesso total ao Drive. Habilite com TICIANOFLIX_RCLONE_GUI=1
+# — nesse caso ela sobe apenas em 127.0.0.1, acessível só do próprio computador.
+RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
+
+MAX_RESTORE_BYTES = 512 * 1024 * 1024   # teto do zip de restore
+MAX_JSON_BODY_BYTES = 64 * 1024         # teto de corpo JSON (ex.: /api/progress)
+MAX_NFO_BYTES = 2 * 1024 * 1024         # teto de um arquivo .nfo
+
+# Rotas que alteram estado: só respondem a POST com Origin local.
+WRITE_ROUTES = frozenset({
+    "/api/refresh", "/api/clear-cache", "/api/uncache",
+    "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
+})
+
+
+def _is_private_host(hostname):
+    """True para nomes/IPs locais ou de rede privada."""
+    if not hostname:
+        return False
+    h = hostname.strip().strip("[]").lower()
+    if h in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return True
+    if h.endswith((".local", ".localhost", ".lan", ".internal", ".home.arpa")):
+        return True
+    parts = h.split(".")
+    if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+        a, b = int(parts[0]), int(parts[1])
+        if a in (10, 127):
+            return True
+        if a == 192 and b == 168:
+            return True
+        if a == 172 and 16 <= b <= 31:
+            return True
+        if a == 169 and b == 254:
+            return True
+        if a == 100 and 64 <= b <= 127:   # CGNAT (Tailscale)
+            return True
+    if h.startswith(("fe80:", "fc", "fd")):
+        return True
+    return False
+
+
+def _host_allowed(host_header):
+    """Valida o header Host. Ausente = cliente HTTP/1.0 local."""
+    if not host_header:
+        return True
+    h = host_header.strip()
+    if h.startswith("["):                       # [::1]:8080
+        h = h[1:h.index("]")] if "]" in h else h[1:]
+    elif h.count(":") == 1:                     # host:porta
+        h = h.split(":")[0]
+    return _is_private_host(h)
+
+
+def _origin_allowed(origin_header):
+    """Origin ausente é aceito — Chromecast, <video> e navegação direta não mandam."""
+    if not origin_header:
+        return True
+    if origin_header == "null":
+        return False
+    try:
+        return _is_private_host(urllib.parse.urlparse(origin_header).hostname)
+    except Exception:
+        return False
+
+
+def _looks_like_ticianoflix_db(raw):
+    """Confere que o blob é um SQLite íntegro com o schema esperado antes de
+    sobrescrever o banco real."""
+    if not raw.startswith(b"SQLite format 3\x00"):
+        return False
+    import tempfile
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as f:
+            f.write(raw)
+            tmp = f.name
+        conn = sqlite3.connect(tmp)
+        try:
+            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                return False
+            tables = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        return {"files", "folders"}.issubset(tables)
+    except Exception:
+        return False
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
+def _vfs_segment_match(entry_str, needle):
+    """Casa apenas em fronteira de componente de caminho. Impede que um
+    fragmento curto ou vazio vire curinga e apague o cache inteiro."""
+    n = needle.replace(os.sep, "/").strip("/")
+    if not n:
+        return False
+    return ("/" + n + "/") in (entry_str.replace(os.sep, "/") + "/")
+
+
 rclone_server_proc = None
 rclone_webgui_proc = None
 _webgui_credentials = {"user": "", "pass": ""}
@@ -640,6 +753,11 @@ def cached_list_directory(path):
 
 def _parse_nfo(xml_text):
     """Parse Kodi-style NFO XML into a dict of metadata."""
+    # NFOs legitimos nao declaram entidades. Recusar <!ENTITY fecha o vetor de
+    # bomba XML (billion laughs) do ElementTree sem dependencia externa.
+    if xml_text and "<!ENTITY" in xml_text.upper():
+        sys.stderr.write("[TicianoFlix] NFO recusado: declara entidades XML\n")
+        return None
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -723,6 +841,10 @@ def _fetch_nfo_raw(folder_path):
             capture_output=True, text=True, timeout=15
         )
         if result.returncode != 0:
+            return None
+        if len(result.stdout) > MAX_NFO_BYTES:
+            sys.stderr.write("[TicianoFlix] NFO ignorado (acima de %d bytes): %s\n"
+                             % (MAX_NFO_BYTES, nfo_path))
             return None
         return result.stdout
     except Exception:
@@ -991,10 +1113,46 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         sys.stderr.write(f"[TicianoFlix] {args[0]} {args[1]} {args[2]}\n")
 
+    def _security_gate(self):
+        """Bloqueia DNS rebinding (Host publico) e leitura cross-site (Origin de
+        terceiro). Chromecast e <video> nao mandam Origin e passam normalmente."""
+        if not _host_allowed(self.headers.get("Host")):
+            self._send_error("Host nao permitido", 403)
+            return False
+        if not _origin_allowed(self.headers.get("Origin")):
+            self._send_error("Origem nao permitida", 403)
+            return False
+        return True
+
+    def _require_write_origin(self):
+        """Operacoes que alteram estado exigem Origin local explicito — e o que
+        impede CSRF disparado por <img> ou <form> a partir de qualquer site."""
+        origin = self.headers.get("Origin")
+        if not origin or not _origin_allowed(origin):
+            self._send_json(
+                {"status": "error", "error": "Origem invalida para operacao de escrita"}, 403)
+            return False
+        return True
+
+    def _send_media_cors(self):
+        """CORS restrito: '*' apenas quando nao ha Origin (Chromecast, <video>,
+        download direto). Com Origin, ecoa somente se for local."""
+        origin = self.headers.get("Origin")
+        if not origin:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        elif _origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
+    def _send_exception(self, e, status=500):
+        """Detalhe completo no log do servidor, mensagem generica para o cliente."""
+        sys.stderr.write("[TicianoFlix] %s: %r\n" % (self.path, e))
+        self._send_json({"status": "error", "error": "Erro interno — veja o log do servidor"}, status)
+
     def _send_json(self, data, status=200):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
@@ -1002,7 +1160,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def _send_html(self, content, status=200):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(content.encode("utf-8"))
 
@@ -1035,7 +1193,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(cache_path.stat().st_size))
             self.send_header("Cache-Control", "max-age=86400")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.end_headers()
             with open(cache_path, "rb") as f:
                 shutil.copyfileobj(f, self.wfile)
@@ -1067,7 +1225,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "max-age=86400")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._send_media_cors()
                 self.end_headers()
                 self.wfile.write(data)
                 return
@@ -1118,7 +1276,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", cl)
             self.send_header("Content-Type", mime)
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.end_headers()
 
             # Stream direto do socket do rclone pro socket do browser
@@ -1184,14 +1342,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Range", content_range)
             self.send_header("Content-Length", str(chunk_size))
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.send_header("Content-Type", mime)
             self.end_headers()
         else:
             self.send_response(200)
             self.send_header("Content-Length", str(chunk_size))
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.send_header("Content-Type", mime)
             self.end_headers()
 
@@ -1275,7 +1433,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/vtt; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_media_cors()
         self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
@@ -1304,12 +1462,22 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         return MIME_MAP.get(ext, "application/octet-stream")
 
     def _serve_file(self, path):
-        """Serve a file from the local filesystem. Protects against path traversal."""
+        """Serve arquivo estatico. Ancorado numa allowlist: apenas os favicons da
+        raiz e o conteudo de static/. Antes a raiz inteira era alcancavel via
+        /static/../ — o que expunha server.py e o diretorio .git."""
         project_root = Path(__file__).parent.resolve()
-        # Normalize the requested path and ensure it stays within project root
+        rel = path.lstrip("/")
+        if rel in ("favicon.ico", "favicon.svg"):
+            base = project_root
+        elif rel.startswith("static/"):
+            base = (project_root / "static").resolve()
+            rel = rel[len("static/"):]
+        else:
+            self._send_error("Forbidden", 403)
+            return
         try:
-            requested = (project_root / path.lstrip("/")).resolve()
-            requested.relative_to(project_root)
+            requested = (base / rel).resolve()
+            requested.relative_to(base)
         except (ValueError, RuntimeError):
             self._send_error("Forbidden", 403)
             return
@@ -1364,7 +1532,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="ticianoflix-backup.zip"')
             self.send_header("Content-Length", str(zip_size))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.end_headers()
             with open(zip_path, "rb") as f:
                 shutil.copyfileobj(f, self.wfile)
@@ -1481,8 +1649,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_error(f"Falha ao restaurar do Drive: {e}")
 
     def do_POST(self):
+        if not self._security_gate():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+
+        if not self._require_write_origin():
+            return
+
+        # Rotas que antes eram GET e alteravam estado (scan, cache, restore).
+        # O corpo do handler continua em do_GET; aqui so liberamos a execucao.
+        if path in WRITE_ROUTES:
+            self._write_ok = True
+            try:
+                self.do_GET()
+            finally:
+                self._write_ok = False
+            return
 
         if path == "/api/restore":
             self._handle_restore()
@@ -1493,6 +1676,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 content_len = int(self.headers.get("Content-Length", 0))
                 if content_len == 0:
                     self._send_json({"status": "error", "error": "Empty body"}, 400)
+                    return
+                if content_len > MAX_JSON_BODY_BYTES:
+                    self._send_json({"status": "error", "error": "Corpo grande demais"}, 413)
                     return
                 raw = self.rfile.read(content_len)
                 body = json.loads(raw)
@@ -1511,7 +1697,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 conn.close()
                 self._send_json({"status": "ok"})
             except Exception as e:
-                self._send_json({"status": "error", "error": str(e)}, 500)
+                self._send_exception(e)
             return
 
         if path == "/api/rclone/webgui/start":
@@ -1535,6 +1721,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if content_len == 0:
                 self._send_error("Empty request", 400)
                 return
+            if content_len > MAX_RESTORE_BYTES:
+                self._send_error("Backup grande demais", 413)
+                return
             data = self.rfile.read(content_len)
             buf = io.BytesIO(data)
             with zipfile.ZipFile(buf, "r") as z:
@@ -1542,10 +1731,18 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 if "ticianoflix.db" not in names:
                     self._send_error("Backup must contain ticianoflix.db", 400)
                     return
+                if z.getinfo("ticianoflix.db").file_size > MAX_RESTORE_BYTES:
+                    self._send_error("Banco do backup grande demais", 413)
+                    return
+                db_bytes = z.read("ticianoflix.db")
+                if not _looks_like_ticianoflix_db(db_bytes):
+                    self._send_error(
+                        "O arquivo nao e um banco valido do TicianoFlix", 400)
+                    return
                 db_path = Path(DB_PATH)
                 if db_path.exists():
                     shutil.copy2(db_path, db_path.with_suffix(".db.bak"))
-                db_path.write_bytes(z.read("ticianoflix.db"))
+                db_path.write_bytes(db_bytes)
                 img_dir = Path(IMAGE_CACHE_DIR)
                 img_dir.mkdir(exist_ok=True)
                 for name in names:
@@ -1558,12 +1755,21 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                         (subs_dir / Path(name).name).write_bytes(z.read(name))
             self._send_json({"status": "ok", "message": "Backup restaurado com sucesso"})
         except Exception as e:
-            self._send_error(f"Falha ao restaurar: {e}")
+            sys.stderr.write("[TicianoFlix] restore falhou: %r\n" % (e,))
+            self._send_error("Falha ao restaurar o backup")
 
     def do_GET(self):
+        if not self._security_gate():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+
+        # Rotas de escrita chegam aqui apenas quando redespachadas por do_POST.
+        if path in WRITE_ROUTES and not getattr(self, "_write_ok", False):
+            self._send_json(
+                {"status": "error", "error": "Use POST para esta operacao"}, 405)
+            return
 
         # Serve frontend
         if path == "/" or path == "/index.html":
@@ -1661,7 +1867,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Disposition", f'attachment; filename="{backup_name}"')
             self.send_header("Content-Length", str(db_path.stat().st_size))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_media_cors()
             self.send_header("X-Backup-Path", saved_path)
             self.end_headers()
             with open(db_path, "rb") as f:
@@ -1716,7 +1922,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     })
                 self._send_json(result)
             except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+                self._send_exception(e)
             return
 
         # API: Download a movie file to cache (forces VFS caching in background)
@@ -1848,7 +2054,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 t.start()
                 self._send_json({"status": "started", "path": video_path, "name": video_name, "size": file_size})
             except Exception as e:
-                self._send_json({"status": "error", "error": str(e)}, 500)
+                self._send_exception(e)
             return
 
         # API: Download progress for a video being cached
@@ -1894,7 +2100,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 conn.close()
                 self._send_json({"status": "ok"})
             except Exception as e:
-                self._send_json({"status": "error", "error": str(e)}, 500)
+                self._send_exception(e)
             return
 
         # API: Remove single movie from VFS cache
@@ -1902,6 +2108,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             folder_path = params.get("path", [""])[0]
             if not folder_path:
                 self._send_json({"status": "error", "error": "Missing path"}, 400)
+                return
+            # Um caminho vazio ou minusculo casaria com todo o cache VFS.
+            if len(folder_path.strip("/")) < 2 or folder_path.strip("/") in (".", ".."):
+                self._send_json({"status": "error", "error": "Caminho invalido"}, 400)
                 return
             try:
                 # Get the video file name from the database directly
@@ -1935,17 +2145,17 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     folder_stripped = folder_path.strip("/")
                     for entry in vfs_cache.rglob("*"):
                         if entry.is_file():
-                            if folder_stripped in str(entry):
+                            if _vfs_segment_match(str(entry), folder_stripped):
                                 entry.unlink()
                                 removed += 1
-                        elif entry.is_dir() and folder_stripped in str(entry):
+                        elif entry.is_dir() and _vfs_segment_match(str(entry), folder_stripped):
                             import shutil
                             shutil.rmtree(entry, ignore_errors=True)
                             removed += 1
                     # Also try matching just the folder name (last path component)
                     folder_last = folder_stripped.split("/")[-1]
                     for entry in vfs_cache.rglob("*"):
-                        if entry.is_file() and folder_last in str(entry):
+                        if entry.is_file() and _vfs_segment_match(str(entry), folder_last):
                             # Check if it's a parent match (not already deleted)
                             if entry.exists():
                                 entry.unlink()
@@ -1959,7 +2169,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                                 for cached_file in entry.rglob("*"):
                                     if cached_file.is_file():
                                         cached_str = str(cached_file)
-                                        if folder_path.strip("/").replace("/", "_") in cached_str:
+                                        _flat = folder_path.strip("/").replace("/", "_")
+                                        if len(_flat) >= 2 and _flat in cached_str:
                                             cached_file.unlink()
                                             removed += 1
                         if removed > 0:
@@ -1967,7 +2178,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
                 self._send_json({"status": "ok"})
             except Exception as e:
-                self._send_json({"status": "error", "error": str(e)}, 500)
+                self._send_exception(e)
             return
 
         # API: Cache status
@@ -2423,7 +2634,7 @@ def start_rclone_serve():
         try:
             proc = subprocess.Popen(
                 ["rclone", "serve", "http", "gdrive:",
-                 "--addr", f":{RCLONE_SERVE_PORT}",
+                 "--addr", f"127.0.0.1:{RCLONE_SERVE_PORT}",
                  "--read-only",
                  "--drive-chunk-size", "128M",
                  "--buffer-size", "512M",
@@ -2432,7 +2643,6 @@ def start_rclone_serve():
                  "--vfs-read-chunk-size", "4M",
                  "--vfs-read-chunk-size-limit", "off",
                  "--vfs-read-ahead", "512M",
-                 "--header", "Access-Control-Allow-Origin: *",
                  "--log-level", "ERROR"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -2483,24 +2693,27 @@ def restart_rclone_serve():
 def start_rclone_webgui():
     """Sobe o 'rclone rcd --rc-web-gui' (configurador oficial do rclone) na porta 5572."""
     global rclone_webgui_proc
+    if not RCLONE_GUI_ENABLED:
+        return {"status": "error", "error": (
+            "Configurador desativado por padrao. Inicie o TicianoFlix com "
+            "TICIANOFLIX_RCLONE_GUI=1 e abra pelo proprio computador.")}
     with _webgui_lock:
         if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
             return {
-                "status": "ok", "running": True,
-                "url": f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/",
-                **_webgui_credentials,
+                "status": "ok", "running": True, "local_only": True,
+                "url": f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/",
             }
-        import secrets
-        _webgui_credentials["user"] = "ticianoflix"
-        _webgui_credentials["pass"] = secrets.token_urlsafe(9)
+        # Sem usuario/senha: a GUI so escuta em 127.0.0.1, entao nao ha
+        # credencial para vazar por HTTP.
+        _webgui_credentials["user"] = ""
+        _webgui_credentials["pass"] = ""
         try:
             proc = subprocess.Popen(
                 ["rclone", "rcd",
                  "--rc-web-gui",
                  "--rc-web-gui-no-open-browser",
-                 "--rc-addr", f":{RCLONE_WEBGUI_PORT}",
-                 "--rc-user", _webgui_credentials["user"],
-                 "--rc-pass", _webgui_credentials["pass"]],
+                 "--rc-addr", f"127.0.0.1:{RCLONE_WEBGUI_PORT}",
+                 "--rc-no-auth"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -2518,9 +2731,8 @@ def start_rclone_webgui():
         if proc.poll() is not None:
             return {"status": "error", "error": f"rclone rcd encerrou com código {proc.returncode}."}
         return {
-            "status": "ok", "running": True,
-            "url": f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/",
-            **_webgui_credentials,
+            "status": "ok", "running": True, "local_only": True,
+            "url": f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/",
         }
 
 
@@ -2550,7 +2762,8 @@ def get_rclone_status():
         "remote_ok": False,
         "remote_error": None,
         "serve_running": False,
-        "webgui": {"running": False, "port": RCLONE_WEBGUI_PORT},
+        "webgui": {"running": False, "port": RCLONE_WEBGUI_PORT,
+                   "enabled": RCLONE_GUI_ENABLED},
     }
     # Instalado? Versão?
     try:
@@ -2593,9 +2806,8 @@ def get_rclone_status():
     if rclone_webgui_proc is not None:
         status["webgui"]["running"] = rclone_webgui_proc.poll() is None
         if status["webgui"]["running"]:
-            status["webgui"]["url"] = f"http://{_get_local_ip()}:{RCLONE_WEBGUI_PORT}/"
-            status["webgui"]["user"] = _webgui_credentials["user"]
-            status["webgui"]["pass"] = _webgui_credentials["pass"]
+            status["webgui"]["url"] = f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/"
+            status["webgui"]["local_only"] = True
     return status
 
 
@@ -2623,7 +2835,7 @@ def main():
         print(f"[TicianoFlix] Cache loaded from {db_path_abs}{cache_age}", flush=True)
 
     port = find_free_port()
-    server = http.server.ThreadingHTTPServer((HOST, port), TicianoFlixHandler)
+    server = http.server.ThreadingHTTPServer((BIND_HOST, port), TicianoFlixHandler)
     server.timeout = 0.5
     # Permite reuso imediato da porta ao reiniciar
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -2656,7 +2868,7 @@ def main():
                     continue
         if https_port:
             https_server = start_https_server(
-                TicianoFlixHandler, HOST, https_port, cert_path, key_path
+                TicianoFlixHandler, BIND_HOST, https_port, cert_path, key_path
             )
 
     # Build banner
