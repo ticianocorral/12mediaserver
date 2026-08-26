@@ -1495,7 +1495,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text">▶ TicianoFlix</span>
-      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.5.3</span>
+      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.6</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
@@ -4319,6 +4319,19 @@
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.6.0',
+      title: 'Login com contas e hardening de segurança',
+      changes: [
+        'Login obrigatório: contas com usuário e senha, sessão de 90 dias por aparelho',
+        'Primeiro acesso protegido por código de instalação impresso no log do servidor',
+        'Painel 👥 Contas para administradores: adicionar, remover, promover e redefinir senha',
+        'Chromecast preservado por URL assinada, válida só para aquele arquivo',
+        'Fim do CORS aberto e do acesso sem autenticação: Host e Origin validados em toda requisição',
+        'Correções: path traversal em /static/, XSS em metadados NFO e rotas destrutivas via GET',
+        'rclone serve e configurador passam a escutar apenas em 127.0.0.1',
+      ],
+    },
     {
       version: '1.5.3',
       title: 'Botão fechar do player',

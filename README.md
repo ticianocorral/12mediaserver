@@ -4,7 +4,7 @@
   <p>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
-    <img src="https://img.shields.io/badge/version-1.5-red" alt="v1.5">
+    <img src="https://img.shields.io/badge/version-1.6-red" alt="v1.6">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
   </p>
 </div>
@@ -17,6 +17,8 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 
 ### ✨ Funcionalidades
 
+- **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
+- **👥 Painel de contas** — administradores adicionam, removem, promovem e redefinem senhas
 - **📁 Scan manual** do Google Drive com proteção contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
@@ -31,6 +33,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🔄 Serviço systemd** — inicia automaticamente no login
 - **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
+- **📺 Chromecast** — envio para a TV com URL assinada, sem abrir o acervo para a rede
 
 ---
 
@@ -106,9 +109,46 @@ O instalador verifica/instala Python e rclone (winget ou download oficial),
 cria o `TicianoFlix.bat` na pasta do projeto e pergunta se você quer iniciar
 junto com o Windows (tarefa agendada no login) e se quer iniciar agora.
 
-### 3. Acessar
+### 3. Primeiro acesso
 
-Abra **http://localhost:8080** no navegador e clique em 🔄 para escanear seu Drive.
+Na primeira execução o servidor imprime um **código de instalação** de 6 dígitos no log:
+
+```
+  ──────────────────────────────────────────────
+  PRIMEIRO ACESSO — crie a conta de administrador
+  Codigo de instalacao: 249768
+  Abra o endereco acima e informe esse codigo.
+  ──────────────────────────────────────────────
+```
+
+Onde ver o log:
+
+```bash
+# Linux
+journalctl --user -u ticianoflix -n 20
+
+# macOS
+tail -20 ~/.cache/ticianoflix/ticianoflix.log
+```
+
+Abra **http://localhost:8080**, informe o código e escolha usuário e senha. Essa
+conta vira o administrador.
+
+O código existe para fechar a janela em que qualquer pessoa na sua rede poderia
+criar a conta inicial antes de você — quem não tem acesso ao terminal da máquina
+não passa dessa tela. Depois disso o código não vale mais: contas novas só pelo
+painel **👥 Contas**.
+
+Feito o login, clique em 🔄 para escanear seu Drive.
+
+### 4. Criar contas para a casa
+
+No menu lateral, **👥 Contas** (visível apenas para administradores) permite
+adicionar pessoas, remover, promover a administrador e redefinir senhas.
+Não existe auto-cadastro: só quem está nessa lista consegue entrar.
+
+Remover uma conta encerra as sessões dela na hora. O mesmo vale para redefinir
+a senha de alguém.
 
 ---
 
@@ -202,10 +242,61 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 
 ## 🔒 Segurança
 
-- **Zero hardcoded secrets** — OAuth do rclone fica em `~/.config/rclone/rclone.conf`, fora do repositório
-- **Read-only** no rclone — impossível deletar ou alterar arquivos no Drive
-- **Firewall local** — servidor escuta em `0.0.0.0:8080` (acesso LAN) — altere para `127.0.0.1` se quiser apenas localhost
-- **Serviço isolado** — systemd com `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`
+O servidor continua acessível pela rede local — Chromecast e celular dependem
+disso — mas nada nele responde sem autenticação.
+
+### Autenticação
+
+- **Contas com papéis** (admin / usuário). Senhas guardadas como hash **scrypt**
+  (`n=16384, r=8, p=1`) em `~/.cache/ticianoflix/auth.json`, com permissão `600`.
+- **Sem auto-cadastro.** O primeiro administrador exige o código de instalação
+  impresso no log; os demais são criados pelo painel.
+- **Sessão sem estado**: cookie `HttpOnly`, `SameSite=Lax`, assinado por
+  HMAC-SHA256 com a chave em `~/.cache/ticianoflix/secret.key` (`600`).
+  Reiniciar o servidor não desloga ninguém.
+- **Revogação granular**: trocar a senha, mudar o papel ou remover a conta
+  encerram as sessões daquela pessoa. "Sair de todos" derruba todo mundo.
+- **Rate limit**: 8 tentativas erradas por IP a cada 15 minutos.
+
+### Rede
+
+- **Host e Origin validados** em toda requisição: aceita `localhost`, `.local` e
+  faixas privadas (10/8, 192.168/16, 172.16–31, 169.254/16, 100.64/10); recusa
+  domínio público. É o que fecha **DNS rebinding**.
+- **CORS restrito** — as respostas de API não liberam origem alguma. Mídia e
+  legenda devolvem `*` apenas quando não há header `Origin` (o caso do
+  Chromecast, que busca o arquivo sozinho).
+- **Chromecast por URL assinada** — token HMAC de 12h válido só para aquele
+  arquivo, em vez de abrir as rotas de mídia.
+- **`rclone serve` apenas em `127.0.0.1:18082`**, read-only. O TicianoFlix faz o
+  proxy; nada externo alcança essa porta.
+- **Configurador do rclone desligado por padrão.** Habilite com
+  `TICIANOFLIX_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
+
+### Superfície da aplicação
+
+- **Rotas destrutivas exigem POST** com `Origin` local (limpar cache, remover do
+  cache, rescan, backup e restauração), o que impede CSRF por `<img>` ou `<form>`.
+- **Restauração validada** — o backup precisa ser um SQLite íntegro com o schema
+  esperado antes de substituir o banco, com teto de tamanho.
+- **Metadados NFO escapados** na renderização, e arquivos com `<!ENTITY>`
+  recusados (bomba XML).
+- **Zero hardcoded secrets** — OAuth do rclone fica em
+  `~/.config/rclone/rclone.conf`, fora do repositório.
+- **SQL sempre parametrizado**, nenhum `shell=True`, nenhum caminho de usuário
+  chegando ao shell.
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Para quê |
+|----------|--------|----------|
+| `TICIANOFLIX_BIND` | `0.0.0.0` | Interface de escuta. Use `127.0.0.1` para fechar na máquina. |
+| `TICIANOFLIX_PORT` | `8080` | Porta HTTP. |
+| `TICIANOFLIX_RCLONE_GUI` | desligado | `1` habilita o configurador do rclone em `127.0.0.1:5572`. |
+
+> ⚠️ Pela porta **8080** a senha trafega em claro na sua rede. O servidor também
+> sobe em **HTTPS na 8443** — prefira esse endereço, ele aparece no banner de
+> inicialização.
 
 ---
 
@@ -213,12 +304,25 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 
 ```
 TicianoFlix/
-├── server.py         # Servidor HTTP (todo o backend)
-├── index.html        # Frontend single-page
-├── install.sh        # Instalador do serviço systemd
-├── .gitignore        # Arquivos ignorados pelo Git
-├── LICENSE           # Licença MIT
-└── README.md         # Este arquivo
+├── server.py              # Servidor HTTP (todo o backend)
+├── index.html             # Frontend single-page
+├── install.sh             # Instalador do serviço systemd (Linux)
+├── install-macos.sh       # Instalador do LaunchAgent (macOS)
+├── install-windows.bat    # Instalador (Windows)
+├── bump-version.sh        # Versionamento SemVer
+├── .gitignore             # Arquivos ignorados pelo Git
+├── LICENSE                # Licença MIT
+└── README.md              # Este arquivo
+```
+
+Fora do repositório, em `~/.cache/ticianoflix/`:
+
+```
+ticianoflix.db     # Catálogo (SQLite)
+auth.json          # Contas e hashes de senha  (600)
+secret.key         # Chave HMAC das sessões    (600)
+cert.pem / key.pem # Certificado HTTPS         (600)
+images/ · subs/    # Cache de pôsteres e legendas
 ```
 
 ---
@@ -234,13 +338,35 @@ rm -rf ~/.cache/rclone/vfs/
 systemctl --user restart ticianoflix
 ```
 
+### Esqueci a senha
+
+Peça a um administrador para redefinir em **👥 Contas**. Se ninguém mais tiver
+acesso de administrador, apague o arquivo de contas na máquina do servidor — o
+fluxo de primeiro acesso volta, com um código de instalação novo:
+
+```bash
+rm ~/.cache/ticianoflix/auth.json
+# reinicie o serviço e veja o novo código no log
+```
+
+Isso apaga **todas** as contas, não só a sua. O catálogo e o cache não são afetados.
+
 ### Atualizar
 
 ```bash
 cd ~/TicianoFlix
 git pull
+
+# Linux
 systemctl --user restart ticianoflix
+
+# macOS
+launchctl kickstart -k gui/$(id -u)/com.ticianoflix
 ```
+
+> O servidor lê o `index.html` do disco a cada requisição. Depois de um `git pull`
+> que mexa no frontend, reinicie antes de usar — senão a interface nova conversa
+> com o backend antigo.
 
 ---
 
@@ -334,6 +460,23 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 ---
 
 ## 📋 Changelog
+
+### v1.6 — Login com contas e hardening de segurança
+
+- Login obrigatório: contas com usuário e senha, sessão de 90 dias por aparelho
+
+- Primeiro acesso protegido por código de instalação impresso no log do servidor
+
+- Painel 👥 Contas para administradores: adicionar, remover, promover e redefinir senha
+
+- Chromecast preservado por URL assinada, válida só para aquele arquivo
+
+- Fim do CORS aberto e do acesso sem autenticação: Host e Origin validados em toda requisição
+
+- Correções: path traversal em /static/, XSS em metadados NFO e rotas destrutivas via GET
+
+- rclone serve e configurador passam a escutar apenas em 127.0.0.1
+
 
 ### v1.5.3 — Botão fechar do player
 
