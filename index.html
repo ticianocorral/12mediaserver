@@ -646,6 +646,56 @@
   .backup-option-desc { font-size: 12px; color: var(--text3); line-height: 1.4; }
 
   /* ====== RCLONE MODAL ====== */
+  .user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.04);
+  }
+  .user-row + .user-row { margin-top: 6px; }
+  .user-name { font-size: 14px; font-weight: 600; flex: 1 1 auto; word-break: break-all; }
+  .user-tag {
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .user-tag.admin { background: rgba(229,9,20,0.18); color: #ff6b73; }
+  .user-tag.me { background: rgba(255,255,255,0.10); color: var(--text3); }
+  .user-btn {
+    border: none; background: rgba(255,255,255,0.08); color: var(--text);
+    border-radius: var(--radius); padding: 6px 9px; font-size: 13px;
+    cursor: pointer; transition: all var(--transition);
+  }
+  .user-btn:hover { background: rgba(255,255,255,0.18); }
+  .user-btn.danger:hover { background: rgba(244,67,54,0.28); }
+  .user-form {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+    padding: 12px; border-radius: var(--radius);
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed rgba(255,255,255,0.12);
+  }
+  .user-form input[type=text], .user-form input[type=password] {
+    flex: 1 1 140px; min-width: 0; padding: 9px 11px; font-size: 13px;
+    color: var(--text); background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius); font-family: inherit;
+  }
+  .user-form input:focus { outline: none; border-color: var(--accent); }
+  .user-form label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text3); white-space: nowrap;
+  }
+  .user-section-title {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--text3); margin: 16px 0 8px;
+  }
+  .user-msg {
+    margin-top: 10px; padding: 9px 12px; border-radius: var(--radius);
+    font-size: 13px; line-height: 1.45;
+  }
+  .user-msg.err { background: rgba(244,67,54,0.14); color: #ef9a9a; }
+  .user-msg.ok  { background: rgba(76,175,80,0.14); color: #a5d6a7; }
   .rclone-row {
     display: flex;
     align-items: center;
@@ -1445,7 +1495,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text">▶ TicianoFlix</span>
-      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.5.3</span>
+      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.6</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
@@ -1480,6 +1530,12 @@
       </button>
       <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
         <span class="icon">🧹</span> Limpar Cache
+      </button>
+      <button class="sidebar-item" id="usersBtn" style="display:none" onclick="openUsersModal()" title="Gerenciar quem tem acesso">
+        <span class="icon">👥</span> Contas
+      </button>
+      <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
+        <span class="icon">🚪</span> <span id="logoutLabel">Sair</span>
       </button>
       <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span>
         <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração">☁️</a>
@@ -1562,6 +1618,21 @@
   </div>
 
   <!-- ====== RCLONE MODAL ====== -->
+  <!-- ====== CONTAS MODAL ====== -->
+  <div class="modal-overlay" id="usersModal">
+    <div class="modal" style="width:560px">
+      <div class="modal-header">
+        <span class="modal-title">👥 Contas</span>
+        <button class="modal-close" onclick="closeUsersModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="usersBox">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="rcloneModal">
     <div class="modal" style="width:520px">
       <div class="modal-header">
@@ -1651,6 +1722,19 @@
   </div>
 
 <script>
+  // Sessao expirada: qualquer chamada que volte 401 leva de volta ao login.
+  (function () {
+    var _fetch = window.fetch;
+    window.fetch = function () {
+      return _fetch.apply(this, arguments).then(function (res) {
+        if (res.status === 401 && window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
+        return res;
+      });
+    };
+  })();
+
   // ==================== STATE ====================
   let currentPath = "";
 
@@ -1803,7 +1887,7 @@
 
     let html = `<div class="genre-section">
       <div class="genre-header" style="cursor:default;border:none">
-        <div class="genre-title">🔍 Resultados para "${query}" <span class="genre-count">(${results.length})</span></div>
+        <div class="genre-title">🔍 Resultados para "${escHtml(query)}" <span class="genre-count">(${results.length})</span></div>
       </div>
       <div class="movie-grid">`;
 
@@ -2447,12 +2531,12 @@
 
       // Metadata row: runtime, mpaa, country, year, premiered
       let metaParts = [];
-      if (nfo && nfo.runtime) metaParts.push('<span><span class="label">Duração</span> ' + nfo.runtime + ' min</span>');
+      if (nfo && nfo.runtime) metaParts.push('<span><span class="label">Duração</span> ' + escHtml(nfo.runtime) + ' min</span>');
       if (nfo && nfo.mpaa) metaParts.push('<span><span class="label">Classificação</span> ' + escHtml(nfo.mpaa) + '</span>');
       if (year) metaParts.push('<span><span class="label">Ano</span> ' + year + '</span>');
-      if (nfo && nfo.premiered) metaParts.push('<span><span class="label">Estreia</span> ' + nfo.premiered + '</span>');
-      if (nfo && nfo.country && nfo.country.length > 0) metaParts.push('<span><span class="label">País</span> ' + nfo.country.join(', ') + '</span>');
-      if (nfo && nfo.source) metaParts.push('<span><span class="label">Fonte</span> ' + nfo.source + '</span>');
+      if (nfo && nfo.premiered) metaParts.push('<span><span class="label">Estreia</span> ' + escHtml(nfo.premiered) + '</span>');
+      if (nfo && nfo.country && nfo.country.length > 0) metaParts.push('<span><span class="label">País</span> ' + escHtml(nfo.country.join(', ')) + '</span>');
+      if (nfo && nfo.source) metaParts.push('<span><span class="label">Fonte</span> ' + escHtml(nfo.source) + '</span>');
       if (metaParts.length > 0) {
         nfoHtml += '<div class="movie-meta-row">' + metaParts.join('') + '</div>';
       }
@@ -2460,13 +2544,13 @@
       // Directors / Writers
       let creditsHtml = '';
       if (nfo && nfo.directors && nfo.directors.length > 0) {
-        creditsHtml += '<span><span class="label">Diretor</span> ' + nfo.directors.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Diretor</span> ' + escHtml(nfo.directors.join(', ')) + '</span>';
       }
       if (nfo && nfo.writers && nfo.writers.length > 0) {
-        creditsHtml += '<span><span class="label">Roteiro</span> ' + nfo.writers.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Roteiro</span> ' + escHtml(nfo.writers.join(', ')) + '</span>';
       }
       if (nfo && nfo.studios && nfo.studios.length > 0) {
-        creditsHtml += '<span><span class="label">Estúdio</span> ' + nfo.studios.join(', ') + '</span>';
+        creditsHtml += '<span><span class="label">Estúdio</span> ' + escHtml(nfo.studios.join(', ')) + '</span>';
       }
       if (creditsHtml) {
         nfoHtml += '<div class="movie-meta-row">' + creditsHtml + '</div>';
@@ -2858,7 +2942,7 @@
       });
   }
 
-  function _sendMediaToCast() {
+  async function _sendMediaToCast() {
     if (!_castSession) return;
     var video = document.getElementById('videoPlayer');
     if (!video || !video.src) return;
@@ -2870,8 +2954,26 @@
     // Get the current video stream URL path (relative)
     var urlObj = new URL(video.src, _getBaseUrl());
     var streamPath = urlObj.pathname + urlObj.search;
+
+    // O Chromecast busca a midia sozinho e nao manda o cookie de sessao.
+    // Pedimos ao servidor uma URL assinada, valida so para este arquivo.
+    var mediaPath = urlObj.searchParams.get('path') || '';
+    var castTokens = {};
+    try {
+      var tkRes = await fetch('/api/cast-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: mediaPath, subtitle: currentSubtitlePath || '' })
+      });
+      if (tkRes.ok) castTokens = await tkRes.json();
+    } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
+    if (!castTokens.t) {
+      showToast('❌ Não foi possível autorizar o envio para a TV', 'error');
+      return;
+    }
+
     // Construct absolute URL for Chromecast (over HTTP)
-    var contentUrl = baseUrl + streamPath;
+    var contentUrl = baseUrl + streamPath + '&t=' + encodeURIComponent(castTokens.t);
 
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
@@ -2884,7 +2986,8 @@
     var currentSubPath = currentSubtitlePath;
     if (currentSubPath) {
       console.log('[Cast] Adding subtitle track:', currentSubPath);
-      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath);
+      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath)
+                 + '&t=' + encodeURIComponent(castTokens.sub || '');
       var track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
       track.trackContentId = subUrl;
       track.trackContentType = 'text/vtt';
@@ -3530,7 +3633,162 @@
     applySubtitleSize();
   });
 
+  // ==================== CONTAS ====================
+  let _me = null;
+
+  async function _loadMe() {
+    try {
+      const res = await fetch('/api/auth/status');
+      const data = await res.json();
+      _me = data.user || null;
+      if (_me) {
+        const label = document.getElementById('logoutLabel');
+        if (label) label.textContent = 'Sair (' + _me.username + ')';
+        if (_me.role === 'admin') {
+          const btn = document.getElementById('usersBtn');
+          if (btn) btn.style.display = '';
+        }
+      }
+    } catch (e) {}
+  }
+
+  function openUsersModal() {
+    document.getElementById('usersModal').classList.add('active');
+    _loadUsers();
+  }
+
+  function closeUsersModal() {
+    document.getElementById('usersModal').classList.remove('active');
+  }
+
+  document.getElementById('usersModal').addEventListener('click', function (e) {
+    if (e.target === this) closeUsersModal();
+  });
+
+  function _usersMsg(text, kind) {
+    const el = document.getElementById('usersMsg');
+    if (el) { el.textContent = text; el.className = 'user-msg ' + kind; }
+  }
+
+  async function _loadUsers() {
+    const box = document.getElementById('usersBox');
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>';
+    try {
+      const res = await fetch('/api/users');
+      const data = await res.json();
+      if (!res.ok || data.status !== 'ok') {
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><h3>' + escHtml(data.error || 'Sem acesso') + '</h3></div>';
+        return;
+      }
+      _renderUsers(data.users || [], data.me || '');
+    } catch (e) {
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar contas</h3></div>';
+    }
+  }
+
+  function _renderUsers(users, me) {
+    let html = '<div class="user-section-title">Quem tem acesso (' + users.length + ')</div>';
+    users.forEach(u => {
+      const isMe = u.username === me;
+      const isAdmin = u.role === 'admin';
+      const n = escHtml(u.username);
+      html += '<div class="user-row">'
+        + '<span class="user-name">' + n + '</span>'
+        + (isAdmin ? '<span class="user-tag admin">admin</span>' : '')
+        + (isMe ? '<span class="user-tag me">você</span>' : '')
+        + '<button class="user-btn" title="' + (isAdmin ? 'Tornar usuário comum' : 'Tornar administrador') + '" '
+        + 'onclick="setUserRole(\'' + n + '\', \'' + (isAdmin ? 'user' : 'admin') + '\')">'
+        + (isAdmin ? '👤' : '👑') + '</button>'
+        + '<button class="user-btn" title="Redefinir senha" onclick="togglePwForm(\'' + n + '\')">🔑</button>'
+        + (isMe ? '' : '<button class="user-btn danger" title="Remover conta" onclick="removeUser(\'' + n + '\')">🗑</button>')
+        + '</div>'
+        + '<div class="user-form" id="pw-' + n + '" style="display:none">'
+        + '<input type="password" id="pwval-' + n + '" placeholder="Nova senha de ' + n + '" autocomplete="new-password">'
+        + '<button class="rclone-action-btn primary" style="flex:0 0 auto;min-width:100px" onclick="setUserPassword(\'' + n + '\')">Salvar</button>'
+        + '</div>';
+    });
+
+    html += '<div class="user-section-title">Adicionar conta</div>'
+      + '<div class="user-form">'
+      + '<input type="text" id="newUser" placeholder="usuário" autocapitalize="none" spellcheck="false" autocomplete="off">'
+      + '<input type="password" id="newPass" placeholder="senha (mín. 8)" autocomplete="new-password">'
+      + '<label><input type="checkbox" id="newAdmin"> administrador</label>'
+      + '<button class="rclone-action-btn primary" style="flex:0 0 auto;min-width:110px" onclick="addUser()">Adicionar</button>'
+      + '</div>'
+      + '<div class="rclone-help">Não existe auto-cadastro: só quem aparece nesta lista consegue entrar. '
+      + 'Remover uma conta derruba as sessões dela na hora.</div>'
+      + '<div id="usersMsg"></div>';
+
+    document.getElementById('usersBox').innerHTML = html;
+  }
+
+  function togglePwForm(username) {
+    const el = document.getElementById('pw-' + username);
+    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  async function _usersPost(url, body) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') return data;
+      _usersMsg(data.error || 'Não foi possível concluir.', 'err');
+    } catch (e) {
+      _usersMsg('Falha de conexão com o servidor.', 'err');
+    }
+    return null;
+  }
+
+  async function addUser() {
+    const username = (document.getElementById('newUser').value || '').trim().toLowerCase();
+    const password = document.getElementById('newPass').value || '';
+    const role = document.getElementById('newAdmin').checked ? 'admin' : 'user';
+    if (!username || !password) { _usersMsg('Preencha usuário e senha.', 'err'); return; }
+    const data = await _usersPost('/api/users/add', { username, password, role });
+    if (data) { _renderUsers(data.users, _me ? _me.username : ''); _usersMsg('Conta "' + username + '" criada.', 'ok'); }
+  }
+
+  async function removeUser(username) {
+    const data = await _usersPost('/api/users/remove', { username });
+    if (data) { _renderUsers(data.users, _me ? _me.username : ''); _usersMsg('Conta "' + username + '" removida.', 'ok'); }
+  }
+
+  async function setUserRole(username, role) {
+    const data = await _usersPost('/api/users/role', { username, role });
+    if (data) {
+      _renderUsers(data.users, _me ? _me.username : '');
+      _usersMsg('"' + username + '" agora é ' + (role === 'admin' ? 'administrador' : 'usuário comum') + '.', 'ok');
+    }
+  }
+
+  async function setUserPassword(username) {
+    const el = document.getElementById('pwval-' + username);
+    const password = el ? el.value : '';
+    if (!password) { _usersMsg('Digite a nova senha.', 'err'); return; }
+    const data = await _usersPost('/api/users/password', { username, password });
+    if (data) {
+      togglePwForm(username);
+      if (el) el.value = '';
+      _usersMsg('Senha de "' + username + '" redefinida. As sessões dela foram encerradas.', 'ok');
+    }
+  }
+
   // ==================== UTILS ====================
+  async function doLogout() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ everywhere: false })
+      });
+    } catch (e) {}
+    window.location.replace('/login');
+  }
+
   function escHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -3590,7 +3848,7 @@
     localStorage.removeItem('ticianoflix_cached');
     _cachedSet.clear();
     showToast('🧹 Limpando cache do servidor...', '');
-    fetch('/api/clear-cache').then(r => r.json()).then(d => {
+    fetch('/api/clear-cache', { method: 'POST' }).then(r => r.json()).then(d => {
       if (d.status === 'ok') {
         showToast('🧹 Cache limpo com sucesso!', 'success');
         document.getElementById('cacheUsageSize').textContent = '0B';
@@ -3919,7 +4177,7 @@
     showToast('📥 Baixando ' + (folderPath.split('/').pop() || 'filme') + '...', '');
 
     try {
-      const res = await fetch('/api/cache-download?path=' + encodeURIComponent(folderPath));
+      const res = await fetch('/api/cache-download?path=' + encodeURIComponent(folderPath), { method: 'POST' });
       const data = await res.json();
       if (data.status === 'already_cached') {
         _cmDownloading.delete(folderPath);
@@ -4012,7 +4270,7 @@
     const path = decodeURIComponent(encodedPath);
     showToast('🗑 Removendo cache de ' + (path.split('/').pop() || 'filme') + '...', '');
     try {
-      const res = await fetch('/api/uncache?path=' + encodeURIComponent(path));
+      const res = await fetch('/api/uncache?path=' + encodeURIComponent(path), { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok') {
         // Update local data
@@ -4062,24 +4320,39 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
-      version: '1.5.3',
-      title: 'botão fechar do player — modal de confirmação abria atrás do player',
+      version: '1.6.0',
+      title: 'Login com contas e hardening de segurança',
       changes: [
-        'Merged via PR #7',
+        'Login obrigatório: contas com usuário e senha, sessão de 90 dias por aparelho',
+        'Primeiro acesso protegido por código de instalação impresso no log do servidor',
+        'Painel 👥 Contas para administradores: adicionar, remover, promover e redefinir senha',
+        'Chromecast preservado por URL assinada, válida só para aquele arquivo',
+        'Fim do CORS aberto e do acesso sem autenticação: Host e Origin validados em toda requisição',
+        'Correções: path traversal em /static/, XSS em metadados NFO e rotas destrutivas via GET',
+        'rclone serve e configurador passam a escutar apenas em 127.0.0.1',
+      ],
+    },
+    {
+      version: '1.5.3',
+      title: 'Botão fechar do player',
+      changes: [
+        'Corrigido modal de confirmação ao fechar o player — abria atrás do vídeo e o botão ✕ parecia não funcionar',
       ],
     },
     {
       version: '1.5.2',
-      title: 'bloquear clique no menu lateral durante reprodução',
+      title: 'Bloqueio do menu durante reprodução',
       changes: [
-        'Merged via PR #6',
+        'Menu lateral e navegação ao fundo ficam bloqueados enquanto o filme toca (camada do player acima de tudo)',
       ],
     },
     {
       version: '1.5.1',
-      title: 'cursor de clicável no breadcrumb do overlay de detalhes',
+      title: 'Controles, header e legenda do player',
       changes: [
-        'Merged via PR #5',
+        'Controles e header somem no fullscreen com o mouse parado (cursor também) — estilo Netflix',
+        'Legenda proporcional ao tamanho do player — deixa de ficar gigante ao sair do fullscreen',
+        'Cursor de clicável (mãozinha) no breadcrumb do overlay de detalhes',
       ],
     },
     {
@@ -4172,10 +4445,9 @@
     html += '</div>';
 
     if (s.webgui.running) {
-      html += '<div class="rclone-creds">Web UI aberta — acesse e faça login:<br>'
-        + 'URL: <a href="' + s.webgui.url + '" target="_blank" rel="noopener">' + s.webgui.url + '</a><br>'
-        + 'Usuário: <b>' + (s.webgui.user || 'ticianoflix') + '</b><br>'
-        + 'Senha: <b>' + (s.webgui.pass || '—') + '</b></div>';
+      html += '<div class="rclone-creds">Web UI aberta — acessível apenas neste computador:<br>'
+        + 'URL: <a href="' + escHtml(s.webgui.url) + '" target="_blank" rel="noopener">' + escHtml(s.webgui.url) + '</a><br>'
+        + 'Sem login: a interface escuta só em 127.0.0.1.</div>';
     }
 
     if (s.installed && !s.remote_configured) {
@@ -4194,15 +4466,14 @@
       const data = await res.json();
       if (data.status === 'ok' && data.url) {
         box.innerHTML = '<div class="rclone-creds"><b>✅ Configurador aberto!</b><br><br>'
-          + 'URL: <a href="' + data.url + '" target="_blank" rel="noopener">' + data.url + '</a><br>'
-          + 'Usuário: <b>' + data.user + '</b><br>'
-          + 'Senha: <b>' + data.pass + '</b></div>'
+          + 'URL: <a href="' + escHtml(data.url) + '" target="_blank" rel="noopener">' + escHtml(data.url) + '</a><br>'
+          + 'Acessível apenas neste computador, sem login.</div>'
           + '<div class="rclone-help">Se a aba não abrir sozinha, clique no link acima e faça login.<br>'
           + '💡 Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b>🔄 Reiniciar streaming</b>.</div>'
           + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Verificar status</button></div>';
         window.open(data.url, '_blank');
       } else {
-        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + (data.error || 'Erro desconhecido') + '</p></div>'
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + escHtml(data.error || 'Erro desconhecido') + '</p></div>'
           + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">← Voltar</button></div>';
       }
     } catch(e) {
@@ -4261,7 +4532,7 @@
     closeBackupModal();
     showToast('☁️ Baixando backup do Google Drive...', '');
     try {
-      const res = await fetch('/api/restore/drive');
+      const res = await fetch('/api/restore/drive', { method: 'POST' });
       const data = await res.json();
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
@@ -4298,7 +4569,7 @@
   async function backupToDrive() {
     try {
       showToast('☁️ Enviando backup para o Google Drive...', '');
-      const res = await fetch('/api/backup/drive');
+      const res = await fetch('/api/backup/drive', { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok') {
         showToast('☁️ Backup salvo em: ' + data.path, 'success');
@@ -4320,7 +4591,7 @@
     const icon = btn.querySelector('.icon');
 
     try {
-      const res = await fetch('/api/refresh');
+      const res = await fetch('/api/refresh', { method: 'POST' });
       const body = await res.json();
 
       if (body.status === 'already_scanning') {
@@ -4460,6 +4731,9 @@
   }
   updateCacheUsage();
   setInterval(updateCacheUsage, 30000);
+
+  // Quem esta logado: mostra o nome no botao Sair e revela "Contas" para admin.
+  _loadMe();
 </script>
 </body>
 </html>

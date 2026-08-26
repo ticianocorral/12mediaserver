@@ -28,8 +28,9 @@ jobs:
 
       - name: Determinar tipo de bump pelo título do PR
         id: type
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
         run: |
-          TITLE="${{ github.event.pull_request.title }}"
           if echo "$TITLE" | grep -qiE '^.*!:|BREAKING|^feat!'; then
             echo "type=major" >> "$GITHUB_OUTPUT"
           elif echo "$TITLE" | grep -qiE '^feat'; then
@@ -43,12 +44,21 @@ jobs:
 
       - name: Rodar bump-version.sh
         if: steps.type.outputs.type != 'none'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BUMP_TYPE: ${{ steps.type.outputs.type }}
         run: |
           chmod +x bump-version.sh
           # Título do changelog = título do PR (sem prefixo de tipo)
-          TITLE="${{ github.event.pull_request.title }}"
           CLEAN="$(echo "$TITLE" | sed -E 's/^[a-z]+(\!)?: *//I; s/\(#[0-9]+\)$//')"
-          ./bump-version.sh "${{ steps.type.outputs.type }}" "$CLEAN" "Merged via PR #${{ github.event.pull_request.number }}"
+          # Extrai bullets da seção "O que muda"/"Correção" do corpo do PR (fallback: título)
+          ITEMS="$(python3 .github/extract_changelog_items.py "$BODY")"
+          if [ -z "$ITEMS" ]; then
+            ./bump-version.sh "$BUMP_TYPE" "$CLEAN" "$CLEAN"
+          else
+            ./bump-version.sh "$BUMP_TYPE" "$CLEAN" "$ITEMS"
+          fi
 
       - name: Commit do bump (se houver mudança)
         if: steps.type.outputs.type != 'none'
