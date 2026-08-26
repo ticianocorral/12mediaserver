@@ -280,6 +280,16 @@ Exemplo:
 
 Mudanças na `main` **só entram via Pull Request**. Push direto é bloqueado por um hook local.
 
+### ⚠️ Regra: teste manual ANTES do merge
+
+**Nenhum PR é mergeado antes do teste manual.** O fluxo de trabalho é:
+
+1. A mudança é aplicada **localmente** (o servidor em `localhost:8080` já roda a versão nova)
+2. **Você testa** no navegador e dá o OK
+3. Só então o PR é criado e mergeado (com bump automático de versão)
+
+> 📌 Isso evita que mudanças não testadas entrem na main — e garante que a versão que você vê na interface sempre bate com o que está no repositório.
+
 ### Instalar o hook (uma vez por clone)
 
 ```bash
@@ -325,19 +335,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
-### v1.5.3 — botão fechar do player — modal de confirmação abria atrás do player
+### v1.5.3 — Botão fechar do player
 
-- Merged via PR #7
+- Corrigido modal de confirmação ao fechar o player — abria atrás do vídeo e o botão ✕ parecia não funcionar
 
+### v1.5.2 — Bloqueio do menu durante reprodução
 
-### v1.5.2 — bloquear clique no menu lateral durante reprodução
+- Menu lateral e navegação ao fundo ficam bloqueados enquanto o filme toca (camada do player acima de tudo)
 
-- Merged via PR #6
+### v1.5.1 — Controles, header e legenda do player
 
-
-### v1.5.1 — cursor de clicável no breadcrumb do overlay de detalhes
-
-- Merged via PR #5
+- Controles e header somem no fullscreen com o mouse parado (cursor também) — estilo Netflix
+- Legenda proporcional ao tamanho do player — deixa de ficar gigante ao sair do fullscreen
+- Cursor de clicável (mãozinha) no breadcrumb do overlay de detalhes
 
 
 ### v1.5 — Busca na sidebar, scan incremental, home reorganizada
