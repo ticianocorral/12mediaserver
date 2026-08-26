@@ -31,8 +31,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HOST = "0.0.0.0"
-PORT = 8080
-HTTPS_PORT_BASE = 8443
+PORT = 9187
+HTTPS_PORT_BASE = 9443
 RCLONE_REMOTE = "gdrive:"
 RCLONE_SERVE_PORT = 18082
 FRONTEND_PATH = Path(__file__).parent / "index.html"
@@ -192,7 +192,7 @@ _UNSET = object()
 # Rotas alcancaveis sem sessao.
 PUBLIC_PATHS = frozenset({
     "/login", "/favicon.ico", "/favicon.svg",
-    "/api/auth/status", "/api/auth/login", "/api/auth/setup",
+    "/api/auth/status", "/api/auth/login", "/api/auth/setup", "/api/auth/logout",
 })
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
 TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
@@ -322,8 +322,8 @@ def _admin_count(d):
 def _hash_password(password, salt=None):
     if salt is None:
         salt = secrets.token_bytes(16)
-    dk = hashlib.scrypt(password.encode("utf-8"), salt=salt,
-                        n=16384, r=8, p=1, dklen=32)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt=salt,
+                              iterations=100000, dklen=32)
     return salt, dk
 
 
@@ -3306,11 +3306,11 @@ def start_https_server(handler_class, host, https_port, cert_path, key_path):
 
 
 def find_free_port():
-    """Find an available port starting from PORT, or use TICIANOFLIX_PORT env."""
+    """Sempre usa PORT. Se ocupada, mata a instância anterior."""
     env_port = os.environ.get("TICIANOFLIX_PORT")
     if env_port:
         return int(env_port)
-    # Sempre forçar 8080 — se estiver ocupada, liberar
+
     port = PORT
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -3319,24 +3319,20 @@ def find_free_port():
         s.close()
         return port
     except OSError:
-        # Porta ocupada — tentar matar processo via fuser (apenas se for nosso)
-        import subprocess as _sp
-        # Check what process is on the port first
+        print(f"[TicianoFlix] Porta {port} ocupada. Matando instância anterior...", flush=True)
         try:
+            import subprocess as _sp
             check = _sp.run(["fuser", f"{port}/tcp"], capture_output=True, timeout=5)
             if check.returncode == 0:
                 pids = check.stdout.decode().strip().split()
-                # Only kill our own rclone or python processes
                 for pid in pids:
                     try:
-                        cmdline = Path(f"/proc/{pid}/cmdline").read_text().split("\0") if Path(f"/proc/{pid}/cmdline").exists() else []
-                        cmd_str = " ".join(cmdline)
-                        if "rclone" in cmd_str or "python" in cmd_str or "ticianoflix" in cmd_str:
-                            _sp.run(["kill", pid.strip()], timeout=3)
+                        _sp.run(["kill", "-9", pid.strip()], timeout=2)
                     except Exception:
                         pass
         except Exception:
             pass
+
         time.sleep(1)
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -3345,17 +3341,8 @@ def find_free_port():
             s.close()
             return port
         except OSError:
-            # Último recurso: procurar outra porta
-            while port < PORT + 100:
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    s.bind((HOST, port))
-                    s.close()
-                    return port
-                except OSError:
-                    port += 1
-            return PORT
+            print(f"[TicianoFlix] ERRO: Porta {port} ainda está ocupada. Saia a instância anterior com: pkill -9 -f 'python.*server.py'", flush=True)
+            sys.exit(1)
 
 
 # ═══════════════════════════════════════════════
