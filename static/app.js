@@ -2596,6 +2596,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.8.0',
+      title: 'feat(ui): troca os emojis por ícones SVG em contorno',
+      changes: [
+        'feat(ui): troca os emojis por ícones SVG em contorno',
+      ],
+    },
+    {
       version: '1.7.0',
       title: 'feat(segurança): reduz o acesso ao Drive ao mínimo necessário',
       changes: [
