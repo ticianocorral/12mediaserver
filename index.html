@@ -1495,7 +1495,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text">▶ TicianoFlix</span>
-      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.6</span>
+      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.7</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
@@ -4319,6 +4319,13 @@
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.7.0',
+      title: 'feat(segurança): reduz o acesso ao Drive ao mínimo necessário',
+      changes: [
+        'feat(segurança): reduz o acesso ao Drive ao mínimo necessário',
+      ],
+    },
     {
       version: '1.6.0',
       title: 'Login com contas e hardening de segurança',
