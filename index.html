@@ -1451,8 +1451,73 @@
   @media (max-width: 480px) {
     .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   }
+
+  .icon-svg { width: 1em; height: 1em; vertical-align: -0.125em; display: inline-block; }
 </style>
-</head>
+
+  <!-- SVG Icon Sprites -->
+  <svg style="display:none">
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.89 1.45l8 4A2 2 0 0 1 22 7.24v9.53a2 2 0 0 1-1.11 1.79l-8 4a2 2 0 0 1-1.79 0l-8-4a2 2 0 0 1-1.1-1.8V7.24a2 2 0 0 1 1.11-1.79l8-4a2 2 0 0 1 1.78 0z"/><polyline points="2.32 6.16 12 11 21.68 6.16"/><line x1="12" y1="22.76" x2="12" y2="11"/></symbol>
+    <symbol id="i-broom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 4.5L10 14"/><path d="M10 14a3 3 0 1 0-4.24 4.24L4.5 19.5l1.26-1.26"/><path d="M13 7l4 4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></symbol>
+    <symbol id="i-rewind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+    <symbol id="i-volume-low" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
+    <symbol id="i-volume-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></symbol>
+    <symbol id="i-maximize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></symbol>
+    <symbol id="i-cast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><circle cx="2" cy="20" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="9" x2="7" y2="9"/><line x1="2" y1="15" x2="7" y2="15"/><line x1="17" y1="9" x2="22" y2="9"/><line x1="17" y1="15" x2="22" y2="15"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
+    <symbol id="i-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19h18l-1.5-9-4.5 4-3-7-3 7-4.5-4L3 19z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="14.5" r="3.5"/><line x1="10.5" y1="12" x2="19" y2="3.5"/><line x1="15.5" y1="7" x2="18" y2="9.5"/><line x1="17.5" y1="4.5" x2="20" y2="7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0 0 12 2z"/></symbol>
+    <symbol id="i-star-filled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-star-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="none"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="i-ghost" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7v11l2.3-1.8L9 20l1.8-1.6L12.6 20l1.8-1.6 1.7 1.4L19 18V9a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-smile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></symbol>
+    <symbol id="i-frown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 16s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c2.5 2 4 5.5 4 9 0 2-1 4-1 4l-3 3-3-3s-1-2-1-4c0-3.5 1.5-7 4-9z"/><path d="M8 15l-3 3 1 3 3-1"/><path d="M16 15l3 3-1 3-3-1"/><circle cx="12" cy="10" r="1.3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 2.5 2.5 0 0 0 1.8-4.2 2 2 0 0 1 1.4-3.4H17a4 4 0 0 0 4-4c0-4.4-4-8.4-9-8.4z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17" cy="11.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 3 1.5 4.5 2 6v3a1 1 0 0 0 1 1h1.5v-2h1v2h1v-2h1v2h1v-2h1.5a1 1 0 0 0 1-1v-3c.5-1.5 2-3 2-6a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="6" fill="#e50914" stroke="none"/><polygon points="9 7 9 17 17 12" fill="#fff" stroke="none"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V3a1 1 0 0 1 1-1z"/><path d="M9 3v2h6V3"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+  </svg>
+  </head>
 <body>
 
   <!-- ====== BREADCRUMB ====== -->
@@ -1463,7 +1528,7 @@
     <div class="hero" id="hero">
       <div class="hero-bg" id="heroBg"></div>
       <div class="hero-content">
-        <div class="hero-badge">📺 TicianoFlix</div>
+        <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> TicianoFlix</div>
         <h1 id="heroTitle">Seus Filmes, Sua Tela</h1>
         <p id="heroDesc">Navegue pelos seus filmes do Google Drive com estilo Netflix.</p>
       </div>
@@ -1494,27 +1559,27 @@
   <!-- ====== SIDEBAR ====== -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <span class="logo-text">▶ TicianoFlix</span>
+      <span class="logo-text"><svg class="icon-svg"><use href="#i-play"></use></svg> TicianoFlix</span>
       <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.6</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon"><svg class="icon-svg"><use href="#i-search"></use></svg></span>
         <input type="text" id="searchInput" placeholder="Pesquisar filmes..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter') search(); else if(event.key==='Escape') clearSearch()">
-        <span class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpar busca">✕</span>
+        <span class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpar busca"><svg class="icon-svg"><use href="#i-close"></use></svg></span>
       </div>
       <button class="sidebar-item active" onclick="loadPath('')">
-        <span class="icon">🏠</span> Início
+        <span class="icon"><svg class="icon-svg"><use href="#i-home"></use></svg></span> Início
       </button>
       <button class="sidebar-item" onclick="loadAZ()">
-        <span class="icon">🔤</span> A-Z
+        <span class="icon"><svg class="icon-svg"><use href="#i-sort"></use></svg></span> A-Z
       </button>
       <div class="sidebar-section-title">Gêneros</div>
       <div id="sidebarGenres"></div>
     </div>
     <div class="sidebar-footer">
       <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear Google Drive em busca de filmes novos">
-        <span class="icon">🔄</span> Atualizar
+        <span class="icon"><svg class="icon-svg"><use href="#i-refresh"></use></svg></span> Atualizar
       </button>
       <div id="scanProgressBar" class="scan-progress-container" style="display:none">
         <div class="scan-progress-bar">
@@ -1523,22 +1588,22 @@
         <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
       </div>
       <button class="sidebar-item" onclick="openBackupModal()" title="Backup, upload e restauração">
-        <span class="icon">💾</span> Backup
+        <span class="icon"><svg class="icon-svg"><use href="#i-save"></use></svg></span> Backup
       </button>
       <button class="sidebar-item" onclick="openCacheManager()" title="Gerenciar cache offline — baixar ou apagar filmes">
-        <span class="icon">📦</span> Gerenciar Cache
+        <span class="icon"><svg class="icon-svg"><use href="#i-box"></use></svg></span> Gerenciar Cache
       </button>
       <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
-        <span class="icon">🧹</span> Limpar Cache
+        <span class="icon"><svg class="icon-svg"><use href="#i-broom"></use></svg></span> Limpar Cache
       </button>
       <button class="sidebar-item" id="usersBtn" style="display:none" onclick="openUsersModal()" title="Gerenciar quem tem acesso">
-        <span class="icon">👥</span> Contas
+        <span class="icon"><svg class="icon-svg"><use href="#i-users"></use></svg></span> Contas
       </button>
       <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
-        <span class="icon">🚪</span> <span id="logoutLabel">Sair</span>
+        <span class="icon"><svg class="icon-svg"><use href="#i-logout"></use></svg></span> <span id="logoutLabel">Sair</span>
       </button>
-      <div class="sidebar-cache-usage" id="cacheUsage">🗄️ <span id="cacheUsageSize">—</span>
-        <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração">☁️</a>
+      <div class="sidebar-cache-usage" id="cacheUsage"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span>
+        <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração"><svg class="icon-svg"><use href="#i-cloud"></use></svg></a>
       </div>
     </div>
   </div>
@@ -1547,33 +1612,33 @@
   <div class="modal-overlay" id="backupModal">
     <div class="modal">
       <div class="modal-header">
-        <span class="modal-title">💾 Backup & Restaurar</span>
-        <button class="modal-close" onclick="closeBackupModal()">✕</button>
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-save"></use></svg> Backup & Restaurar</span>
+        <button class="modal-close" onclick="closeBackupModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
         <div class="backup-option" onclick="downloadBackup()">
-          <span class="backup-icon">📥</span>
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-download"></use></svg></span>
           <div>
             <div class="backup-option-title">Salvar backup</div>
             <div class="backup-option-desc">Baixar backup completo (DB + imagens + legendas)</div>
           </div>
         </div>
         <div class="backup-option" onclick="backupToDrive()">
-          <span class="backup-icon">☁️</span>
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
           <div>
             <div class="backup-option-title">Salvar backup no Google Drive</div>
             <div class="backup-option-desc">Fazer upload do backup para o Google Drive</div>
           </div>
         </div>
         <div class="backup-option" onclick="document.getElementById('restoreFileInput').click()">
-          <span class="backup-icon">📂</span>
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-folder"></use></svg></span>
           <div>
             <div class="backup-option-title">Restaurar backup de arquivo</div>
             <div class="backup-option-desc">Importar um arquivo .zip de backup salvo anteriormente</div>
           </div>
         </div>
         <div class="backup-option" onclick="restoreFromDrive()">
-          <span class="backup-icon">☁️</span>
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
           <div>
             <div class="backup-option-title">Restaurar backup do Google Drive</div>
             <div class="backup-option-desc">Baixar e restaurar o backup mais recente do Drive</div>
@@ -1588,8 +1653,8 @@
   <div class="modal-overlay" id="cacheManagerModal">
     <div class="modal" style="width:560px">
       <div class="modal-header">
-        <span class="modal-title">📦 Gerenciar Cache</span>
-        <button class="modal-close" onclick="closeCacheManager()">✕</button>
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-box"></use></svg> Gerenciar Cache</span>
+        <button class="modal-close" onclick="closeCacheManager()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
         <div class="cache-stats" id="cacheStats">
@@ -1607,7 +1672,7 @@
           </div>
         </div>
         <div class="cache-manager-search">
-          <span style="font-size:14px;opacity:0.5;margin-right:8px">🔍</span>
+          <span style="font-size:14px;opacity:0.5;margin-right:8px"><svg class="icon-svg"><use href="#i-search"></use></svg></span>
           <input type="text" id="cmSearchInput" placeholder="Filtrar filmes..." oninput="filterCacheList()">
         </div>
         <div class="cache-manager-list" id="cmList">
@@ -1622,8 +1687,8 @@
   <div class="modal-overlay" id="usersModal">
     <div class="modal" style="width:560px">
       <div class="modal-header">
-        <span class="modal-title">👥 Contas</span>
-        <button class="modal-close" onclick="closeUsersModal()">✕</button>
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-users"></use></svg> Contas</span>
+        <button class="modal-close" onclick="closeUsersModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
         <div id="usersBox">
@@ -1636,8 +1701,8 @@
   <div class="modal-overlay" id="rcloneModal">
     <div class="modal" style="width:520px">
       <div class="modal-header">
-        <span class="modal-title">☁️ rclone</span>
-        <button class="modal-close" onclick="closeRcloneModal()">✕</button>
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-cloud"></use></svg> rclone</span>
+        <button class="modal-close" onclick="closeRcloneModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
         <div id="rcloneStatus">
@@ -1651,8 +1716,8 @@
   <div class="modal-overlay" id="changelogModal">
     <div class="modal" style="width:560px">
       <div class="modal-header">
-        <span class="modal-title">📋 Changelog</span>
-        <button class="modal-close" onclick="closeChangelogModal()">✕</button>
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-clipboard"></use></svg> Changelog</span>
+        <button class="modal-close" onclick="closeChangelogModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
         <div id="changelogContent"></div>
@@ -1666,7 +1731,7 @@
       <div class="player-header">
         <span class="movie-name" id="playerMovieName">Carregando...</span>
         <div class="player-header-right">
-          <button class="player-close" onclick="closePlayer()">✕</button>
+          <button class="player-close" onclick="closePlayer()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
         </div>
       </div>
       <div class="player-loading" id="playerLoading">
@@ -1674,7 +1739,7 @@
         <span>Preparando vídeo do Google Drive...</span>
       </div>
       <div class="player-error" id="playerError">
-        <div class="error-icon">❌</div>
+        <div class="error-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div>
         <span class="error-msg">Erro ao carregar vídeo</span>
         <button class="retry-btn" onclick="retryPlay()">Tentar novamente</button>
       </div>
@@ -1690,24 +1755,24 @@
         </div>
         <div class="controls-main">
           <div class="controls-left">
-            <button class="ctrl-btn" id="playBtn" onclick="togglePlay()" title="Play/Pause">▶</button>
-            <button class="ctrl-btn" onclick="skip(-10)" title="Voltar 10s">⏪</button>
-            <button class="ctrl-btn" onclick="skip(10)" title="Avançar 10s">⏩</button>
+            <button class="ctrl-btn" id="playBtn" onclick="togglePlay()" title="Play/Pause"><svg class="icon-svg"><use href="#i-play"></use></svg></button>
+            <button class="ctrl-btn" onclick="skip(-10)" title="Voltar 10s"><svg class="icon-svg"><use href="#i-rewind"></use></svg></button>
+            <button class="ctrl-btn" onclick="skip(10)" title="Avançar 10s"><svg class="icon-svg"><use href="#i-forward"></use></svg></button>
             <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
           </div>
           <div class="controls-right">
             <span class="stream-status" id="streamStatus"></span>
             <span class="file-size" id="playerFileSize"></span>
             <div class="volume-wrap">
-              <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()" title="Mudo">🔊</button>
+              <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()" title="Mudo"><svg class="icon-svg"><use href="#i-volume"></use></svg></button>
               <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
             </div>
             <button class="ctrl-btn" id="speedBtn" onclick="cycleSpeed()" title="Velocidade">1×</button>
             <button class="ctrl-btn ctrl-sub" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Legenda">CC</button>
             <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho legenda">Aa <span id="subtitleSizeLabel">Gde</span></button>
-            <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon">🟡</span> <span id="subtitleColorLabel">Amar</span></button>
-            <button class="ctrl-btn ctrl-cast" id="castBtn" onclick="toggleCast()" title="Transmitir" style="display:none">📺</button>
-            <button class="ctrl-btn" onclick="toggleFullscreen()" title="Tela cheia">⛶</button>
+            <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon" class="subtitle-swatch" style="background:#ffd700"></span> <span id="subtitleColorLabel">Amar</span></button>
+            <button class="ctrl-btn ctrl-cast" id="castBtn" onclick="toggleCast()" title="Transmitir" style="display:none"><svg class="icon-svg"><use href="#i-tv"></use></svg></button>
+            <button class="ctrl-btn" onclick="toggleFullscreen()" title="Tela cheia"><svg class="icon-svg"><use href="#i-maximize"></use></svg></button>
           </div>
         </div>
       </div>
@@ -1789,9 +1854,7 @@
   }
 
   function fileIcon(name) {
-    const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
-    const icons = { '.mp4': '🎬', '.mkv': '🎥', '.avi': '🎞', '.mov': '🎬', '.wmv': '🎬', '.flv': '🎬', '.webm': '🎬', '.m4v': '🎬' };
-    return icons[ext] || '📹';
+    return '<svg class="icon-svg"><use href="#i-film"></use></svg>';
   }
 
   // ==================== SIMPLE FRONTEND CACHE ====================
@@ -1861,7 +1924,7 @@
 
     cachedFetch('/api/search?q=' + encodeURIComponent(q)).then(data => {
       if (!data || !data.results) {
-        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><h3>Erro na pesquisa</h3></div>';
+        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-frown"></use></svg></div><h3>Erro na pesquisa</h3></div>';
         return;
       }
       renderResults(data.results, q);
@@ -1873,13 +1936,13 @@
     if (results.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-icon">🔍</div>
+          <div class="empty-icon"><svg class="icon-svg"><use href="#i-search"></use></svg></div>
           <h3>Nenhum resultado encontrado</h3>
           <p>Tente outro termo de busca.</p>
         </div>
         <div class="genre-section">
           <div class="genre-header" onclick="loadPath('')">
-            <div class="genre-title"><span class="arrow">←</span> Voltar ao início</div>
+            <div class="genre-title"><span class="arrow"><svg class="icon-svg"><use href="#i-arrow-left"></use></svg></span> Voltar ao início</div>
           </div>
         </div>`;
       return;
@@ -1887,7 +1950,7 @@
 
     let html = `<div class="genre-section">
       <div class="genre-header" style="cursor:default;border:none">
-        <div class="genre-title">🔍 Resultados para "${escHtml(query)}" <span class="genre-count">(${results.length})</span></div>
+        <div class="genre-title"><svg class="icon-svg"><use href="#i-search"></use></svg> Resultados para "${escHtml(query)}" <span class="genre-count">(${results.length})</span></div>
       </div>
       <div class="movie-grid">`;
 
@@ -1901,7 +1964,7 @@
     html += `</div></div>
       <div class="genre-section">
         <div class="genre-header" onclick="loadPath('')">
-          <div class="genre-title"><span class="arrow">←</span> Voltar ao início</div>
+          <div class="genre-title"><span class="arrow"><svg class="icon-svg"><use href="#i-arrow-left"></use></svg></span> Voltar ao início</div>
         </div>
       </div>`;
 
@@ -1957,7 +2020,7 @@
 
     cachedFetch(url).then(data => {
       if (!data) {
-        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3><p>Não foi possível conectar ao servidor.</p></div>';
+        document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar</h3><p>Não foi possível conectar ao servidor.</p></div>';
         return;
       }
       renderDirectory(data);
@@ -1977,7 +2040,7 @@
     _invalidateCache('/api/all-movies');
     cachedFetch('/api/all-movies').then(movies => {
       if (!movies || movies.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><h3>Nenhum filme encontrado</h3></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3></div>';
         return;
       }
       renderAZView(movies);
@@ -2014,9 +2077,9 @@
         html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">';
         if (m.poster) {
           html += '<img class="movie-card-poster" src="' + posterUrl(m.path, m.poster) + '" alt="' + escHtml(nameClean) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
-          html += '<div class="movie-card-poster-placeholder" style="display:none">🎬</div>';
+          html += '<div class="movie-card-poster-placeholder" style="display:none"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
         } else {
-          html += '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>';
+          html += '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
         }
         html += '<div class="movie-card-overlay"><div class="movie-card-title">' + escHtml(nameClean) + '</div></div>';
         html += '</div>';
@@ -2088,19 +2151,19 @@
     container.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px">
         <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px">🎬</div>
+          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
           <div style="font-size:28px;font-weight:800">${totalGenres}</div>
           <div style="font-size:13px;color:var(--text3)">Gêneros</div>
         </div>
         <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px">📀</div>
+          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-disc"></use></svg></div>
           <div style="font-size:28px;font-weight:800" id="totalMovieCount">…</div>
           <div style="font-size:13px;color:var(--text3)">Filmes</div>
         </div>
       </div>
       <div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">📥 Últimos Adicionados</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Últimos Adicionados</div>
         </div>
         <div class="movie-grid" id="recentGrid">
           <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
@@ -2108,13 +2171,13 @@
       </div>
       <div class="genre-section" id="continueWatchingSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">▶ Continuar Assistindo</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-play"></use></svg> Continuar Assistindo</div>
         </div>
         <div class="movie-grid" id="continueWatchingGrid"></div>
       </div>
       <div class="genre-section" id="offlineSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">📦 Disponíveis Offline</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-box"></use></svg> Disponíveis Offline</div>
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
@@ -2128,7 +2191,7 @@
       const grid = document.getElementById('recentGrid');
       if (!grid) return;
       if (movies.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Nenhum filme ainda</h3></div>';
+        grid.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-inbox"></use></svg></div><h3>Nenhum filme ainda</h3></div>';
         return;
       }
       // Show up to 7 newest
@@ -2142,7 +2205,7 @@
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
         const safePath = enc(m.path);
         html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
-          + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
+          + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
           + '</div></div>';
@@ -2181,7 +2244,7 @@
         const safePath = enc(m.path);
         const posStr = Math.floor(m.position / 60) + ':' + String(Math.floor(m.position % 60)).padStart(2, '0');
         html2 += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
-          + '<div class="movie-card-poster-placeholder" style="display:flex">🎬</div>'
+          + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
           + '<div class="movie-card-subtitle">' + posStr + ' assistido</div>'
@@ -2211,22 +2274,22 @@
 
   function genreIcon(name) {
     const icons = {
-      'terror': '👻', 'horror': '👻',
-      'comedia': '😂', 'comédia': '😂',
-      'acao': '💥', 'acção': '💥', 'ação': '💥',
-      'drama': '🎭',
-      'ficcao': '🚀', 'ficção': '🚀', 'sci-fi': '🚀',
-      'shows': '🎵', 'series': '🎵', 'séries': '🎵',
-      'documentario': '📽', 'documentário': '📽',
-      'romance': '💕',
-      'aventura': '🗺',
-      'animacao': '🎨', 'animação': '🎨',
-      'suspense': '🔪',
-      'trash': '💀',
-      'acervo': '📚',
+      'terror': '<svg class="icon-svg"><use href="#i-ghost"></use></svg>', 'horror': '<svg class="icon-svg"><use href="#i-ghost"></use></svg>',
+      'comedia': '<svg class="icon-svg"><use href="#i-smile"></use></svg>', 'comédia': '<svg class="icon-svg"><use href="#i-smile"></use></svg>',
+      'acao': '<svg class="icon-svg"><use href="#i-zap"></use></svg>', 'acção': '<svg class="icon-svg"><use href="#i-zap"></use></svg>', 'ação': '<svg class="icon-svg"><use href="#i-zap"></use></svg>',
+      'drama': '<svg class="icon-svg"><use href="#i-frown"></use></svg>',
+      'ficcao': '<svg class="icon-svg"><use href="#i-rocket"></use></svg>', 'ficção': '<svg class="icon-svg"><use href="#i-rocket"></use></svg>', 'sci-fi': '<svg class="icon-svg"><use href="#i-rocket"></use></svg>',
+      'shows': '<svg class="icon-svg"><use href="#i-music"></use></svg>', 'series': '<svg class="icon-svg"><use href="#i-music"></use></svg>', 'séries': '<svg class="icon-svg"><use href="#i-music"></use></svg>',
+      'documentario': '<svg class="icon-svg"><use href="#i-video"></use></svg>', 'documentário': '<svg class="icon-svg"><use href="#i-video"></use></svg>',
+      'romance': '<svg class="icon-svg"><use href="#i-heart"></use></svg>',
+      'aventura': '<svg class="icon-svg"><use href="#i-map"></use></svg>',
+      'animacao': '<svg class="icon-svg"><use href="#i-palette"></use></svg>', 'animação': '<svg class="icon-svg"><use href="#i-palette"></use></svg>',
+      'suspense': '<svg class="icon-svg"><use href="#i-eye"></use></svg>',
+      'trash': '<svg class="icon-svg"><use href="#i-skull"></use></svg>',
+      'acervo': '<svg class="icon-svg"><use href="#i-book"></use></svg>',
     };
     const key = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    return icons[key] || '🎬';
+    return icons[key] || '<svg class="icon-svg"><use href="#i-film"></use></svg>';
   }
 
   // ===== GENRE VIEW: show movie folders as cards =====
@@ -2241,7 +2304,7 @@
     // Set hero for genre view - simple header
     const icon = genreIcon(genreName);
     document.getElementById('heroTitle').innerHTML = icon + ' ' + escHtml(genreName);
-    document.getElementById('heroDesc').innerHTML = totalMovies + ' filme(s) · ' + totalVideos + ' vídeo(s) &middot; 🎬 ' + (totalMovies + totalVideos) + ' títulos';
+    document.getElementById('heroDesc').innerHTML = totalMovies + ' filme(s) · ' + totalVideos + ' vídeo(s) &middot; <svg class="icon-svg"><use href="#i-film"></use></svg> ' + (totalMovies + totalVideos) + ' títulos';
     hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
@@ -2251,7 +2314,7 @@
     if (movieFolders.length === 0 && directVideos.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-icon">📭</div>
+          <div class="empty-icon"><svg class="icon-svg"><use href="#i-inbox"></use></svg></div>
           <h3>Nenhum filme em "${escHtml(genreName)}"</h3>
           <p>Adicione filmes nesta pasta do Google Drive para vê-los aqui.</p>
         </div>`;
@@ -2260,7 +2323,7 @@
 
     let html = `<div class="genre-section">
       <div class="genre-header" style="cursor:default;border:none;padding-bottom:4px">
-        <div class="genre-title">🎬 Filmes <span class="genre-count">(${movieFolders.length})</span></div>
+        <div class="genre-title"><svg class="icon-svg"><use href="#i-film"></use></svg> Filmes <span class="genre-count">(${movieFolders.length})</span></div>
       </div>
       <div class="movie-grid">`;
 
@@ -2315,7 +2378,7 @@
     return `
       <div class="movie-card" onclick="showMovieInfo(decodeURIComponent('${safePath}'), event)" title="${escHtml(name)}">
         <img class="movie-card-poster" id="poster-${encodedPath}" src="" alt="${escHtml(name)}" style="display:none">
-        <div class="movie-card-poster-placeholder" id="ph-${encodedPath}">🎬</div>
+        <div class="movie-card-poster-placeholder" id="ph-${encodedPath}"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
         <div class="movie-card-overlay">
           <div class="movie-card-title">${escHtml(nameClean)}</div>
           <div class="movie-card-subtitle">${year ? year : 'Filme'}</div>
@@ -2343,7 +2406,7 @@
     if (data.folders && data.folders.length > 0) {
       html += `<div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">📁 Pastas <span class="genre-count">(${data.folders.length})</span></div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-folder"></use></svg> Pastas <span class="genre-count">(${data.folders.length})</span></div>
         </div>
         <div class="movie-grid">`;
       data.folders.forEach(folder => {
@@ -2352,7 +2415,7 @@
         const safePath = enc(folderPath);
     html += `
           <div class="movie-card" onclick="loadPath(decodeURIComponent('${safePath}'))" title="${escHtml(name)}">
-            <div class="movie-card-poster-placeholder">📁</div>
+            <div class="movie-card-poster-placeholder"><svg class="icon-svg"><use href="#i-folder"></use></svg></div>
             <div class="movie-card-overlay">
               <div class="movie-card-title">${escHtml(name)}</div>
             </div>
@@ -2364,7 +2427,7 @@
     if (data.videos && data.videos.length > 0) {
       html += `<div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title">🎬 Vídeos <span class="genre-count">(${data.videos.length})</span></div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-film"></use></svg> Vídeos <span class="genre-count">(${data.videos.length})</span></div>
         </div>
         <div class="movie-grid">`;
       data.videos.forEach(video => {
@@ -2376,14 +2439,14 @@
       html += `</div></div>`;
     }
 
-    container.innerHTML = html || `<div class="empty-state"><div class="empty-icon">📂</div><h3>Pasta vazia</h3></div>`;
+    container.innerHTML = html || `<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-folder"></use></svg></div><h3>Pasta vazia</h3></div>`;
   }
 
   // ===== EMPTY STATE =====
   function renderEmptyState(container, path) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📂</div>
+        <div class="empty-icon"><svg class="icon-svg"><use href="#i-folder"></use></svg></div>
         <h3>Pasta vazia</h3>
         <p>Nenhum conteúdo encontrado aqui.</p>
       </div>`;
@@ -2443,7 +2506,7 @@
     const path = folderPath || '';
     const parts = path.split('/').filter(Boolean);
     let cur = '/TicianoFlix';
-    let html = '<a onclick="loadPath(\'\')">🏠 Início</a>';
+    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
     parts.forEach((p, i) => {
       if (i === 0) return; // skip TicianoFlix root
       cur += '/' + p;
@@ -2461,7 +2524,7 @@
 
     cachedFetch('/api/movie-detail?path=' + encodeURIComponent(folderPath)).then(detail => {
       if (!detail) {
-        content.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3></div>';
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar</h3></div>';
         return;
       }
 
@@ -2492,7 +2555,7 @@
       // Poster image
       const posterImg = poster
         ? '<img src="' + posterUrl(folderPath, poster.Name) + '" alt="' + escHtml(titleClean) + '">'
-        : '<div class="placeholder">🎬</div>';
+        : '<div class="placeholder"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
 
       const videoPath = video ? (folderPath + '/' + video.Name) : null;
 
@@ -2504,7 +2567,9 @@
         const r = parseFloat(nfo.rating);
         const full = Math.floor(r / 2);
         const half = r % 2 >= 1 ? 1 : 0;
-        const stars = '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(Math.max(0, 5 - full - half));
+        const starFull = '<svg class="icon-svg"><use href="#i-star-filled"></use></svg>';
+        const starEmpty = '<svg class="icon-svg"><use href="#i-star-empty"></use></svg>';
+        const stars = starFull.repeat(full) + (half ? starFull : '') + starEmpty.repeat(Math.max(0, 5 - full - half));
         nfoHtml += `<div class="movie-rating">
           <span class="stars">${stars}</span>
           <span class="num">${nfo.rating}</span>
@@ -2584,15 +2649,15 @@
           ${nfoHtml}
 
           <div class="movie-info-meta">
-            ${video ? '<div class="meta-item">📦 <span class="label">Tamanho</span> ' + formatSize(video.Size) + '</div>' : ''}
-            ${video ? '<div class="meta-item">🎞 <span class="label">Formato</span> ' + (video.Name ? video.Name.split('.').pop().toUpperCase() : '') + '</div>' : ''}
-            ${subtitle ? '<div class="meta-item">💬 <span class="label">Legenda</span> ' + formatSize(subtitle.Size) + '</div>' : '<div class="meta-item">💬 <span class="label">Legenda</span> Não</div>'}
+            ${video ? '<div class="meta-item"><svg class="icon-svg"><use href="#i-box"></use></svg> <span class="label">Tamanho</span> ' + formatSize(video.Size) + '</div>' : ''}
+            ${video ? '<div class="meta-item"><svg class="icon-svg"><use href="#i-film"></use></svg> <span class="label">Formato</span> ' + (video.Name ? video.Name.split('.').pop().toUpperCase() : '') + '</div>' : ''}
+            ${subtitle ? '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> ' + formatSize(subtitle.Size) + '</div>' : '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> Não</div>'}
           </div>
 
           <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')">▶ Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4">▶ Indisponível</button>'}
-            ${_isCached(folderPath) ? '<span class="offline-badge">📥 Offline</span>' : ''}
-            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))">✔ Já assisti</button>'}
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
+            ${_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Offline</span>' : ''}
+            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))"><svg class="icon-svg"><use href="#i-check"></use></svg> Já assisti</button>'}
           </div>
           </div>
         </div>`;
@@ -2676,7 +2741,7 @@
     if (!el) return;
     const parts = path ? path.split('/').filter(Boolean) : [];
     let current = '/TicianoFlix';
-    let html = '<a onclick="loadPath(\'\')">🏠 Início</a>';
+    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
     parts.forEach((part, i) => {
       if (i === 0) return; // skip TicianoFlix root, already have Inicio
       current += '/' + part;
@@ -2734,7 +2799,7 @@
       const resumeBtn = actionsEl.querySelector('.btn-resume');
       if (resumeBtn) resumeBtn.remove();
       const watchedBtn = actionsEl.querySelector('.btn-watched');
-      if (watchedBtn) watchedBtn.textContent = '✅ Assistido';
+      if (watchedBtn) watchedBtn.innerHTML = '<svg class="icon-svg"><use href="#i-check-circle"></use></svg> Assistido';
     }
     // Invalidate cache so Continue Watching updates on next visit
     _invalidateCache('/api/continue-watching');
@@ -2824,7 +2889,7 @@
       var session = _castContext.getCurrentSession();
       if (session) {
         _castSession = session;
-        if (btn) { btn.style.display = ''; btn.textContent = '📡'; btn.classList.add('active'); }
+        if (btn) { btn.style.display = ''; btn.innerHTML = '<svg class="icon-svg"><use href="#i-cast"></use></svg>'; btn.classList.add('active'); }
       } else {
         if (btn) btn.style.display = '';
       }
@@ -2841,12 +2906,12 @@
       case cast.framework.SessionState.SESSION_STARTED:
       case cast.framework.SessionState.SESSION_RESUMED:
         _castSession = _castContext.getCurrentSession();
-        if (btn) { btn.textContent = '📡'; btn.classList.add('active'); }
+        if (btn) { btn.innerHTML = '<svg class="icon-svg"><use href="#i-cast"></use></svg>'; btn.classList.add('active'); }
         console.log('[Cast] Session started');
         break;
       case cast.framework.SessionState.SESSION_ENDED:
         _castSession = null;
-        if (btn) { btn.textContent = '📺'; btn.classList.remove('active'); }
+        if (btn) { btn.innerHTML = '<svg class="icon-svg"><use href="#i-tv"></use></svg>'; btn.classList.remove('active'); }
         console.log('[Cast] Session ended');
         break;
       case cast.framework.SessionState.SESSION_START_FAILED:
@@ -2873,7 +2938,7 @@
     // First click: inject the Cast SDK script
     if (!_castSdkInjected) {
       _loadCastSdk();
-      if (btn) btn.textContent = '⏳';
+      if (btn) btn.innerHTML = '<svg class="icon-svg"><use href="#i-clock"></use></svg>';
       console.log('[Cast] SDK loading, waiting...');
       // Wait up to 8s for the SDK to become ready
       var waited = 0;
@@ -2886,7 +2951,7 @@
           _doToggleCast();
         } else if (waited >= MAX_WAIT) {
           clearInterval(interval);
-          if (btn) btn.textContent = '📺';
+          if (btn) btn.innerHTML = '<svg class="icon-svg"><use href="#i-tv"></use></svg>';
           // Check if the script tag actually exists but callback never fired
           var scriptTag = document.getElementById('castSdkScript');
           var hint = scriptTag ? 'SDK loaded but not available' : 'SDK failed to load';
@@ -3287,11 +3352,11 @@
       _progressSaveTimer = setTimeout(_saveProgress, 30000);
     };
     video.onplay = function() {
-      document.getElementById('playBtn').textContent = '⏸';
+      document.getElementById('playBtn').innerHTML = '<svg class="icon-svg"><use href="#i-pause"></use></svg>';
       showControls();
     };
     video.onpause = function() {
-      document.getElementById('playBtn').textContent = '▶';
+      document.getElementById('playBtn').innerHTML = '<svg class="icon-svg"><use href="#i-play"></use></svg>';
     };
     video.onvolumechange = updateMuteBtn;
 
@@ -3453,14 +3518,14 @@
 
   let subtitleColorIndex = 0;
   const subtitleColors = [
-    { color: '#ffd700', label: 'Amarelo', icon: '🟡' },
-    { color: '#ffffff', label: 'Branco', icon: '⬜' },
+    { color: '#ffd700', label: 'Amarelo' },
+    { color: '#ffffff', label: 'Branco' },
   ];
   function cycleSubtitleColor() {
     subtitleColorIndex = (subtitleColorIndex + 1) % subtitleColors.length;
     const c = subtitleColors[subtitleColorIndex];
     document.getElementById('subtitleColorLabel').textContent = c.label;
-    document.getElementById('subtitleColorIcon').textContent = c.icon;
+    document.getElementById('subtitleColorIcon').style.background = c.color;
     document.querySelector('.player-overlay').style.setProperty('--sub-color', c.color);
   }
 
@@ -3488,7 +3553,7 @@
         }
         // Update cache info in controls
         if (pct >= 100) {
-          el.textContent = '💾 Cache total';
+          el.innerHTML = '<svg class="icon-svg"><use href="#i-save"></use></svg> Cache total';
           el.className = 'stream-status cached';
         } else {
           el.textContent = 'Cache: ' + pct + '%';
@@ -3514,7 +3579,7 @@
     if (!v) return;
     if (v.paused) v.play().catch(function() {});
     else v.pause();
-    document.getElementById('playBtn').textContent = v.paused ? '▶' : '⏸';
+    document.getElementById('playBtn').innerHTML = v.paused ? '<svg class="icon-svg"><use href="#i-play"></use></svg>' : '<svg class="icon-svg"><use href="#i-pause"></use></svg>';
   }
 
   function skip(sec) {
@@ -3543,11 +3608,11 @@
     const btn = document.getElementById('muteBtn');
     if (!v || !btn) return;
     if (v.volume === 0 || v.muted) {
-      btn.textContent = '🔇';
+      btn.innerHTML = '<svg class="icon-svg"><use href="#i-volume-mute"></use></svg>';
     } else if (v.volume < 0.5) {
-      btn.textContent = '🔉';
+      btn.innerHTML = '<svg class="icon-svg"><use href="#i-volume-low"></use></svg>';
     } else {
-      btn.textContent = '🔊';
+      btn.innerHTML = '<svg class="icon-svg"><use href="#i-volume"></use></svg>';
     }
   }
 
@@ -3677,12 +3742,12 @@
       const res = await fetch('/api/users');
       const data = await res.json();
       if (!res.ok || data.status !== 'ok') {
-        box.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><h3>' + escHtml(data.error || 'Sem acesso') + '</h3></div>';
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-lock"></use></svg></div><h3>' + escHtml(data.error || 'Sem acesso') + '</h3></div>';
         return;
       }
       _renderUsers(data.users || [], data.me || '');
     } catch (e) {
-      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar contas</h3></div>';
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar contas</h3></div>';
     }
   }
 
@@ -3698,9 +3763,9 @@
         + (isMe ? '<span class="user-tag me">você</span>' : '')
         + '<button class="user-btn" title="' + (isAdmin ? 'Tornar usuário comum' : 'Tornar administrador') + '" '
         + 'onclick="setUserRole(\'' + n + '\', \'' + (isAdmin ? 'user' : 'admin') + '\')">'
-        + (isAdmin ? '👤' : '👑') + '</button>'
-        + '<button class="user-btn" title="Redefinir senha" onclick="togglePwForm(\'' + n + '\')">🔑</button>'
-        + (isMe ? '' : '<button class="user-btn danger" title="Remover conta" onclick="removeUser(\'' + n + '\')">🗑</button>')
+        + (isAdmin ? '<svg class="icon-svg"><use href="#i-user"></use></svg>' : '<svg class="icon-svg"><use href="#i-crown"></use></svg>') + '</button>'
+        + '<button class="user-btn" title="Redefinir senha" onclick="togglePwForm(\'' + n + '\')"><svg class="icon-svg"><use href="#i-key"></use></svg></button>'
+        + (isMe ? '' : '<button class="user-btn danger" title="Remover conta" onclick="removeUser(\'' + n + '\')"><svg class="icon-svg"><use href="#i-trash"></use></svg></button>')
         + '</div>'
         + '<div class="user-form" id="pw-' + n + '" style="display:none">'
         + '<input type="password" id="pwval-' + n + '" placeholder="Nova senha de ' + n + '" autocomplete="new-password">'
@@ -3909,10 +3974,10 @@
           const el = document.getElementById('streamStatus');
           if (el) {
             if (pct >= 100) {
-              el.textContent = '💾 Cache total';
+              el.innerHTML = '<svg class="icon-svg"><use href="#i-save"></use></svg> Cache total';
               el.className = 'stream-status cached';
             } else {
-              el.textContent = '⬇️ ' + pct + '%';
+              el.innerHTML = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + pct + '%';
               el.className = 'stream-status';
             }
           }
@@ -4008,10 +4073,10 @@
       const name = path.split('/').pop().replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
       const safePath = enc(path);
       html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(name) + '">'
-        + '<div class="movie-card-poster-placeholder" style="display:flex">📦</div>'
+        + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-box"></use></svg></div>'
         + '<div class="movie-card-overlay">'
         + '<div class="movie-card-title">' + escHtml(name) + '</div>'
-        + '<div class="movie-card-subtitle">📥 Offline</div>'
+        + '<div class="movie-card-subtitle"><svg class="icon-svg"><use href="#i-download"></use></svg> Offline</div>'
         + '</div></div>';
 
       // Load poster in background
@@ -4068,13 +4133,13 @@
       const res = await fetch('/api/cache-manager');
       const movies = await res.json();
       if (!movies || movies.length === 0) {
-        list.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><h3>Nenhum filme encontrado</h3><p>Escaneie o Google Drive primeiro.</p></div>';
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3><p>Escaneie o Google Drive primeiro.</p></div>';
         return;
       }
       _cmMovies = movies;
       _renderCacheList(movies);
     } catch(e) {
-      list.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao carregar</h3></div>';
+      list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar</h3></div>';
     }
   }
 
@@ -4111,7 +4176,7 @@
     }
 
     if (filtered.length === 0) {
-      list.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-icon">🔍</div><h3>Nenhum filme encontrado</h3></div>';
+      list.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-icon"><svg class="icon-svg"><use href="#i-search"></use></svg></div><h3>Nenhum filme encontrado</h3></div>';
       return;
     }
 
@@ -4122,30 +4187,30 @@
       const isCached = m.cached;
       const isDownloading = _cmDownloading.has(m.path);
       const statusClass = isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached');
-      let statusLabel = isDownloading ? '⬇ 0%' : (isCached ? '📥 Offline' : '☁️ Online');
+      let statusLabel = isDownloading ? '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%' : (isCached ? '<svg class="icon-svg"><use href="#i-download"></use></svg> Offline' : '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Online');
       // Reuse cached progress from download tracker if available
       if (isDownloading && _cmPcts && _cmPcts[m.path] !== undefined) {
-        statusLabel = '⬇ ' + _cmPcts[m.path] + '%';
+        statusLabel = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + _cmPcts[m.path] + '%';
       }
 
       html += '<div class="cache-item" data-path="' + m.path + '">';
 
       // Poster thumbnail
       if (m.poster) {
-        html += '<img class="cache-item-poster" src="' + posterUrl(m.path, m.poster) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster>🎬</div>\'">';
+        html += '<img class="cache-item-poster" src="' + posterUrl(m.path, m.poster) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>\'">';
       } else {
-        html += '<div class="cache-item-poster">🎬</div>';
+        html += '<div class="cache-item-poster"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
       }
 
       html += '<div class="cache-item-title" title="' + escHtml(nameClean) + '">' + escHtml(nameClean) + '</div>';
       html += '<span class="cache-item-status ' + statusClass + '" id="cmStatus-' + idx + '">' + statusLabel + '</span>';
 
       if (isDownloading) {
-        html += '<button class="cache-item-btn" disabled style="opacity:0.4">⏳</button>';
+        html += '<button class="cache-item-btn" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-clock"></use></svg></button>';
       } else if (isCached) {
-        html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + enc(m.path) + '\', ' + idx + ')">🗑 Apagar</button>';
+        html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + enc(m.path) + '\', ' + idx + ')"><svg class="icon-svg"><use href="#i-trash"></use></svg> Apagar</button>';
       } else {
-        html += '<button class="cache-item-btn download" onclick="_cmDownload(\'' + enc(m.path) + '\', ' + idx + ')">📥 Baixar</button>';
+        html += '<button class="cache-item-btn download" onclick="_cmDownload(\'' + enc(m.path) + '\', ' + idx + ')"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixar</button>';
       }
 
       html += '</div>';
@@ -4167,11 +4232,11 @@
     const statusEl = document.getElementById('cmStatus-' + idx);
     if (statusEl) {
       statusEl.className = 'cache-item-status downloading';
-      statusEl.textContent = '⬇ 0%';
+      statusEl.innerHTML = '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%';
     }
     const btn = statusEl ? statusEl.nextElementSibling : null;
     if (btn) {
-      btn.outerHTML = '<button class="cache-item-btn" disabled style="opacity:0.4">⏳</button>';
+      btn.outerHTML = '<button class="cache-item-btn" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-clock"></use></svg></button>';
     }
 
     showToast('📥 Baixando ' + (folderPath.split('/').pop() || 'filme') + '...', '');
@@ -4244,7 +4309,7 @@
             _cmPcts[folderPath] = prog.percent;
             const stEl = document.getElementById('cmStatus-' + idx);
             if (stEl) {
-              stEl.textContent = '⬇ ' + prog.percent + '%';
+              stEl.innerHTML = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + prog.percent + '%';
             }
           }
         } catch(e) {}
@@ -4396,14 +4461,14 @@
       const s = await res.json();
       _renderRcloneStatus(box, s);
     } catch(e) {
-      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao verificar status</h3></div>';
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao verificar status</h3></div>';
     }
   }
 
   function _rcloneBadge(ok, textOk, textBad) {
     return ok
-      ? '<span class="rclone-badge ok">✓ ' + textOk + '</span>'
-      : '<span class="rclone-badge bad">✗ ' + textBad + '</span>';
+      ? '<span class="rclone-badge ok"><svg class="icon-svg"><use href="#i-check"></use></svg> ' + textOk + '</span>'
+      : '<span class="rclone-badge bad"><svg class="icon-svg"><use href="#i-close"></use></svg> ' + textBad + '</span>';
   }
 
   function _renderRcloneStatus(box, s) {
@@ -4430,18 +4495,18 @@
         + 'Ou baixe em <a href="https://rclone.org/downloads/" target="_blank" rel="noopener">rclone.org/downloads</a></div>';
     } else {
       if (!s.remote_configured) {
-        html += '<button class="rclone-action-btn primary" onclick="rcloneStartWebgui()">🔧 Configurar rclone</button>';
+        html += '<button class="rclone-action-btn primary" onclick="rcloneStartWebgui()"><svg class="icon-svg"><use href="#i-gear"></use></svg> Configurar rclone</button>';
       } else {
-        html += '<button class="rclone-action-btn" onclick="rcloneStartWebgui()">🔧 Abrir configurador</button>';
+        html += '<button class="rclone-action-btn" onclick="rcloneStartWebgui()"><svg class="icon-svg"><use href="#i-gear"></use></svg> Abrir configurador</button>';
       }
       if (!s.serve_running) {
-        html += '<button class="rclone-action-btn primary" onclick="rcloneRestartServe()">🔄 Reiniciar streaming</button>';
+        html += '<button class="rclone-action-btn primary" onclick="rcloneRestartServe()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</button>';
       }
       if (s.webgui.running) {
-        html += '<button class="rclone-action-btn" onclick="rcloneStopWebgui()">⏹ Fechar web UI</button>';
+        html += '<button class="rclone-action-btn" onclick="rcloneStopWebgui()"><svg class="icon-svg"><use href="#i-stop"></use></svg> Fechar web UI</button>';
       }
     }
-    html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Atualizar status</button>';
+    html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Atualizar status</button>';
     html += '</div>';
 
     if (s.webgui.running) {
@@ -4451,9 +4516,9 @@
     }
 
     if (s.installed && !s.remote_configured) {
-      html += '<div class="rclone-help">💡 No configurador: crie um remote chamado <b>gdrive</b> '
+      html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> No configurador: crie um remote chamado <b>gdrive</b> '
         + '(tipo <b>Google Drive</b>, escopo <b>drive</b> ou <b>drive.file</b>) seguindo o assistente. '
-        + 'Depois volte aqui e clique em <b>🔄 Reiniciar streaming</b>.</div>';
+        + 'Depois volte aqui e clique em <b><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</b>.</div>';
     }
     box.innerHTML = html;
   }
@@ -4465,19 +4530,19 @@
       const res = await fetch('/api/rclone/webgui/start', { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok' && data.url) {
-        box.innerHTML = '<div class="rclone-creds"><b>✅ Configurador aberto!</b><br><br>'
+        box.innerHTML = '<div class="rclone-creds"><b><svg class="icon-svg"><use href="#i-check-circle"></use></svg> Configurador aberto!</b><br><br>'
           + 'URL: <a href="' + escHtml(data.url) + '" target="_blank" rel="noopener">' + escHtml(data.url) + '</a><br>'
           + 'Acessível apenas neste computador, sem login.</div>'
           + '<div class="rclone-help">Se a aba não abrir sozinha, clique no link acima e faça login.<br>'
-          + '💡 Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b>🔄 Reiniciar streaming</b>.</div>'
-          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">🔄 Verificar status</button></div>';
+          + '<svg class="icon-svg"><use href="#i-bulb"></use></svg> Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</b>.</div>'
+          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Verificar status</button></div>';
         window.open(data.url, '_blank');
       } else {
-        box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3><p>' + escHtml(data.error || 'Erro desconhecido') + '</p></div>'
-          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()">← Voltar</button></div>';
+        box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao abrir configurador</h3><p>' + escHtml(data.error || 'Erro desconhecido') + '</p></div>'
+          + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-arrow-left"></use></svg> Voltar</button></div>';
       }
     } catch(e) {
-      box.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><h3>Erro ao abrir configurador</h3></div>';
+      box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao abrir configurador</h3></div>';
     }
   }
 
@@ -4609,7 +4674,7 @@
 
       // Visual feedback: spin icon, highlight text
       btn.classList.add('loading');
-      if (icon) icon.textContent = '🔄';
+      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
 
       // Start polling scan-progress
       if (_scanProgressTimer) clearInterval(_scanProgressTimer);
@@ -4634,7 +4699,7 @@
             clearTimeout(_refreshFallbackTimer);
             _refreshFallbackTimer = null;
             btn.classList.remove('loading');
-            if (icon) icon.textContent = '🔄';
+            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
             pbar.style.display = 'none';
             _frontCache = {};
             showToast('Escaneamento concluído!', 'success');
@@ -4643,7 +4708,7 @@
             clearInterval(_scanProgressTimer);
             _scanProgressTimer = null;
             btn.classList.remove('loading');
-            if (icon) icon.textContent = '🔄';
+            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
             pbar.style.display = 'none';
             showToast('Erro ao escanear Google Drive', 'error');
             loadPath(currentPath || '');
@@ -4666,7 +4731,7 @@
             clearTimeout(_refreshFallbackTimer);
             _refreshFallbackTimer = null;
             btn.classList.remove('loading');
-            if (icon) icon.textContent = '🔄';
+            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
             pbar.style.display = 'none';
             _frontCache = {};
             showToast('Escaneamento concluído!', 'success');
@@ -4679,7 +4744,7 @@
           clearInterval(_scanProgressTimer);
           _scanProgressTimer = null;
           btn.classList.remove('loading');
-          if (icon) icon.textContent = '🔄';
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
           pbar.style.display = 'none';
           loadPath(currentPath || '');
         }
@@ -4691,7 +4756,7 @@
         clearInterval(_scanProgressTimer);
         _scanProgressTimer = null;
         btn.classList.remove('loading');
-        if (icon) icon.textContent = '🔄';
+        if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
         pbar.style.display = 'none';
         _frontCache = {};
         loadPath(currentPath || '');
@@ -4699,7 +4764,7 @@
 
     } catch(e) {
       btn.classList.remove('loading');
-      if (icon) icon.textContent = '🔄';
+      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
       document.getElementById('scanProgressBar').style.display = 'none';
       console.error('Refresh failed:', e.message || e);
       loadPath(currentPath || '');
