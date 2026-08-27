@@ -341,8 +341,28 @@ TicianoFlix, o servidor a encerra e assume a porta, em vez de migrar para outra.
 
 ```
 TicianoFlix/
-├── server.py              # Servidor HTTP (todo o backend)
-├── index.html             # Frontend single-page
+├── server.py              # Entrypoint (13 linhas — chama ticianoflix.app)
+├── ticianoflix/           # O backend
+│   ├── config.py          #   constantes, caminhos, variáveis de ambiente
+│   ├── paths.py           #   fronteira de caminhos com o rclone
+│   ├── netsec.py          #   validação de Host e Origin
+│   ├── procutil.py        #   PIDs por porta (lsof/fuser)
+│   ├── netutil.py         #   IP local, cert self-signed, escolha de porta
+│   ├── db.py              #   SQLite: conexões, schema, metadados
+│   ├── auth.py            #   contas, sessões HMAC, tokens de mídia
+│   ├── templates.py       #   tela de login servida pelo Python
+│   ├── rclone.py          #   comandos, cache VFS, processo do serve
+│   ├── nfo.py             #   metadados Kodi / tinyMediaManager
+│   ├── scanner.py         #   varredura do Drive e indexação
+│   ├── queries.py         #   consultas ao cache
+│   ├── handler.py         #   roteamento HTTP e streaming
+│   └── app.py             #   composição e ciclo de vida
+├── index.html             # Estrutura da página + sprites SVG
+├── static/
+│   ├── styles.css         #   estilos
+│   └── app.js             #   lógica do frontend
+├── tools/check_names.py   # Detecta nomes usados mas não definidos
+├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
 ├── install.sh             # Instalador do serviço systemd (Linux)
 ├── install-macos.sh       # Instalador do LaunchAgent (macOS)
 ├── install-windows.bat    # Instalador (Windows)
@@ -351,6 +371,10 @@ TicianoFlix/
 ├── LICENSE                # Licença MIT
 └── README.md              # Este arquivo
 ```
+
+> `server.py` continua na raiz porque o `ExecStart` do systemd, o LaunchAgent
+> do macOS, o `.bat` do Windows e o wrapper nativo `ticianoflix-server.c` fixam
+> esse caminho — movê-lo quebraria instalações existentes.
 
 Fora do repositório, em `~/.cache/ticianoflix/`:
 
