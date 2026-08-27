@@ -498,6 +498,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.8 — feat(ui): troca os emojis por ícones SVG em contorno
+
+- feat(ui): troca os emojis por ícones SVG em contorno
+
+
 ### v1.7 — feat(segurança): reduz o acesso ao Drive ao mínimo necessário
 
 - feat(segurança): reduz o acesso ao Drive ao mínimo necessário
