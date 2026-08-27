@@ -12,12 +12,13 @@
 #
 # Atualiza os 3 lugares que exibem a versão:
 #   1. Badge na sidebar (index.html: logo-version)
-#   2. Changelog do app (_CHANGELOG no index.html)
+#   2. Changelog do app (_CHANGELOG em static/app.js)
 #   3. README.md (Changelog)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 INDEX="$DIR/index.html"
+APPJS="$DIR/static/app.js"
 README="$DIR/README.md"
 
 TYPE="${1:-none}"
@@ -30,16 +31,18 @@ if [ -z "$TITLE" ] && [ "$TYPE" != "none" ]; then
 fi
 
 # ─── Toda a lógica em Python (portável macOS/Linux) ─────────
-NEW_VERSION="$(TYPE="$TYPE" TITLE="$TITLE" ITEMS="$ITEMS_RAW" INDEX="$INDEX" README="$README" python3 <<'PY'
+NEW_VERSION="$(TYPE="$TYPE" TITLE="$TITLE" ITEMS="$ITEMS_RAW" INDEX="$INDEX" APPJS="$APPJS" README="$README" python3 <<'PY'
 import os, re, sys
 
 index_path = os.environ["INDEX"]
+appjs_path = os.environ["APPJS"]
 readme_path = os.environ["README"]
 bump_type = os.environ["TYPE"]
 title = os.environ["TITLE"]
 items_raw = os.environ["ITEMS"]
 
 html = open(index_path).read()
+appjs = open(appjs_path).read()      # o _CHANGELOG mora aqui desde o split do frontend
 readme = open(readme_path).read()
 
 # 1. Versão atual (badge na sidebar)
@@ -86,8 +89,8 @@ entry = (
     "    },\n"
 )
 marker = "const _CHANGELOG = [\n"
-assert marker in html, "marker _CHANGELOG não encontrado"
-html = html.replace(marker, marker + entry, 1)
+assert marker in appjs, "marker _CHANGELOG não encontrado em static/app.js"
+appjs = appjs.replace(marker, marker + entry, 1)
 
 # 5. README changelog
 block = f"### v{display} — {title}\n"
@@ -98,6 +101,7 @@ assert rmarker in readme, "marker Changelog não encontrado"
 readme = readme.replace(rmarker, rmarker + "\n" + block + "\n", 1)
 
 open(index_path, "w").write(html)
+open(appjs_path, "w").write(appjs)
 open(readme_path, "w").write(readme)
 print("OK")
 PY
@@ -119,4 +123,4 @@ html = open('$INDEX').read()
 m = re.search(r'logo-version\"[^>]*>v([0-9.]+)', html)
 print('v' + m.group(1) if m else '?')
 ")"
-echo "   git add index.html README.md && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""
+echo "   git add index.html static/app.js README.md && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""

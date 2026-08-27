@@ -53,13 +53,18 @@ rclone config
 
 Crie um remote chamado `gdrive:` com:
 - Tipo: `drive`
-- Escopo: `drive` (acesso completo) ou `drive.file`
+- Escopo: **`drive.readonly`** — o TicianoFlix só lê
 - Autenticação via OAuth no navegador
+
+> ⚠️ O assistente do rclone oferece `drive` como padrão, que dá **leitura e
+> escrita no seu Drive inteiro**. O TicianoFlix não precisa disso. Se você já
+> criou o remote assim, o instalador oferece corrigir — e o painel **☁️ rclone**
+> avisa enquanto estiver largo. Veja [Acesso ao Google Drive](#acesso-ao-google-drive).
 
 > 💡 Depois de instalado, dá pra configurar pelo próprio TicianoFlix:
 > clique em **☁️ rclone** no menu lateral — ele mostra o status (instalado,
-> remote `gdrive:`, streaming) e abre o configurador oficial do rclone
-> (web GUI) pra criar o remote sem usar o terminal.
+> remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
+> oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
 
 ### 2. Clonar e instalar
 
@@ -279,8 +284,16 @@ disso — mas nada nele responde sem autenticação.
 
 Por padrão o `rclone config` cria um remote com escopo `drive`: **leitura e
 escrita no Drive inteiro**. O TicianoFlix não precisa de nada disso — ele só lê
-uma pasta. O script [`setup-rclone-seguro.sh`](setup-rclone-seguro.sh) reduz o
-acesso ao mínimo:
+uma pasta.
+
+Você não precisa lembrar disso sozinho:
+
+- **Os instaladores perguntam.** Se o remote estiver mais largo que o
+  necessário, eles oferecem corrigir na hora.
+- **O painel avisa.** Em **☁️ rclone**, a linha *Acesso ao Google Drive* mostra
+  o nível atual e, quando está largo, explica o risco e dá o comando.
+
+Para rodar manualmente, a qualquer momento:
 
 ```bash
 ./setup-rclone-seguro.sh
@@ -341,8 +354,28 @@ TicianoFlix, o servidor a encerra e assume a porta, em vez de migrar para outra.
 
 ```
 TicianoFlix/
-├── server.py              # Servidor HTTP (todo o backend)
-├── index.html             # Frontend single-page
+├── server.py              # Entrypoint (13 linhas — chama ticianoflix.app)
+├── ticianoflix/           # O backend
+│   ├── config.py          #   constantes, caminhos, variáveis de ambiente
+│   ├── paths.py           #   fronteira de caminhos com o rclone
+│   ├── netsec.py          #   validação de Host e Origin
+│   ├── procutil.py        #   PIDs por porta (lsof/fuser)
+│   ├── netutil.py         #   IP local, cert self-signed, escolha de porta
+│   ├── db.py              #   SQLite: conexões, schema, metadados
+│   ├── auth.py            #   contas, sessões HMAC, tokens de mídia
+│   ├── templates.py       #   tela de login servida pelo Python
+│   ├── rclone.py          #   comandos, cache VFS, processo do serve
+│   ├── nfo.py             #   metadados Kodi / tinyMediaManager
+│   ├── scanner.py         #   varredura do Drive e indexação
+│   ├── queries.py         #   consultas ao cache
+│   ├── handler.py         #   roteamento HTTP e streaming
+│   └── app.py             #   composição e ciclo de vida
+├── index.html             # Estrutura da página + sprites SVG
+├── static/
+│   ├── styles.css         #   estilos
+│   └── app.js             #   lógica do frontend
+├── tools/check_names.py   # Detecta nomes usados mas não definidos
+├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
 ├── install.sh             # Instalador do serviço systemd (Linux)
 ├── install-macos.sh       # Instalador do LaunchAgent (macOS)
 ├── install-windows.bat    # Instalador (Windows)
@@ -351,6 +384,10 @@ TicianoFlix/
 ├── LICENSE                # Licença MIT
 └── README.md              # Este arquivo
 ```
+
+> `server.py` continua na raiz porque o `ExecStart` do systemd, o LaunchAgent
+> do macOS, o `.bat` do Windows e o wrapper nativo `ticianoflix-server.c` fixam
+> esse caminho — movê-lo quebraria instalações existentes.
 
 Fora do repositório, em `~/.cache/ticianoflix/`:
 
