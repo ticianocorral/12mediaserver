@@ -2689,6 +2689,41 @@
       : '<span class="rclone-badge bad"><svg class="icon-svg"><use href="#i-close"></use></svg> ' + textBad + '</span>';
   }
 
+  function _renderAcessoDrive(a) {
+    if (!a) return '';
+    var rotulo = { ok: 'mínimo', atencao: 'mais largo que o necessário',
+                   risco: 'Drive inteiro', desconhecido: '?' }[a.nivel] || '?';
+    var html = '<div class="rclone-row"><span class="rclone-label">Acesso ao Google Drive</span>'
+      + '<span class="rclone-badge ' + (a.nivel === 'ok' ? 'ok' : 'bad') + '">'
+      + '<svg class="icon-svg"><use href="#i-' + (a.nivel === 'ok' ? 'check' : 'alert') + '"></use></svg> '
+      + escHtml(rotulo) + '</span></div>';
+
+    if (a.nivel === 'ok') {
+      if (a.backup_remote && !a.backup_client_proprio) {
+        html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> '
+          + 'O remote de backup usa o client_id compartilhado do rclone, que o Google '
+          + 'aposenta durante 2026. Só afeta backup e restauração.</div>';
+      }
+      return html;
+    }
+    if (a.nivel === 'desconhecido') return html;
+
+    // Ainda não protegido: explica o risco e dá o comando exato.
+    html += '<div class="rclone-warn rclone-warn-' + a.nivel + '">'
+      + '<div class="rclone-warn-head"><svg class="icon-svg"><use href="#i-alert"></use></svg> '
+      + escHtml(a.resumo) + '</div>'
+      + '<p>O TicianoFlix só precisa <b>ler</b> a pasta <b>TicianoFlix</b>. '
+      + 'Um script reduz o acesso a exatamente isso — seus outros arquivos do Drive '
+      + 'ficam fora de alcance.</p>'
+      + '<p class="rclone-warn-cmd">No terminal, dentro da pasta do TicianoFlix:'
+      + '<code>' + escHtml(a.comando) + '</code></p>'
+      + '<p class="rclone-warn-foot">Ele abre o navegador para você reautorizar — '
+      + 'é o Google que aplica o limite, não dá para fazer isso daqui. '
+      + 'Depois clique em <b>Atualizar status</b>.</p>'
+      + '</div>';
+    return html;
+  }
+
   function _renderRcloneStatus(box, s) {
     let html = '';
     html += '<div class="rclone-row"><span class="rclone-label">rclone instalado</span>'
@@ -2699,6 +2734,7 @@
       html += '<div class="rclone-row"><span class="rclone-label">Conexão com o Drive</span>'
         + (s.remote_ok ? _rcloneBadge(true, 'ok', '') : _rcloneBadge(false, '', s.remote_error || 'falhou')) + '</div>';
     }
+    if (s.remote_configured) html += _renderAcessoDrive(s.acesso);
     html += '<div class="rclone-row"><span class="rclone-label">Streaming (serve)</span>'
       + _rcloneBadge(s.serve_running, 'ativo :18082', 'parado') + '</div>';
     html += '<div class="rclone-row"><span class="rclone-label">Web UI de configuração</span>'
@@ -2735,7 +2771,7 @@
 
     if (s.installed && !s.remote_configured) {
       html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> No configurador: crie um remote chamado <b>gdrive</b> '
-        + '(tipo <b>Google Drive</b>, escopo <b>drive</b> ou <b>drive.file</b>) seguindo o assistente. '
+        + '(tipo <b>Google Drive</b>, escopo <b>drive.readonly</b>) seguindo o assistente. '
         + 'Depois volte aqui e clique em <b><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</b>.</div>';
     }
     box.innerHTML = html;

@@ -57,6 +57,29 @@ def remote_is_scoped():
         return scoped
 
 
+def read_remote_conf(section):
+    """Campos de uma secao do rclone.conf, sem tokens nem segredos.
+
+    Le o arquivo direto em vez de 'rclone config show' para nao arrastar o
+    token pra dentro do processo — o que interessa aqui e so o escopo.
+    """
+    out = {}
+    try:
+        current = None
+        for raw in rclone_conf_path().read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("[") and line.endswith("]"):
+                current = line[1:-1]
+            elif current == section and "=" in line:
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if k in ("scope", "root_folder_id", "client_id", "type"):
+                    out[k] = v.strip()
+    except Exception:
+        pass
+    return out
+
+
 def _strip_logical_root(logical_path):
     p = "/" + str(logical_path).strip("/")
     if p == LOGICAL_ROOT:

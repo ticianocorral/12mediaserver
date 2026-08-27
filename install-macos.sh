@@ -87,6 +87,30 @@ else
     echo "  (ou rode 'rclone config' manualmente)."
 fi
 
+# ─── 4b. Acesso ao Drive (privilegio minimo) ────────────
+if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
+    SCOPE="$(rclone config show gdrive 2>/dev/null | sed -n 's/^scope[[:space:]]*=[[:space:]]*//p')"
+    ROOTID="$(rclone config show gdrive 2>/dev/null | sed -n 's/^root_folder_id[[:space:]]*=[[:space:]]*//p')"
+    if [ "$SCOPE" = "drive.readonly" ] && [ -n "$ROOTID" ]; then
+        ok "Acesso ao Drive já está no mínimo (só leitura, só a pasta TicianoFlix)"
+    else
+        echo
+        aviso "O remote 'gdrive:' alcança MAIS do que o TicianoFlix precisa."
+        echo "  Escopo atual: ${SCOPE:-drive} — isso permite ler e apagar arquivos"
+        echo "  em todo o seu Google Drive, não só na pasta TicianoFlix."
+        echo
+        echo "  O script setup-rclone-seguro.sh reduz isso ao mínimo. Ele abre o"
+        echo "  navegador para você reautorizar (é o Google que aplica o limite)."
+        echo
+        printf "  Reduzir agora? [S/n] "
+        read -r RESP </dev/tty || RESP="n"
+        case "$RESP" in
+            [Nn]*) aviso "Pulado. Rode depois: ./setup-rclone-seguro.sh" ;;
+            *) "$DIR/setup-rclone-seguro.sh" || aviso "Falhou. Rode depois: ./setup-rclone-seguro.sh" ;;
+        esac
+    fi
+fi
+
 # ─── 5. Diretórios de cache ─────────────────────────────
 mkdir -p "$HOME/.cache/ticianoflix/images"
 mkdir -p "$HOME/.cache/ticianoflix/subs"
