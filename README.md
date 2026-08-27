@@ -131,7 +131,7 @@ journalctl --user -u ticianoflix -n 20
 tail -20 ~/.cache/ticianoflix/ticianoflix.log
 ```
 
-Abra **http://localhost:8080**, informe o código e escolha usuário e senha. Essa
+Abra **http://localhost:9187**, informe o código e escolha usuário e senha. Essa
 conta vira o administrador.
 
 O código existe para fechar a janela em que qualquer pessoa na sua rede poderia
@@ -218,13 +218,13 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
 │  Navegador   │────▶│  server.py       │────▶│  rclone serve │
 │  localhost:   │     │  ThreadingHTTP   │     │  :18082       │
-│  8080         │◀────│  Server          │◀────│  (read-only)  │
+│  9187         │◀────│  Server          │◀────│  (read-only)  │
 └──────────────┘     └────────┬─────────┘     └──────┬───────┘
                               │                      │
                               ▼                      ▼
                      ┌──────────────┐      ┌──────────────────┐
                      │  SQLite      │      │  Google Drive    │
-                     │  (cache)     │      │  (gdrive:)       │
+                     │  (cache)     │      │  pasta TicianoFlix│
                      └──────────────┘      └──────────────────┘
 ```
 
@@ -247,8 +247,9 @@ disso — mas nada nele responde sem autenticação.
 
 ### Autenticação
 
-- **Contas com papéis** (admin / usuário). Senhas guardadas como hash **scrypt**
-  (`n=16384, r=8, p=1`) em `~/.cache/ticianoflix/auth.json`, com permissão `600`.
+- **Contas com papéis** (admin / usuário). Senhas guardadas como hash
+  **PBKDF2-HMAC-SHA256** (100 000 iterações, salt de 16 bytes) em
+  `~/.cache/ticianoflix/auth.json`, com permissão `600`.
 - **Sem auto-cadastro.** O primeiro administrador exige o código de instalação
   impresso no log; os demais são criados pelo painel.
 - **Sessão sem estado**: cookie `HttpOnly`, `SameSite=Lax`, assinado por
@@ -268,10 +269,43 @@ disso — mas nada nele responde sem autenticação.
   Chromecast, que busca o arquivo sozinho).
 - **Chromecast por URL assinada** — token HMAC de 12h válido só para aquele
   arquivo, em vez de abrir as rotas de mídia.
-- **`rclone serve` apenas em `127.0.0.1:18082`**, read-only. O TicianoFlix faz o
-  proxy; nada externo alcança essa porta.
+- **`rclone serve` apenas em `127.0.0.1:18082`**, read-only e montado na pasta
+  `TicianoFlix` — nunca na raiz do Drive. O TicianoFlix faz o proxy; nada
+  externo alcança essa porta.
 - **Configurador do rclone desligado por padrão.** Habilite com
   `TICIANOFLIX_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
+
+### Acesso ao Google Drive
+
+Por padrão o `rclone config` cria um remote com escopo `drive`: **leitura e
+escrita no Drive inteiro**. O TicianoFlix não precisa de nada disso — ele só lê
+uma pasta. O script [`setup-rclone-seguro.sh`](setup-rclone-seguro.sh) reduz o
+acesso ao mínimo:
+
+```bash
+./setup-rclone-seguro.sh
+```
+
+| Remote | Escopo | Alcance |
+|--------|--------|---------|
+| `gdrive` | `drive.readonly` + `root_folder_id` | Só lê, e só enxerga a pasta `TicianoFlix` |
+| `gdrive_backup` | `drive.file` | Só os arquivos que o próprio TicianoFlix criou |
+
+Depois disso, o resto do seu Drive fica fora de alcance mesmo que algo dê errado
+no servidor. Confira com:
+
+```bash
+rclone lsjson gdrive: --dirs-only        # deve listar só os gêneros do catálogo
+echo x | rclone rcat gdrive:probe.tmp    # deve falhar
+```
+
+> O escopo é aplicado pelo **Google**, não pelo rclone: editar o campo `scope`
+> no `rclone.conf` não rebaixa um token já emitido. O script roda
+> `rclone config reconnect`, que abre o navegador e pede um consentimento novo —
+> esse passo é o que realmente fecha a escrita.
+
+O código funciona com o remote escopado ou não: ele lê o `root_folder_id` do
+`rclone.conf` na inicialização e ajusta os caminhos sozinho.
 
 ### Superfície da aplicação
 
@@ -291,12 +325,15 @@ disso — mas nada nele responde sem autenticação.
 | Variável | Padrão | Para quê |
 |----------|--------|----------|
 | `TICIANOFLIX_BIND` | `0.0.0.0` | Interface de escuta. Use `127.0.0.1` para fechar na máquina. |
-| `TICIANOFLIX_PORT` | `8080` | Porta HTTP. |
+| `TICIANOFLIX_PORT` | `9187` | Porta HTTP. |
 | `TICIANOFLIX_RCLONE_GUI` | desligado | `1` habilita o configurador do rclone em `127.0.0.1:5572`. |
 
-> ⚠️ Pela porta **8080** a senha trafega em claro na sua rede. O servidor também
-> sobe em **HTTPS na 8443** — prefira esse endereço, ele aparece no banner de
+> ⚠️ Pela porta **9187** a senha trafega em claro na sua rede. O servidor também
+> sobe em **HTTPS na 9443** — prefira esse endereço, ele aparece no banner de
 > inicialização.
+
+A porta é fixa: se a 9187 estiver ocupada por uma instância anterior do
+TicianoFlix, o servidor a encerra e assume a porta, em vez de migrar para outra.
 
 ---
 
@@ -410,7 +447,7 @@ Mudanças na `main` **só entram via Pull Request**. Push direto é bloqueado po
 
 **Nenhum PR é mergeado antes do teste manual.** O fluxo de trabalho é:
 
-1. A mudança é aplicada **localmente** (o servidor em `localhost:8080` já roda a versão nova)
+1. A mudança é aplicada **localmente** (o servidor em `localhost:9187` já roda a versão nova)
 2. **Você testa** no navegador e dá o OK
 3. Só então o PR é criado e mergeado (com bump automático de versão)
 

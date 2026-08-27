@@ -34,7 +34,15 @@ HOST = "0.0.0.0"
 PORT = 9187
 HTTPS_PORT_BASE = 9443
 RCLONE_REMOTE = "gdrive:"
+# Remote separado só para o backup. O remote principal é somente-leitura
+# (scope drive.readonly), então a escrita precisa de um token próprio com
+# scope drive.file — que enxerga apenas arquivos criados pelo proprio app.
+RCLONE_BACKUP_REMOTE = "gdrive_backup:"
+BACKUP_FOLDER = "TicianoFlix Backups"
 RCLONE_SERVE_PORT = 18082
+# Pasta lógica que o DB e o frontend usam. Quando o remote esta escopado via
+# root_folder_id, esse prefixo nao existe do lado do rclone — veja _rc().
+LOGICAL_ROOT = "/TicianoFlix"
 FRONTEND_PATH = Path(__file__).parent / "index.html"
 # Cache goes to user's home (writable even inside AppImage)
 _cache_home = Path.home() / ".cache" / "ticianoflix"
@@ -49,6 +57,87 @@ SUBS_CACHE_DIR.mkdir(exist_ok=True)
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
 SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+
+# ── Fronteira de paths com o rclone ──────────────────────────
+# O DB e o frontend sempre falam em paths logicos ("/TicianoFlix/Acao/Filme").
+# O rclone pode estar em dois modos:
+#   escopado  — root_folder_id aponta pra pasta TicianoFlix, entao "gdrive:" JA
+#               e a pasta e o prefixo /TicianoFlix nao existe do lado dele
+#   raiz      — modo antigo, "gdrive:" e a raiz do Drive e o prefixo e real
+# Detectamos lendo o rclone.conf uma vez, para que o mesmo codigo funcione
+# antes e depois do usuario escopar o remote.
+_remote_scoped = None
+_remote_scoped_lock = threading.Lock()
+
+
+def _rclone_conf_path():
+    try:
+        out = subprocess.run(["rclone", "config", "file"],
+                             capture_output=True, text=True, timeout=10)
+        for line in out.stdout.splitlines():
+            line = line.strip()
+            if line and not line.endswith(":"):
+                return Path(line)
+    except Exception:
+        pass
+    return Path.home() / ".config" / "rclone" / "rclone.conf"
+
+
+def _remote_is_scoped():
+    """True quando o remote principal ja aponta direto pra pasta TicianoFlix."""
+    global _remote_scoped
+    with _remote_scoped_lock:
+        if _remote_scoped is not None:
+            return _remote_scoped
+        scoped = False
+        try:
+            section = RCLONE_REMOTE.rstrip(":")
+            current = None
+            for raw in _rclone_conf_path().read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    current = line[1:-1]
+                elif current == section and line.startswith("root_folder_id"):
+                    scoped = bool(line.split("=", 1)[1].strip())
+        except Exception:
+            scoped = False
+        _remote_scoped = scoped
+        return scoped
+
+
+def _rc(logical_path):
+    """Path logico -> path relativo ao remote, sem barra inicial.
+
+    "/TicianoFlix/Acao/Filme/x.mkv" -> "Acao/Filme/x.mkv"   (remote escopado)
+                                    -> "TicianoFlix/Acao/Filme/x.mkv" (raiz)
+    """
+    p = "/" + str(logical_path).strip("/")
+    if _remote_is_scoped():
+        if p == LOGICAL_ROOT:
+            return ""
+        if p.startswith(LOGICAL_ROOT + "/"):
+            p = p[len(LOGICAL_ROOT):]
+    return p.strip("/")
+
+
+def _rc_remote(logical_path):
+    """Path logico -> destino completo pro rclone ("gdrive:Acao/Filme/x.mkv")."""
+    return RCLONE_REMOTE + _rc(logical_path)
+
+
+def _serve_path(logical_path):
+    """Path logico -> path dentro do 'rclone serve http'.
+
+    O serve e sempre montado na pasta TicianoFlix (veja start_rclone_serve),
+    entao aqui o prefixo logico sempre sai, independente do modo do remote.
+    """
+    p = "/" + str(logical_path).strip("/")
+    if p == LOGICAL_ROOT:
+        return ""
+    if p.startswith(LOGICAL_ROOT + "/"):
+        p = p[len(LOGICAL_ROOT):]
+    return p.strip("/")
 
 # ── Segurança de rede ────────────────────────────────────────
 # O servidor continua ouvindo na LAN (Chromecast e celular precisam disso),
@@ -935,8 +1024,7 @@ def run_rclone_cmd(args, timeout=60):
 
 def list_directory_raw(path):
     """List directory contents via rclone lsjson (uncached)."""
-    remote_path = RCLONE_REMOTE + path
-    return run_rclone_cmd(["lsjson", remote_path])
+    return run_rclone_cmd(["lsjson", _rc_remote(path)])
 
 
 def _remove_folder_tree(conn, path):
@@ -969,7 +1057,8 @@ def scan_drive():
 
     # Single recursive listing of the whole TicianoFlix tree (--fast-list uses
     # the Drive files.list API, ~10x faster than walking the tree per directory)
-    tree = run_rclone_cmd(["lsjson", "--recursive", "--fast-list", f"{RCLONE_REMOTE}/TicianoFlix"])
+    tree = run_rclone_cmd(["lsjson", "--recursive", "--fast-list",
+                           _rc_remote(LOGICAL_ROOT)])
     if not isinstance(tree, list):
         print(f"[TicianoFlix] Failed to list TicianoFlix: {tree}", flush=True)
         with _scan_progress_lock:
@@ -1349,7 +1438,7 @@ def _parse_nfo(xml_text):
 def _fetch_nfo_raw(folder_path):
     """Fetch NFO XML text for a movie folder via rclone. No caching."""
     nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    remote_path = RCLONE_REMOTE + nfo_path
+    remote_path = _rc_remote(nfo_path)
     try:
         result = subprocess.run(
             ["rclone", "cat", remote_path],
@@ -1423,7 +1512,7 @@ def _fetch_nfo(folder_path):
 
     # Fallback: fetch via rclone
     nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    remote_path = RCLONE_REMOTE + nfo_path
+    remote_path = _rc_remote(nfo_path)
     try:
         result = subprocess.run(
             ["rclone", "cat", remote_path],
@@ -1928,7 +2017,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # Not cached yet — download via rclone proxy with retry
-        safe_path = urllib.parse.quote(path.strip("/"), safe="/")
+        safe_path = urllib.parse.quote(_serve_path(path), safe="/")
         rclone_url = f"http://localhost:{RCLONE_SERVE_PORT}/{safe_path}"
 
         # Retry up to 3 times with 0.5s delay (rclone serve may still be starting)
@@ -1970,7 +2059,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def _stream_video_direct(self, path):
         """Stream video directly via rclone HTTP serve, proxying through same server.
         Uses http.client + shutil.copyfileobj for zero-buffer streaming."""
-        safe_path = urllib.parse.quote(path.strip("/"), safe="/")
+        safe_path = urllib.parse.quote(_serve_path(path), safe="/")
         range_header = self.headers.get("Range")
         mime = self._guess_mime(path)
 
@@ -2030,7 +2119,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
     def _stream_file_direct(self, path):
         """Fallback: stream directly via rclone cat (original method)."""
-        remote_path = RCLONE_REMOTE + path.strip("/")
+        remote_path = _rc_remote(path)
 
         file_info = cached_get_file_info(path)
         file_size = file_info.get("Size", 0) if file_info else 0
@@ -2112,7 +2201,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 raise FileNotFoundError
         except (OSError, FileNotFoundError):
             # Fetch via rclone cat
-            remote_path = RCLONE_REMOTE + path.strip("/")
+            remote_path = _rc_remote(path)
             try:
                 result = subprocess.run(
                     ["rclone", "cat", remote_path],
@@ -2275,12 +2364,16 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     pass
 
     def _backup_to_drive(self):
-        """Generate backup zip and upload to Google Drive via rclone."""
+        """Gera o zip e sobe pro Drive usando o remote de escrita.
+
+        O remote principal e somente-leitura; so este caminho escreve, e ele
+        usa um token com scope drive.file — que enxerga exclusivamente os
+        arquivos criados pelo proprio TicianoFlix."""
         zip_path = None
         try:
             zip_path = self._generate_backup_zip()
             filename = f"ticianoflix-backup-{time.strftime('%Y-%m-%d')}.zip"
-            remote_path = f"{RCLONE_REMOTE}TicianoFlix/{filename}"
+            remote_path = f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}/{filename}"
 
             with open(zip_path, "rb") as f:
                 data = f.read()
@@ -2293,9 +2386,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             )
             if proc.returncode != 0:
                 err = proc.stderr.decode(errors="replace").strip()
+                if "didn't find section in config file" in err:
+                    return {"ok": False, "error":
+                            "O remote de backup nao esta configurado. "
+                            "Rode: ./setup-rclone-seguro.sh"}
                 return {"ok": False, "error": f"rclone failed: {err}"}
 
-            return {"ok": True, "path": f"TicianoFlix/{filename}"}
+            return {"ok": True, "path": f"{BACKUP_FOLDER}/{filename}"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
         finally:
@@ -2308,10 +2405,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def _handle_restore_from_drive(self):
         """Find latest backup zip in Drive, download and restore."""
         try:
-            # List backup files in TicianoFlix root
-            result = run_rclone_cmd(["lsjson", f"{RCLONE_REMOTE}TicianoFlix"])
+            # Lista pelo remote de backup: com scope drive.file ele so enxerga
+            # os arquivos que o proprio TicianoFlix criou.
+            result = run_rclone_cmd(
+                ["lsjson", f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}"])
             if not isinstance(result, list):
-                self._send_error("Failed to list Drive files")
+                self._send_error(
+                    "Nao foi possivel listar os backups. O remote de backup "
+                    "esta configurado? Rode: ./setup-rclone-seguro.sh")
                 return
 
             zips = [f for f in result if f.get("Name", "").startswith("ticianoflix-backup-") and f.get("Name", "").endswith(".zip")]
@@ -2329,7 +2430,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # Download in background thread
             def _do_restore():
                 try:
-                    remote = f"{RCLONE_REMOTE}TicianoFlix/{name}"
+                    remote = f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}/{name}"
                     proc = subprocess.run(
                         ["rclone", "cat", remote],
                         capture_output=True, timeout=120
@@ -2766,7 +2867,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                             return
 
                         # Use HTTP range requests against rclone serve to force VFS caching
-                        safe_url_path = urllib.parse.quote(file_path, safe="/")
+                        safe_url_path = urllib.parse.quote(_serve_path(file_path), safe="/")
                         rclone_url = f"http://localhost:{RCLONE_SERVE_PORT}/{safe_url_path}"
                         CHUNK = 5 * 1024 * 1024  # 5MB chunks (same as frontend)
                         downloaded = 0
@@ -3305,6 +3406,26 @@ def start_https_server(handler_class, host, https_port, cert_path, key_path):
         return None
 
 
+def _pids_on_port(port):
+    """PIDs ouvindo em 'port'. lsof primeiro (macOS e Linux), fuser como
+    reserva — no macOS o fuser existe mas nao aceita a sintaxe 'porta/tcp',
+    entao ele sai com codigo 0 e stdout vazio e nao serve sozinho."""
+    try:
+        out = subprocess.run(["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=5)
+        pids = [p for p in out.stdout.split() if p.strip().isdigit()]
+        if pids:
+            return pids
+    except Exception:
+        pass
+    try:
+        out = subprocess.run(["fuser", f"{port}/tcp"],
+                             capture_output=True, text=True, timeout=5)
+        return [p for p in out.stdout.split() if p.strip().isdigit()]
+    except Exception:
+        return []
+
+
 def find_free_port():
     """Sempre usa PORT. Se ocupada, mata a instância anterior."""
     env_port = os.environ.get("TICIANOFLIX_PORT")
@@ -3319,19 +3440,16 @@ def find_free_port():
         s.close()
         return port
     except OSError:
-        print(f"[TicianoFlix] Porta {port} ocupada. Matando instância anterior...", flush=True)
-        try:
-            import subprocess as _sp
-            check = _sp.run(["fuser", f"{port}/tcp"], capture_output=True, timeout=5)
-            if check.returncode == 0:
-                pids = check.stdout.decode().strip().split()
-                for pid in pids:
-                    try:
-                        _sp.run(["kill", "-9", pid.strip()], timeout=2)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        pids = _pids_on_port(port)
+        me = str(os.getpid())
+        pids = [p for p in pids if p != me]
+        print(f"[TicianoFlix] Porta {port} ocupada por {', '.join(pids) or '?'}. "
+              f"Matando instância anterior...", flush=True)
+        for pid in pids:
+            try:
+                os.kill(int(pid), signal.SIGKILL)
+            except Exception:
+                pass
 
         time.sleep(1)
         try:
@@ -3359,26 +3477,33 @@ def _urlopen_ok(url, timeout=2):
         return False
 
 
-def _kill_rclone_on_port(port):
-    """Best-effort: mata processos rclone ouvindo em 'port' (Linux, via fuser+/proc)."""
+def _proc_cmdline(pid):
+    """Linha de comando de um PID. Usa /proc no Linux e 'ps' no macOS/BSD."""
+    proc_file = Path(f"/proc/{pid}/cmdline")
+    if proc_file.exists():
+        try:
+            return " ".join(proc_file.read_text().split("\0"))
+        except Exception:
+            return ""
     try:
-        if not Path("/proc").exists():
-            return
-        check = subprocess.run(["fuser", f"{port}/tcp"], capture_output=True, timeout=5)
-        if check.returncode != 0:
-            return
-        for pid in check.stdout.decode().strip().split():
-            try:
-                cmdline_path = Path(f"/proc/{pid}/cmdline")
-                if not cmdline_path.exists():
-                    continue
-                cmd_str = " ".join(cmdline_path.read_text().split("\0"))
-                if "rclone" in cmd_str:
-                    subprocess.run(["kill", pid.strip()], timeout=3)
-            except Exception:
-                pass
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip()
     except Exception:
-        pass
+        return ""
+
+
+def _kill_rclone_on_port(port):
+    """Best-effort: mata processos rclone ouvindo em 'port'.
+
+    So mata se a linha de comando do PID mencionar rclone — nunca derruba um
+    processo alheio que por acaso esteja na porta."""
+    for pid in _pids_on_port(port):
+        try:
+            if "rclone" in _proc_cmdline(pid):
+                os.kill(int(pid), signal.SIGTERM)
+        except Exception:
+            pass
 
 
 def start_rclone_serve():
@@ -3398,7 +3523,7 @@ def start_rclone_serve():
             import urllib.request as ureq_check
             ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
             try:
-                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/TicianoFlix/?format=json", timeout=5)
+                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/?format=json", timeout=5)
                 print(f"[TicianoFlix] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
                 return "external"
             except Exception:
@@ -3410,7 +3535,11 @@ def start_rclone_serve():
 
         try:
             proc = subprocess.Popen(
-                ["rclone", "serve", "http", "gdrive:",
+                # Montado na pasta TicianoFlix, nunca na raiz do Drive: mesmo
+                # com o remote ainda apontando pra raiz, o serve so expoe o
+                # catalogo. Combinado com --read-only, a porta 18082 nao le
+                # nem escreve nada fora dali.
+                ["rclone", "serve", "http", _rc_remote(LOGICAL_ROOT),
                  "--addr", f"127.0.0.1:{RCLONE_SERVE_PORT}",
                  "--read-only",
                  "--drive-chunk-size", "128M",
