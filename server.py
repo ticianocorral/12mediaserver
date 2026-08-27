@@ -30,217 +30,38 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-HOST = "0.0.0.0"
-PORT = 9187
-HTTPS_PORT_BASE = 9443
-RCLONE_REMOTE = "gdrive:"
-# Remote separado só para o backup. O remote principal é somente-leitura
-# (scope drive.readonly), então a escrita precisa de um token próprio com
-# scope drive.file — que enxerga apenas arquivos criados pelo proprio app.
-RCLONE_BACKUP_REMOTE = "gdrive_backup:"
-BACKUP_FOLDER = "TicianoFlix Backups"
-RCLONE_SERVE_PORT = 18082
-# Pasta lógica que o DB e o frontend usam. Quando o remote esta escopado via
-# root_folder_id, esse prefixo nao existe do lado do rclone — veja _rc().
-LOGICAL_ROOT = "/TicianoFlix"
-FRONTEND_PATH = Path(__file__).parent / "index.html"
-# Cache goes to user's home (writable even inside AppImage)
-_cache_home = Path.home() / ".cache" / "ticianoflix"
-CACHE_DIR = _cache_home
-DB_PATH = CACHE_DIR / "ticianoflix.db"
-IMAGE_CACHE_DIR = CACHE_DIR / "images"
-SUBS_CACHE_DIR = CACHE_DIR / "subs"
-CACHE_DIR.mkdir(exist_ok=True)
-IMAGE_CACHE_DIR.mkdir(exist_ok=True)
-SUBS_CACHE_DIR.mkdir(exist_ok=True)
-
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
-SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa"}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
-
-
-# ── Fronteira de paths com o rclone ──────────────────────────
-# O DB e o frontend sempre falam em paths logicos ("/TicianoFlix/Acao/Filme").
-# O rclone pode estar em dois modos:
-#   escopado  — root_folder_id aponta pra pasta TicianoFlix, entao "gdrive:" JA
-#               e a pasta e o prefixo /TicianoFlix nao existe do lado dele
-#   raiz      — modo antigo, "gdrive:" e a raiz do Drive e o prefixo e real
-# Detectamos lendo o rclone.conf uma vez, para que o mesmo codigo funcione
-# antes e depois do usuario escopar o remote.
-_remote_scoped = None
-_remote_scoped_lock = threading.Lock()
-
-
-def _rclone_conf_path():
-    try:
-        out = subprocess.run(["rclone", "config", "file"],
-                             capture_output=True, text=True, timeout=10)
-        for line in out.stdout.splitlines():
-            line = line.strip()
-            if line and not line.endswith(":"):
-                return Path(line)
-    except Exception:
-        pass
-    return Path.home() / ".config" / "rclone" / "rclone.conf"
-
-
-def _remote_is_scoped():
-    """True quando o remote principal ja aponta direto pra pasta TicianoFlix."""
-    global _remote_scoped
-    with _remote_scoped_lock:
-        if _remote_scoped is not None:
-            return _remote_scoped
-        scoped = False
-        try:
-            section = RCLONE_REMOTE.rstrip(":")
-            current = None
-            for raw in _rclone_conf_path().read_text(encoding="utf-8").splitlines():
-                line = raw.strip()
-                if line.startswith("[") and line.endswith("]"):
-                    current = line[1:-1]
-                elif current == section and line.startswith("root_folder_id"):
-                    scoped = bool(line.split("=", 1)[1].strip())
-        except Exception:
-            scoped = False
-        _remote_scoped = scoped
-        return scoped
-
-
-def _rc(logical_path):
-    """Path logico -> path relativo ao remote, sem barra inicial.
-
-    "/TicianoFlix/Acao/Filme/x.mkv" -> "Acao/Filme/x.mkv"   (remote escopado)
-                                    -> "TicianoFlix/Acao/Filme/x.mkv" (raiz)
-    """
-    p = "/" + str(logical_path).strip("/")
-    if _remote_is_scoped():
-        if p == LOGICAL_ROOT:
-            return ""
-        if p.startswith(LOGICAL_ROOT + "/"):
-            p = p[len(LOGICAL_ROOT):]
-    return p.strip("/")
-
-
-def _rc_remote(logical_path):
-    """Path logico -> destino completo pro rclone ("gdrive:Acao/Filme/x.mkv")."""
-    return RCLONE_REMOTE + _rc(logical_path)
-
-
-def _serve_path(logical_path):
-    """Path logico -> path dentro do 'rclone serve http'.
-
-    O serve e sempre montado na pasta TicianoFlix (veja start_rclone_serve),
-    entao aqui o prefixo logico sempre sai, independente do modo do remote.
-    """
-    p = "/" + str(logical_path).strip("/")
-    if p == LOGICAL_ROOT:
-        return ""
-    if p.startswith(LOGICAL_ROOT + "/"):
-        p = p[len(LOGICAL_ROOT):]
-    return p.strip("/")
-
-# ── Segurança de rede ────────────────────────────────────────
-# O servidor continua ouvindo na LAN (Chromecast e celular precisam disso),
-# mas só aceita requisições cujo Host seja local/privado e cujo Origin, quando
-# presente, também seja. Isso preserva o uso doméstico e fecha DNS rebinding —
-# nesse ataque o Host é um domínio público controlado por terceiros.
-BIND_HOST = os.environ.get("TICIANOFLIX_BIND", HOST)
-
-# Web GUI do rclone: desligada por padrão. Ela expõe a API de controle remoto
-# do rclone, que dá acesso total ao Drive. Habilite com TICIANOFLIX_RCLONE_GUI=1
-# — nesse caso ela sobe apenas em 127.0.0.1, acessível só do próprio computador.
-RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
-
-MAX_RESTORE_BYTES = 512 * 1024 * 1024   # teto do zip de restore
-MAX_JSON_BODY_BYTES = 64 * 1024         # teto de corpo JSON (ex.: /api/progress)
-MAX_NFO_BYTES = 2 * 1024 * 1024         # teto de um arquivo .nfo
-
-# Rotas que alteram estado: só respondem a POST com Origin local.
-WRITE_ROUTES = frozenset({
-    "/api/refresh", "/api/clear-cache", "/api/uncache",
-    "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
-})
-
-
-def _is_private_host(hostname):
-    """True para nomes/IPs locais ou de rede privada."""
-    if not hostname:
-        return False
-    h = hostname.strip().strip("[]").lower()
-    if h in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-        return True
-    if h.endswith((".local", ".localhost", ".lan", ".internal", ".home.arpa")):
-        return True
-    parts = h.split(".")
-    if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-        a, b = int(parts[0]), int(parts[1])
-        if a in (10, 127):
-            return True
-        if a == 192 and b == 168:
-            return True
-        if a == 172 and 16 <= b <= 31:
-            return True
-        if a == 169 and b == 254:
-            return True
-        if a == 100 and 64 <= b <= 127:   # CGNAT (Tailscale)
-            return True
-    if h.startswith(("fe80:", "fc", "fd")):
-        return True
-    return False
-
-
-def _host_allowed(host_header):
-    """Valida o header Host. Ausente = cliente HTTP/1.0 local."""
-    if not host_header:
-        return True
-    h = host_header.strip()
-    if h.startswith("["):                       # [::1]:8080
-        h = h[1:h.index("]")] if "]" in h else h[1:]
-    elif h.count(":") == 1:                     # host:porta
-        h = h.split(":")[0]
-    return _is_private_host(h)
-
-
-def _origin_allowed(origin_header):
-    """Origin ausente é aceito — Chromecast, <video> e navegação direta não mandam."""
-    if not origin_header:
-        return True
-    if origin_header == "null":
-        return False
-    try:
-        return _is_private_host(urllib.parse.urlparse(origin_header).hostname)
-    except Exception:
-        return False
-
-
-def _looks_like_ticianoflix_db(raw):
-    """Confere que o blob é um SQLite íntegro com o schema esperado antes de
-    sobrescrever o banco real."""
-    if not raw.startswith(b"SQLite format 3\x00"):
-        return False
-    import tempfile
-    tmp = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as f:
-            f.write(raw)
-            tmp = f.name
-        conn = sqlite3.connect(tmp)
-        try:
-            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-                return False
-            tables = {r[0] for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'")}
-        finally:
-            conn.close()
-        return {"files", "folders"}.issubset(tables)
-    except Exception:
-        return False
-    finally:
-        if tmp:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+from ticianoflix.config import (
+    HOST, PORT, HTTPS_PORT_BASE, BIND_HOST,
+    RCLONE_REMOTE, RCLONE_BACKUP_REMOTE, BACKUP_FOLDER,
+    RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT, RCLONE_GUI_ENABLED,
+    LOGICAL_ROOT, FRONTEND_PATH,
+    CACHE_DIR, DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, CACHED_FILES_PATH,
+    AUTH_PATH, SECRET_PATH,
+    VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
+    MAX_RESTORE_BYTES, MAX_JSON_BODY_BYTES, MAX_NFO_BYTES,
+    WRITE_ROUTES, PUBLIC_PATHS, TOKEN_PATHS, ADMIN_PATHS,
+    SESSION_COOKIE, SESSION_MAX_AGE, CAST_TOKEN_MAX_AGE,
+    MIN_PASSWORD_LEN, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW,
+)
+from ticianoflix.netsec import (
+    is_private_host as _is_private_host,
+    host_allowed as _host_allowed,
+    origin_allowed as _origin_allowed,
+)
+from ticianoflix.paths import (
+    rclone_conf_path as _rclone_conf_path,
+    remote_is_scoped as _remote_is_scoped,
+    rc as _rc,
+    rc_remote as _rc_remote,
+    serve_path as _serve_path,
+)
+from ticianoflix.db import (
+    get_db, get_db_write, init_db,
+    get_cache_time, set_cache_time, is_cache_stale,
+    get_cache_usage,
+    log_notification as _log_notification,
+    looks_like_ticianoflix_db as _looks_like_ticianoflix_db,
+)
 
 
 def _vfs_segment_match(entry_str, needle):
@@ -263,32 +84,12 @@ def _vfs_segment_match(entry_str, needle):
 #
 # O Chromecast nao manda cookie — para ele o servidor assina uma URL por
 # arquivo (ver _issue_media_token).
-AUTH_PATH = CACHE_DIR / "auth.json"
-SECRET_PATH = CACHE_DIR / "secret.key"
-SESSION_COOKIE = "tflix_session"
-SESSION_MAX_AGE = 90 * 24 * 3600     # 90 dias por dispositivo
-CAST_TOKEN_MAX_AGE = 12 * 3600       # cobre um filme inteiro com folga
-MIN_PASSWORD_LEN = 8
-LOGIN_MAX_ATTEMPTS = 8
-LOGIN_WINDOW = 15 * 60
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
 
 _auth_lock = threading.RLock()
 _login_attempts = {}
 _setup_code = None
 _UNSET = object()
-
-# Rotas alcancaveis sem sessao.
-PUBLIC_PATHS = frozenset({
-    "/login", "/favicon.ico", "/favicon.svg",
-    "/api/auth/status", "/api/auth/login", "/api/auth/setup", "/api/auth/logout",
-})
-# Rotas que o Chromecast busca sozinho: liberadas por token assinado.
-TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
-# Rotas restritas a administradores.
-ADMIN_PATHS = frozenset({
-    "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
-})
 
 
 def _server_secret():
@@ -768,7 +569,6 @@ rclone_webgui_proc = None
 _webgui_credentials = {"user": "", "pass": ""}
 _webgui_lock = threading.Lock()
 _rclone_serve_lock = threading.Lock()
-RCLONE_WEBGUI_PORT = 5572
 _db_lock = threading.Lock()
 _scan_in_progress = False
 _scan_lock = threading.Lock()
@@ -786,8 +586,7 @@ _scan_progress = {
 }
 _scan_progress_lock = threading.Lock()
 
-# Set of fully-cached file paths (persisted as JSON)
-CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
+# Conjunto de arquivos 100% cacheados no VFS (persistido em JSON).
 _cached_files_lock = threading.Lock()
 _cached_files = set()
 
@@ -843,159 +642,6 @@ def _is_file_cached(file_path):
 
 # ═══════════════════════════════════════════════
 #  SQLite Cache
-# ═══════════════════════════════════════════════
-
-def get_db():
-    """Get a thread-local database connection with write serialization."""
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
-
-
-_db_write_lock = threading.Lock()
-
-def get_db_write():
-    """Get a connection for writes, serialized via _db_write_lock."""
-    conn = get_db()
-    return conn, _db_write_lock
-
-
-def init_db():
-    """Create tables if they don't exist."""
-    conn = get_db()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS cache_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS folders (
-            path TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            parent TEXT NOT NULL DEFAULT '',
-            is_ticianoflix_root INTEGER NOT NULL DEFAULT 0,
-            has_video INTEGER NOT NULL DEFAULT 0,
-            depth INTEGER NOT NULL DEFAULT 0,
-            mod_time TEXT NOT NULL DEFAULT ''
-        );
-
-        CREATE TABLE IF NOT EXISTS files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            folder_path TEXT NOT NULL,
-            name TEXT NOT NULL,
-            size INTEGER NOT NULL DEFAULT 0,
-            mime_type TEXT,
-            mod_time TEXT,
-            file_id TEXT,
-            extension TEXT NOT NULL DEFAULT '',
-            file_type TEXT NOT NULL DEFAULT 'other',
-            FOREIGN KEY (folder_path) REFERENCES folders(path)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_path);
-        CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type);
-        CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent);
-        CREATE INDEX IF NOT EXISTS idx_folders_depth ON folders(depth);
-
-        CREATE TABLE IF NOT EXISTS movie_meta (
-            folder_path TEXT PRIMARY KEY,
-            title TEXT,
-            year TEXT,
-            plot TEXT,
-            rating TEXT,
-            votes TEXT,
-            genres TEXT,
-            tagline TEXT,
-            directors TEXT,
-            writers TEXT,
-            cast_list TEXT,
-            video_info TEXT,
-            audio_info TEXT,
-            updated_at REAL NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS watch_progress (
-            folder_path TEXT PRIMARY KEY,
-            position_seconds REAL NOT NULL DEFAULT 0,
-            duration_seconds REAL NOT NULL DEFAULT 0,
-            updated_at REAL NOT NULL DEFAULT 0
-        );
-    """)
-    # Migration: add mod_time column if missing (existing databases)
-    try:
-        conn.execute("ALTER TABLE folders ADD COLUMN mod_time TEXT NOT NULL DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass  # column already exists
-    conn.commit()
-    conn.close()
-
-
-def get_cache_time():
-    """Get last cache update timestamp."""
-    conn = get_db()
-    cursor = conn.execute("SELECT value FROM cache_meta WHERE key='last_updated'")
-    row = cursor.fetchone()
-    conn.close()
-    return row["value"] if row else None
-
-
-def set_cache_time():
-    """Set cache update timestamp."""
-    conn = get_db()
-    conn.execute(
-        "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('last_updated', ?)",
-        (str(int(time.time())),)
-    )
-    conn.commit()
-    conn.close()
-
-
-def is_cache_stale():
-    """Check if cache needs refresh (older than 1 hour)."""
-    t = get_cache_time()
-    if not t:
-        return True
-    return (int(time.time()) - int(t)) > 3600
-
-
-def _log_notification(level, message):
-    """Log a notification to the DB for user-facing display."""
-    try:
-        conn = get_db()
-        conn.execute(
-            "INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)",
-            (f"notification_{int(time.time())}", json.dumps({"level": level, "message": message, "time": time.time()}))
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-
-def get_cache_usage():
-    """Return disk usage of caches in human-readable bytes."""
-    total = 0
-    details = {}
-    for label, path in [
-        ("images", IMAGE_CACHE_DIR),
-        ("subs", SUBS_CACHE_DIR),
-        ("vfs", Path.home() / ".cache" / "rclone" / "vfs"),
-        ("db", DB_PATH),
-    ]:
-        p = Path(path)
-        size = 0
-        if p.is_file():
-            size = p.stat().st_size
-        elif p.is_dir():
-            for f in p.rglob("*"):
-                if f.is_file():
-                    size += f.stat().st_size
-        details[label] = size
-        total += size
-    return {"total": total, "details": details}
 
 
 
