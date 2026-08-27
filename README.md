@@ -498,6 +498,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.7 — feat(segurança): reduz o acesso ao Drive ao mínimo necessário
+
+- feat(segurança): reduz o acesso ao Drive ao mínimo necessário
+
+
 ### v1.6 — Login com contas e hardening de segurança
 
 - Login obrigatório: contas com usuário e senha, sessão de 90 dias por aparelho
