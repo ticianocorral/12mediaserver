@@ -99,6 +99,23 @@ _download_progress = {}
 _download_progress_lock = threading.Lock()
 
 
+def _bust_asset_cache(html):
+    """Carimba os estaticos com o mtime do arquivo: /static/app.js?v=1787778.
+
+    Eles sao servidos com max-age=3600. Sem isso, uma atualizacao do frontend
+    so chegaria ao navegador uma hora depois — ou com refresh forcado. Usa o
+    mtime, e nao a versao do app, para quebrar o cache sempre que o conteudo
+    muda de fato, inclusive entre releases.
+    """
+    for asset in ("/static/app.js", "/static/styles.css"):
+        try:
+            stamp = int((PROJECT_ROOT / asset.lstrip("/")).stat().st_mtime)
+        except OSError:
+            continue
+        html = html.replace(f'"{asset}"', f'"{asset}?v={stamp}"')
+    return html
+
+
 class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
@@ -1062,6 +1079,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 f"<script>window.__HTTP_BASE__='http://{_get_local_ip()}:{PORT}';</script></head>",
                 1
             )
+            html_content = _bust_asset_cache(html_content)
             self._send_html(html_content)
             return
 

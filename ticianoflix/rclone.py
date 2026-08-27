@@ -19,7 +19,7 @@ from .config import (
     CACHED_FILES_PATH, LOGICAL_ROOT, RCLONE_GUI_ENABLED,
     RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
 )
-from .paths import rc_remote as _rc_remote
+from .paths import rc_remote as _rc_remote, read_remote_conf
 from .procutil import _pids_on_port, _proc_cmdline
 
 rclone_server_proc = None
@@ -310,6 +310,47 @@ def stop_rclone_webgui():
     return {"status": "ok", "running": False}
 
 
+def audit_drive_access():
+    """Quanto do Google Drive o TicianoFlix alcanca hoje.
+
+    Por padrao o `rclone config` cria o remote com scope "drive": leitura E
+    escrita no Drive inteiro. O app so precisa ler uma pasta. Isto e o que o
+    painel usa para avisar quando o acesso esta mais largo que o necessario.
+    """
+    main = read_remote_conf("gdrive")
+    backup = read_remote_conf("gdrive_backup")
+    scope = main.get("scope", "")
+    somente_leitura = scope in ("drive.readonly", "drive.metadata.readonly")
+    escopado = bool(main.get("root_folder_id"))
+
+    if not main:
+        nivel, resumo = "desconhecido", "Nao foi possivel ler o rclone.conf."
+    elif somente_leitura and escopado:
+        nivel, resumo = "ok", "Acesso minimo: so leitura, so a pasta TicianoFlix."
+    elif somente_leitura:
+        nivel, resumo = "atencao", ("So leitura, mas enxerga o Drive inteiro. "
+                                    "Falta escopar na pasta TicianoFlix.")
+    elif escopado:
+        nivel, resumo = "atencao", ("Limitado a pasta TicianoFlix, mas ainda "
+                                    "pode ESCREVER nela.")
+    else:
+        nivel, resumo = "risco", ("O TicianoFlix pode LER E APAGAR qualquer "
+                                  "arquivo do seu Google Drive.")
+
+    return {
+        "nivel": nivel,                    # ok | atencao | risco | desconhecido
+        "resumo": resumo,
+        "scope": scope or None,
+        "somente_leitura": somente_leitura,
+        "escopado": escopado,
+        "backup_remote": bool(backup),
+        "backup_scope": backup.get("scope"),
+        # O client_id compartilhado do rclone esta sendo aposentado em 2026.
+        "backup_client_proprio": bool(backup.get("client_id")),
+        "comando": "./setup-rclone-seguro.sh",
+    }
+
+
 def get_rclone_status():
     """Status completo do rclone para o modal da UI."""
     status = {
@@ -355,6 +396,9 @@ def get_rclone_status():
             status["remote_error"] = "Timeout ao testar conexão"
         except Exception as e:
             status["remote_error"] = str(e)
+
+    # Quanto do Drive o app alcanca?
+    status["acesso"] = audit_drive_access()
 
     # Serve de streaming ativo?
     status["serve_running"] = _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
