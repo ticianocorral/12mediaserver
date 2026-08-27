@@ -75,96 +75,48 @@ from ticianoflix.auth import (
     _login_blocked, _record_login_failure, _clear_login_failures,
 )
 from ticianoflix.templates import _login_page
+from ticianoflix.netutil import (
+    _get_local_ip, _ensure_ssl_cert, start_https_server, find_free_port,
+)
+from ticianoflix.rclone import (
+    run_rclone_cmd, list_directory_raw,
+    _vfs_segment_match, _norm_cache_path, _mark_file_cached, _is_file_cached,
+    _cached_files, _cached_files_lock,
+    start_rclone_serve, restart_rclone_serve,
+    start_rclone_webgui, stop_rclone_webgui, get_rclone_status,
+)
+from ticianoflix import rclone as _rclone
+from ticianoflix import scanner as _scanner
+from ticianoflix.scanner import scan_drive
+from ticianoflix.nfo import (
+    _parse_nfo, _fetch_nfo_raw, _fetch_nfo, _fetch_nfo_from_db,
+)
+from ticianoflix.queries import (
+    cached_list_directory, cached_movie_detail, cached_get_file_info,
+    cached_search_files, cached_all_movies, _find_poster_cached,
+)
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
 _UNSET = object()
 
 
-def _vfs_segment_match(entry_str, needle):
-    """Casa apenas em fronteira de componente de caminho. Impede que um
-    fragmento curto ou vazio vire curinga e apague o cache inteiro."""
-    n = needle.replace(os.sep, "/").strip("/")
-    if not n:
-        return False
-    return ("/" + n + "/") in (entry_str.replace(os.sep, "/") + "/")
 
 
 
 
-rclone_server_proc = None
-rclone_webgui_proc = None
-_webgui_credentials = {"user": "", "pass": ""}
-_webgui_lock = threading.Lock()
-_rclone_serve_lock = threading.Lock()
 _db_lock = threading.Lock()
-_scan_in_progress = False
-_scan_lock = threading.Lock()
 
-# Scan progress tracking
-_scan_progress = {
-    "phase": "",           # "listing_root" | "genres" | "movies" | "done" | "error"
-    "genre_current": "",
-    "genre_index": 0,
-    "genre_total": 0,
-    "movie_current": "",
-    "movie_index": 0,
-    "movie_total": 0,
-    "percent": 0,
-}
-_scan_progress_lock = threading.Lock()
 
-# Conjunto de arquivos 100% cacheados no VFS (persistido em JSON).
-_cached_files_lock = threading.Lock()
-_cached_files = set()
 
-def _norm_cache_path(file_path):
-    """Normalize a file path for cache bookkeeping.
-
-    Streaming marks files with the URL path (leading slash); the cache manager
-    and manual downloads build paths without it. Normalize to a single canonical
-    form (no leading/trailing slashes) so lookups always match.
-    """
-    return "/".join(part for part in str(file_path).split("/") if part)
 
 # Download progress tracking
 _download_progress = {}  # video_path -> {"percent": int, "status": str, "total": int, "downloaded": int}
 _download_progress_lock = threading.Lock()
-if CACHED_FILES_PATH.exists():
-    try:
-        _cached_files = set(_norm_cache_path(p) for p in json.loads(CACHED_FILES_PATH.read_text()))
-    except Exception:
-        _cached_files = set()
 
-def _mark_file_cached(file_path):
-    """Register a file as fully cached in rclone VFS.
-    Batches writes to disk — at most one write per 5 seconds."""
-    file_path = _norm_cache_path(file_path)
-    with _cached_files_lock:
-        _cached_files.add(file_path)
-    # Batch write: persist at most once per 5s
-    _schedule_cached_files_save()
 
-_save_timer = None
-_save_timer_lock = threading.Lock()
 
-def _schedule_cached_files_save():
-    global _save_timer
-    with _save_timer_lock:
-        if _save_timer is not None:
-            _save_timer.cancel()
-        _save_timer = threading.Timer(5.0, _flush_cached_files)
-        _save_timer.daemon = True
-        _save_timer.start()
 
-def _flush_cached_files():
-    """Persist the cached_files set to disk."""
-    with _cached_files_lock:
-        CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
-def _is_file_cached(file_path):
-    file_path = _norm_cache_path(file_path)
-    with _cached_files_lock:
-        return file_path in _cached_files
 
 
 # ═══════════════════════════════════════════════
@@ -176,709 +128,40 @@ def _is_file_cached(file_path):
 #  Drive Scanner
 # ═══════════════════════════════════════════════
 
-def run_rclone_cmd(args, timeout=60):
-    """Run an rclone command and return parsed JSON output."""
-    cmd = ["rclone"] + args
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        if result.returncode != 0:
-            return {"error": result.stderr.strip()}
-        if result.stdout.strip():
-            try:
-                return json.loads(result.stdout)
-            except json.JSONDecodeError:
-                return {"output": result.stdout.strip()}
-        return {"output": ""}
-    except subprocess.TimeoutExpired:
-        return {"error": "Command timed out"}
-    except FileNotFoundError:
-        return {"error": "rclone not found. Please install rclone."}
 
 
-def list_directory_raw(path):
-    """List directory contents via rclone lsjson (uncached)."""
-    return run_rclone_cmd(["lsjson", _rc_remote(path)])
 
 
-def _remove_folder_tree(conn, path):
-    """Remove a folder and everything under it (files, subfolders, NFO meta)."""
-    conn.execute("DELETE FROM folders WHERE path=?", (path,))
-    conn.execute("DELETE FROM folders WHERE parent LIKE ?", (path + '/%',))
-    conn.execute("DELETE FROM files WHERE folder_path=? OR folder_path LIKE ?", (path, path + '/%'))
-    conn.execute("DELETE FROM movie_meta WHERE folder_path=? OR folder_path LIKE ?", (path, path + '/%'))
 
 
-def scan_drive():
-    """
-    Incremental scan of the TicianoFlix drive structure using a SINGLE
-    recursive rclone lsjson of the whole tree, then diffing against the DB:
-    - New/changed movies (file set or file size/modtime differs) are re-indexed
-      and their NFO is re-fetched.
-    - Unchanged movies are left completely untouched (no rclone calls, no DB writes).
-    - Folders/files that disappeared from the Drive are removed.
-    """
-    global _scan_progress
-    print("[TicianoFlix] Scanning Google Drive (incremental)...", flush=True)
-    start = time.time()
-
-    with _scan_progress_lock:
-        _scan_progress["phase"] = "listing_root"
-        _scan_progress["percent"] = 0
-
-    conn = get_db()
-    stats = {"added": 0, "changed": 0, "removed": 0, "unchanged": 0}
-
-    # Single recursive listing of the whole TicianoFlix tree (--fast-list uses
-    # the Drive files.list API, ~10x faster than walking the tree per directory)
-    tree = run_rclone_cmd(["lsjson", "--recursive", "--fast-list",
-                           _rc_remote(LOGICAL_ROOT)])
-    if not isinstance(tree, list):
-        print(f"[TicianoFlix] Failed to list TicianoFlix: {tree}", flush=True)
-        with _scan_progress_lock:
-            _scan_progress["phase"] = "error"
-        conn.close()
-        return False
-
-    root_path = "/TicianoFlix"
-    conn.execute(
-        "INSERT OR REPLACE INTO folders (path, name, parent, is_ticianoflix_root, depth) VALUES (?, ?, '', 1, 0)",
-        (root_path, "TicianoFlix")
-    )
-
-    # Build in-memory tree: dirs by full path, files grouped by parent folder
-    dirs = {}
-    files_by_parent = {}
-    for e in tree:
-        rel = e.get("Path", "")
-        full = f"{root_path}/{rel}" if rel else root_path
-        if e.get("IsDir"):
-            dirs[full] = e
-        else:
-            parent = full.rsplit("/", 1)[0]
-            files_by_parent.setdefault(parent, {})[e.get("Name", "")] = e
-
-    genre_dirs = {p: e for p, e in dirs.items() if p.count("/") == 2}
-    movie_dirs = {p: e for p, e in dirs.items() if p.count("/") == 3}
-
-    # DB state
-    db_genres = {r["path"] for r in conn.execute("SELECT path FROM folders WHERE depth=1").fetchall()}
-    db_movies = {r["path"]: r for r in conn.execute(
-        "SELECT path, name, mod_time, has_video FROM folders WHERE depth=2").fetchall()}
-    db_files = {}
-    for r in conn.execute("SELECT folder_path, name, size, mod_time FROM files").fetchall():
-        db_files[(r["folder_path"], r["name"])] = r
-
-    # Remove genres that no longer exist on the Drive
-    removed_prefixes = []
-    for p in db_genres - set(genre_dirs):
-        _remove_folder_tree(conn, p)
-        removed_prefixes.append(p)
-        stats["removed"] += 1
-
-    # Remove movies that no longer exist (skip ones already removed with their genre)
-    for p in set(db_movies) - set(movie_dirs):
-        if any(p.startswith(rp + "/") for rp in removed_prefixes):
-            continue
-        _remove_folder_tree(conn, p)
-        stats["removed"] += 1
-
-    # Direct files at the TicianoFlix root: upsert + prune deleted
-    root_live = files_by_parent.get(root_path, {})
-    for name, fe in root_live.items():
-        _index_file(conn, root_path, fe)
-    for (fp, name) in list(db_files):
-        if fp == root_path and name not in root_live:
-            conn.execute("DELETE FROM files WHERE folder_path=? AND name=?", (fp, name))
-
-    total_genres = len(genre_dirs)
-    with _scan_progress_lock:
-        _scan_progress["phase"] = "genres"
-        _scan_progress["genre_total"] = total_genres
-
-    for gi, (genre_path, genre_entry) in enumerate(sorted(genre_dirs.items())):
-        genre_name = genre_entry.get("Name", "")
-
-        with _scan_progress_lock:
-            _scan_progress["genre_index"] = gi + 1
-            _scan_progress["genre_current"] = genre_name
-            _scan_progress["percent"] = int((gi / total_genres) * 100) if total_genres else 0
-
-        conn.execute(
-            "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 1, ?)",
-            (genre_path, genre_name, root_path, genre_entry.get("ModTime", ""))
-        )
-
-        # Direct files in genre folder (unstructured): upsert + prune deleted
-        has_direct_video = False
-        live_genre_files = files_by_parent.get(genre_path, {})
-        for name, fe in live_genre_files.items():
-            if Path(name).suffix.lower() in VIDEO_EXTENSIONS:
-                has_direct_video = True
-            _index_file(conn, genre_path, fe)
-        for (fp, name) in list(db_files):
-            if fp == genre_path and name not in live_genre_files:
-                conn.execute("DELETE FROM files WHERE folder_path=? AND name=?", (fp, name))
-
-        # Movies under this genre
-        for movie_path in sorted(m for m in movie_dirs if m.startswith(genre_path + "/")):
-            movie_entry = movie_dirs[movie_path]
-            movie_name = movie_entry.get("Name", "")
-            live_movie_files = files_by_parent.get(movie_path, {})
-            prev = db_movies.get(movie_path)
-
-            # File-level change detection: name set + size/modtime of each file
-            new = prev is None
-            changed = new
-            if not changed:
-                db_keys = {name for (fp, name) in db_files if fp == movie_path}
-                live_keys = set(live_movie_files)
-                if db_keys != live_keys:
-                    changed = True
-                else:
-                    for name in live_keys:
-                        fe = live_movie_files[name]
-                        dr = db_files[(movie_path, name)]
-                        if fe.get("Size", 0) != dr["size"] or fe.get("ModTime", "") != dr["mod_time"]:
-                            changed = True
-                            break
-
-            if prev is not None and not changed:
-                # Unchanged: keep the folder row (preserve has_video), touch nothing else
-                conn.execute(
-                    "INSERT INTO folders (path, name, parent, depth, mod_time, has_video) "
-                    "VALUES (?, ?, ?, 2, ?, ?) "
-                    "ON CONFLICT(path) DO UPDATE SET mod_time=excluded.mod_time",
-                    (movie_path, movie_name, genre_path, movie_entry.get("ModTime", ""), prev["has_video"])
-                )
-                stats["unchanged"] += 1
-                continue
-
-            # New or changed: rebuild folder contents from the same listing
-            conn.execute(
-                "INSERT OR REPLACE INTO folders (path, name, parent, depth, mod_time) VALUES (?, ?, ?, 2, ?)",
-                (movie_path, movie_name, genre_path, movie_entry.get("ModTime", ""))
-            )
-
-            with _scan_progress_lock:
-                _scan_progress["movie_index"] += 1
-                _scan_progress["movie_current"] = movie_name
-
-            conn.execute("DELETE FROM files WHERE folder_path=?", (movie_path,))
-            for name, fe in live_movie_files.items():
-                _index_file(conn, movie_path, fe)
-
-            if any(Path(n).suffix.lower() in VIDEO_EXTENSIONS for n in live_movie_files):
-                conn.execute(
-                    "UPDATE folders SET has_video=1 WHERE path=?",
-                    (movie_path,)
-                )
-
-                # NFO only for new/changed movies AND only if the folder really
-                # has one (avoids a slow rclone cat on a missing file)
-                if any(n.lower().endswith(".nfo") for n in live_movie_files):
-                    nfo_raw = _fetch_nfo_raw(movie_path)
-                    if nfo_raw:
-                        nfo_data = _parse_nfo(nfo_raw)
-                        if nfo_data:
-                            _save_nfo_to_db(conn, movie_path, nfo_data)
-
-            if new:
-                stats["added"] += 1
-            else:
-                stats["changed"] += 1
-
-        # Mark genre as having content if any movie folder has video
-        genre_has_video = conn.execute(
-            "SELECT COUNT(*) as c FROM folders WHERE parent=? AND has_video=1",
-            (genre_path,)
-        ).fetchone()["c"]
-
-        if has_direct_video:
-            genre_has_video = genre_has_video + 1
-
-        if genre_has_video > 0:
-            conn.execute(
-                "UPDATE folders SET has_video=1 WHERE path=?",
-                (genre_path,)
-            )
-
-    conn.commit()
-
-    # Mark ticianoflix root
-    total_genres = conn.execute("SELECT COUNT(*) as c FROM folders WHERE depth=1").fetchone()["c"]
-    total_movies = conn.execute("SELECT COUNT(*) as c FROM folders WHERE has_video=1 AND depth=2").fetchone()["c"]
-    total_files = conn.execute("SELECT COUNT(*) as c FROM files").fetchone()["c"]
-    conn.close()
-
-    set_cache_time()
-
-    elapsed = time.time() - start
-    print(
-        f"[TicianoFlix] Scan complete: {total_genres} genres, {total_movies} movies, {total_files} files "
-        f"in {elapsed:.1f}s (+{stats['added']} novos, ~{stats['changed']} alterados, -{stats['removed']} removidos, "
-        f"{stats['unchanged']} inalterados)",
-        flush=True
-    )
-
-    with _scan_progress_lock:
-        _scan_progress["phase"] = "done"
-        _scan_progress["percent"] = 100
-
-    return True
 
 
-def _index_file(conn, folder_path, item):
-    """Index a single file into the database."""
-    name = item.get("Name", "")
-    ext = Path(name).suffix.lower()
-    size = item.get("Size", 0)
-    mime = item.get("MimeType", "")
-    mod_time = item.get("ModTime", "")
-    file_id = item.get("ID", "")
-
-    # Determine file type
-    if ext in VIDEO_EXTENSIONS:
-        file_type = "video"
-    elif ext in SUBTITLE_EXTENSIONS:
-        file_type = "subtitle"
-    elif ext in IMAGE_EXTENSIONS:
-        stem = Path(name).stem.lower()
-        if stem in ("poster", "capa", "cover", "folder"):
-            file_type = "poster"
-        elif stem in ("fanart", "background", "backdrop", "banner"):
-            file_type = "fanart"
-        else:
-            file_type = "image"
-    else:
-        file_type = "other"
-
-    conn.execute(
-        """INSERT OR REPLACE INTO files
-           (folder_path, name, size, mime_type, mod_time, file_id, extension, file_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (folder_path, name, size, mime, mod_time, file_id, ext, file_type)
-    )
 
 
 # ═══════════════════════════════════════════════
 #  Cached Queries
 # ═══════════════════════════════════════════════
 
-def cached_list_directory(path):
-    """List directory contents from cache."""
-    conn = get_db()
-
-    # Get folders
-    folder_rows = conn.execute(
-        "SELECT * FROM folders WHERE parent=? ORDER BY name",
-        (path,)
-    ).fetchall()
-
-    # Get files
-    file_rows = conn.execute(
-        "SELECT * FROM files WHERE folder_path=? ORDER BY name",
-        (path,)
-    ).fetchall()
-
-    conn.close()
-
-    folders = []
-    videos = []
-    subtitles = []
-    images = []
-
-    for row in folder_rows:
-        folders.append({
-            "Path": row["path"].lstrip("/"),
-            "Name": row["name"],
-            "Size": 0,
-            "MimeType": "inode/directory",
-            "ModTime": row["mod_time"],
-            "IsDir": True,
-            "has_video": bool(row["has_video"]),
-        })
-
-    for row in file_rows:
-        entry = {
-            "Path": f"{row['folder_path'].lstrip('/')}/{row['name']}",
-            "Name": row["name"],
-            "Size": row["size"],
-            "MimeType": row["mime_type"],
-            "ModTime": row["mod_time"],
-            "IsDir": False,
-        }
-        ft = row["file_type"]
-        if ft == "video":
-            # Find poster in same folder
-            poster = _find_poster_cached(row["folder_path"])
-            if poster:
-                entry["poster"] = poster
-            videos.append(entry)
-        elif ft in ("poster", "fanart", "image"):
-            images.append(entry)
-        elif ft == "subtitle":
-            subtitles.append(entry)
-
-    return {
-        "path": path,
-        "folders": folders,
-        "videos": videos,
-        "subtitles": subtitles,
-        "images": images,
-    }
 
 
-def _parse_nfo(xml_text):
-    """Parse Kodi-style NFO XML into a dict of metadata."""
-    # NFOs legitimos nao declaram entidades. Recusar <!ENTITY fecha o vetor de
-    # bomba XML (billion laughs) do ElementTree sem dependencia externa.
-    if xml_text and "<!ENTITY" in xml_text.upper():
-        sys.stderr.write("[TicianoFlix] NFO recusado: declara entidades XML\n")
-        return None
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return None
-
-    def text(tag):
-        el = root.find(tag)
-        return el.text.strip() if el is not None and el.text else None
-
-    def texts(tag):
-        return [el.text.strip() for el in root.findall(tag) if el.text]
-
-    def rating_info():
-        """Extract rating value + votes from <ratings><rating>."""
-        r = root.find("ratings/rating")
-        if r is not None:
-            val = r.findtext("value", "").strip()
-            votes = r.findtext("votes", "").strip()
-            return val, votes
-        return text("rating"), None
-
-    rating_val, rating_votes = rating_info()
-
-    # Actors
-    actors = []
-    for actor in root.findall("actor"):
-        name = actor.findtext("name", "").strip()
-        role = actor.findtext("role", "").strip()
-        thumb = actor.findtext("thumb", "").strip()
-        if name:
-            actors.append({"name": name, "role": role, "thumb": thumb})
-
-    # Directors / Writers / Producers
-    directors = texts("director")
-    writers = texts("credits")
-
-    # NFO can have <streamdetails> with video/audio info
-    video_info = {}
-    v = root.find("fileinfo/streamdetails/video")
-    if v is not None:
-        for child in v:
-            video_info[child.tag] = child.text.strip() if child.text else ""
-
-    audio_info = {}
-    for a in root.findall("fileinfo/streamdetails/audio"):
-        for child in a:
-            audio_info[child.tag] = child.text.strip() if child.text else ""
-
-    return {
-        "title": text("title"),
-        "originaltitle": text("originaltitle"),
-        "year": text("year"),
-        "plot": text("plot"),
-        "outline": text("outline"),
-        "tagline": text("tagline"),
-        "runtime": text("runtime"),
-        "mpaa": text("mpaa"),
-        "country": texts("country"),
-        "premiered": text("premiered"),
-        "rating": rating_val,
-        "votes": rating_votes,
-        "genres": texts("genre"),
-        "studios": texts("studio"),
-        "directors": directors,
-        "writers": writers,
-        "tags": texts("tag"),
-        "actors": actors,
-        "video_info": video_info,
-        "audio_info": audio_info,
-        "source": text("source"),
-    }
 
 
-def _fetch_nfo_raw(folder_path):
-    """Fetch NFO XML text for a movie folder via rclone. No caching."""
-    nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    remote_path = _rc_remote(nfo_path)
-    try:
-        result = subprocess.run(
-            ["rclone", "cat", remote_path],
-            capture_output=True, text=True, timeout=15
-        )
-        if result.returncode != 0:
-            return None
-        if len(result.stdout) > MAX_NFO_BYTES:
-            sys.stderr.write("[TicianoFlix] NFO ignorado (acima de %d bytes): %s\n"
-                             % (MAX_NFO_BYTES, nfo_path))
-            return None
-        return result.stdout
-    except Exception:
-        return None
 
 
-def _save_nfo_to_db(conn, folder_path, nfo_data):
-    """Save parsed NFO metadata into movie_meta table."""
-    conn.execute("""INSERT OR REPLACE INTO movie_meta
-        (folder_path, title, year, plot, rating, votes, genres, tagline,
-         directors, writers, cast_list, video_info, audio_info, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-        folder_path,
-        nfo_data.get("title"),
-        nfo_data.get("year"),
-        nfo_data.get("plot"),
-        nfo_data.get("rating"),
-        nfo_data.get("votes"),
-        json.dumps(nfo_data.get("genres", []), ensure_ascii=False),
-        nfo_data.get("tagline"),
-        json.dumps(nfo_data.get("directors", []), ensure_ascii=False),
-        json.dumps(nfo_data.get("writers", []), ensure_ascii=False),
-        json.dumps(nfo_data.get("actors", []), ensure_ascii=False),
-        json.dumps(nfo_data.get("video_info", {}), ensure_ascii=False),
-        json.dumps(nfo_data.get("audio_info", {}), ensure_ascii=False),
-        time.time(),
-    ))
 
 
-def _fetch_nfo_from_db(folder_path):
-    """Read parsed NFO metadata from movie_meta table."""
-    conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM movie_meta WHERE folder_path=?", (folder_path,)
-    ).fetchone()
-    conn.close()
-    if not row:
-        return None
-    return {
-        "title": row["title"],
-        "year": row["year"],
-        "plot": row["plot"],
-        "rating": row["rating"],
-        "votes": row["votes"],
-        "genres": json.loads(row["genres"]) if row["genres"] else [],
-        "tagline": row["tagline"],
-        "directors": json.loads(row["directors"]) if row["directors"] else [],
-        "writers": json.loads(row["writers"]) if row["writers"] else [],
-        "actors": json.loads(row["cast_list"]) if row["cast_list"] else [],
-        "video_info": json.loads(row["video_info"]) if row["video_info"] else {},
-        "audio_info": json.loads(row["audio_info"]) if row["audio_info"] else {},
-    }
 
 
-def _fetch_nfo(folder_path):
-    """Fetch and parse NFO metadata. Tries DB first, then downloads via rclone."""
-    # Try DB cache first
-    from_db = _fetch_nfo_from_db(folder_path)
-    if from_db:
-        return from_db
-
-    # Fallback: fetch via rclone
-    nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    remote_path = _rc_remote(nfo_path)
-    try:
-        result = subprocess.run(
-            ["rclone", "cat", remote_path],
-            capture_output=True, text=True, timeout=15
-        )
-        if result.returncode != 0:
-            return None
-        parsed = _parse_nfo(result.stdout)
-        if parsed:
-            # Save to DB for next time
-            conn = get_db()
-            try:
-                _save_nfo_to_db(conn, folder_path, parsed)
-                conn.commit()
-            finally:
-                conn.close()
-        return parsed
-    except Exception:
-        return None
 
 
-def cached_movie_detail(folder_path):
-    """Get movie detail from SQLite cache (files + NFO metadata)."""
-    conn = get_db()
-    file_rows = conn.execute(
-        "SELECT * FROM files WHERE folder_path=? ORDER BY name",
-        (folder_path,)
-    ).fetchall()
-    conn.close()
-
-    video = None
-    poster = None
-    fanart = None
-    subtitle = None
-    images = []
-
-    for row in file_rows:
-        entry = {
-            "Path": f"{row['folder_path'].lstrip('/')}/{row['name']}",
-            "Name": row["name"],
-            "Size": row["size"],
-            "MimeType": row["mime_type"],
-            "ModTime": row["mod_time"],
-            "IsDir": False,
-            "ID": row["file_id"],
-        }
-        ft = row["file_type"]
-        if ft == "video":
-            video = entry
-        elif ft == "poster":
-            poster = entry
-        elif ft == "fanart":
-            fanart = entry
-        elif ft == "subtitle":
-            subtitle = entry
-        elif ft == "image":
-            images.append(entry)
-
-    if not poster and images:
-        poster = images.pop(0)
-    if not fanart and images:
-        fanart = images.pop(0)
-
-    folder_name = folder_path.strip("/").split("/")[-1]
-    year_match = re.search(r'\((\d{4})\)', folder_name)
-
-    result = {
-        "folder": folder_path,
-        "title": folder_name,
-        "year": year_match.group(1) if year_match else None,
-        "video": video,
-        "poster": poster,
-        "fanart": fanart,
-        "subtitle": subtitle,
-        "images": images,
-    }
-
-    # Try to enrich with NFO metadata
-    nfo = _fetch_nfo(folder_path)
-    if nfo:
-        # Use NFO title/year if available (cleaner than folder name)
-        if nfo["title"]:
-            result["title"] = nfo["title"]
-        if nfo["year"]:
-            result["year"] = nfo["year"]
-        result["nfo"] = nfo
-
-    return result
 
 
-def cached_get_file_info(file_path):
-    """Get single file info from cache."""
-    file_path = file_path.strip("/")
-    # Determine folder path from file path
-    parts = file_path.split("/")
-    if len(parts) < 2:
-        return None
-    filename = parts[-1]
-    folder_path = "/" + "/".join(parts[:-1])
-
-    conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM files WHERE folder_path=? AND name=?",
-        (folder_path, filename)
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        return None
-
-    result = {
-        "Path": file_path,
-        "Name": row["name"],
-        "Size": row["size"],
-        "MimeType": row["mime_type"],
-        "ModTime": row["mod_time"],
-        "IsDir": False,
-        "ID": row["file_id"],
-    }
-
-    if row["file_type"] == "video":
-        poster = _find_poster_cached(folder_path)
-        if poster:
-            result["poster"] = poster
-
-    return result
 
 
-def cached_search_files(query):
-    """Search video files from cache (only videos, no poster/fanart dupes)."""
-    conn = get_db()
-    like = f"%{query}%"
-    rows = conn.execute(
-        """SELECT * FROM files
-           WHERE name LIKE ?
-           AND file_type = 'video'
-           ORDER BY size DESC
-           LIMIT 100""",
-        (like,)
-    ).fetchall()
-    conn.close()
-
-    results = []
-    for row in rows:
-        entry = {
-            "Path": f"{row['folder_path'].lstrip('/')}/{row['name']}",
-            "Name": row["name"],
-            "Size": row["size"],
-            "MimeType": row["mime_type"],
-            "ModTime": row["mod_time"],
-            "IsDir": False,
-        }
-        poster = _find_poster_cached(row["folder_path"])
-        if poster:
-            entry["poster"] = poster
-        results.append(entry)
-    return results
 
 
-def cached_all_movies():
-    """Return all movie folders sorted A-Z, with poster and title."""
-    conn = get_db()
-    rows = conn.execute(
-        """SELECT f.*, m.title FROM folders f
-           LEFT JOIN movie_meta m ON m.folder_path = f.path
-           WHERE f.has_video = 1 AND f.depth >= 2
-           ORDER BY m.title COLLATE NOCASE ASC, f.name COLLATE NOCASE ASC"""
-    ).fetchall()
-    conn.close()
-
-    results = []
-    for row in rows:
-        folder_path = row["path"]
-        poster = _find_poster_cached(folder_path)
-        title = row["title"] or row["name"]
-        results.append({
-            "path": folder_path,
-            "name": row["name"],
-            "title": title,
-            "poster": poster,
-        })
-    return results
 
 
-def _find_poster_cached(folder_path):
-    """Find poster name from cache for a given folder."""
-    conn = get_db()
-    row = conn.execute(
-        "SELECT name FROM files WHERE folder_path=? AND file_type='poster' LIMIT 1",
-        (folder_path,)
-    ).fetchone()
-    conn.close()
-    return row["name"] if row else None
 
 
 # ═══════════════════════════════════════════════
@@ -1860,46 +1143,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: Refresh cache (scan drive)
         if path == "/api/refresh":
-            global _scan_in_progress, _scan_progress
-            with _scan_lock:
-                if _scan_in_progress:
-                    self._send_json({"status": "already_scanning"})
-                    return
-                _scan_in_progress = True
-
-            def scan_wrapper():
-                global _scan_in_progress, _scan_progress
-                try:
-                    scan_drive()
-                except Exception as e:
-                    with _scan_progress_lock:
-                        _scan_progress["phase"] = "error"
-                    print(f"[TicianoFlix] Scan error: {e}", flush=True)
-                finally:
-                    with _scan_lock:
-                        _scan_in_progress = False
-
-            # Reset progress
-            with _scan_progress_lock:
-                _scan_progress = {
-                    "phase": "",
-                    "genre_current": "",
-                    "genre_index": 0,
-                    "genre_total": 0,
-                    "movie_current": "",
-                    "movie_index": 0,
-                    "movie_total": 0,
-                    "percent": 0,
-                }
-
-            self._send_json({"status": "scanning"})
-            threading.Thread(target=scan_wrapper, daemon=True).start()
+            self._send_json({"status": _scanner.start_background_scan()})
             return
 
         # API: Scan progress
         if path == "/api/scan-progress":
-            with _scan_progress_lock:
-                self._send_json(dict(_scan_progress))
+            self._send_json(_scanner.get_progress())
             return
 
         # API: Download backup (.zip)
@@ -2476,418 +1725,34 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 #  SSL / HTTPS (self-signed cert for Chromecast)
 # ──────────────────────────────────────────────
 
-def _get_local_ip():
-    """Get the local network IP address for LAN access."""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.1)
-        # Doesn't actually connect — just used to determine the preferred local IP
-        s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        pass
-    return HOST
 
 
-def _ensure_ssl_cert(cert_dir, local_ip):
-    """Generate a locally-trusted SSL cert using mkcert (preferred) or openssl.
-
-    mkcert creates a CA-trusted certificate — required by the Cast SDK
-    (self-signed certs are rejected even with correct SAN).
-    Regenerates if the IP changes.
-    Returns (cert_path, key_path) or (None, None) on failure.
-    """
-    cert_path = cert_dir / "cert.pem"
-    key_path = cert_dir / "key.pem"
-
-    # Check if existing cert is still valid for this IP
-    if cert_path.exists() and key_path.exists():
-        try:
-            existing = subprocess.run(
-                ["openssl", "x509", "-in", str(cert_path), "-noout", "-text"],
-                check=True, capture_output=True, timeout=10, text=True,
-            )
-            if local_ip in existing.stdout:
-                return cert_path, key_path
-            print(f"[TicianoFlix] IP changed ({local_ip}), regenerating SSL cert...", flush=True)
-            cert_path.unlink(missing_ok=True)
-            key_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    # Prefer mkcert (CA-trusted = Cast SDK works)
-    mkcert = subprocess.run(["which", "mkcert"], capture_output=True, text=True, timeout=5)
-    if mkcert.returncode == 0:
-        print("[TicianoFlix] Generating CA-trusted SSL certificate via mkcert...", flush=True)
-        try:
-            subprocess.run(
-                ["mkcert", "-key-file", str(key_path), "-cert-file", str(cert_path),
-                 "localhost", local_ip, "ticianoflix.local"],
-                check=True, capture_output=True, timeout=15,
-            )
-            key_path.chmod(0o600)
-            print(f"[TicianoFlix] mkcert cert created: {cert_path}", flush=True)
-            return cert_path, key_path
-        except Exception as e:
-            print(f"[TicianoFlix] mkcert failed ({e}), falling back to openssl...", flush=True)
-
-    # Fallback: openssl self-signed (Cast SDK may not work)
-    print("[TicianoFlix] Generating self-signed SSL certificate via openssl...", flush=True)
-    try:
-        subprocess.run(
-            [
-                "openssl", "req", "-x509", "-newkey", "rsa:2048",
-                "-keyout", str(key_path),
-                "-out", str(cert_path),
-                "-days", "3650",
-                "-nodes",
-                "-subj", "/CN=TicianoFlix",
-                "-addext", f"subjectAltName=DNS:localhost,DNS:ticianoflix.local,IP:{local_ip}",
-            ],
-            check=True, capture_output=True, timeout=15,
-        )
-        key_path.chmod(0o600)
-        print(f"[TicianoFlix] Self-signed cert created: {cert_path}", flush=True)
-        return cert_path, key_path
-    except Exception as e:
-        print(f"[TicianoFlix] WARNING: Could not generate SSL cert: {e}", flush=True)
-        print("[TicianoFlix] Chromecast discovery will require HTTPS.", flush=True)
-        return None, None
 
 
-def start_https_server(handler_class, host, https_port, cert_path, key_path):
-    """Start an HTTPS server on a daemon thread wrapping the same handler.
-
-    Returns the server object (for cleanup) or None on failure.
-    """
-    try:
-        import ssl as _ssl
-        httpd = http.server.ThreadingHTTPServer((host, https_port), handler_class)
-        httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(str(cert_path), str(key_path))
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
-        print(f"[TicianoFlix] HTTPS on https://localhost:{https_port}", flush=True)
-        return httpd
-    except Exception as e:
-        print(f"[TicianoFlix] WARNING: Could not start HTTPS server: {e}", flush=True)
-        print("[TicianoFlix] Continuing with HTTP only.", flush=True)
-        return None
 
 
-def _pids_on_port(port):
-    """PIDs ouvindo em 'port'. lsof primeiro (macOS e Linux), fuser como
-    reserva — no macOS o fuser existe mas nao aceita a sintaxe 'porta/tcp',
-    entao ele sai com codigo 0 e stdout vazio e nao serve sozinho."""
-    try:
-        out = subprocess.run(["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
-                             capture_output=True, text=True, timeout=5)
-        pids = [p for p in out.stdout.split() if p.strip().isdigit()]
-        if pids:
-            return pids
-    except Exception:
-        pass
-    try:
-        out = subprocess.run(["fuser", f"{port}/tcp"],
-                             capture_output=True, text=True, timeout=5)
-        return [p for p in out.stdout.split() if p.strip().isdigit()]
-    except Exception:
-        return []
 
 
-def find_free_port():
-    """Sempre usa PORT. Se ocupada, mata a instância anterior."""
-    env_port = os.environ.get("TICIANOFLIX_PORT")
-    if env_port:
-        return int(env_port)
-
-    port = PORT
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((HOST, port))
-        s.close()
-        return port
-    except OSError:
-        pids = _pids_on_port(port)
-        me = str(os.getpid())
-        pids = [p for p in pids if p != me]
-        print(f"[TicianoFlix] Porta {port} ocupada por {', '.join(pids) or '?'}. "
-              f"Matando instância anterior...", flush=True)
-        for pid in pids:
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except Exception:
-                pass
-
-        time.sleep(1)
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((HOST, port))
-            s.close()
-            return port
-        except OSError:
-            print(f"[TicianoFlix] ERRO: Porta {port} ainda está ocupada. Saia a instância anterior com: pkill -9 -f 'python.*server.py'", flush=True)
-            sys.exit(1)
 
 
 # ═══════════════════════════════════════════════
 #  rclone management (serve, web GUI, status)
 # ═══════════════════════════════════════════════
 
-def _urlopen_ok(url, timeout=2):
-    """True se a URL responder HTTP sem erro."""
-    try:
-        import urllib.request as _ur
-        _ur.urlopen(url, timeout=timeout)
-        return True
-    except Exception:
-        return False
 
 
-def _proc_cmdline(pid):
-    """Linha de comando de um PID. Usa /proc no Linux e 'ps' no macOS/BSD."""
-    proc_file = Path(f"/proc/{pid}/cmdline")
-    if proc_file.exists():
-        try:
-            return " ".join(proc_file.read_text().split("\0"))
-        except Exception:
-            return ""
-    try:
-        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True, timeout=5)
-        return out.stdout.strip()
-    except Exception:
-        return ""
 
 
-def _kill_rclone_on_port(port):
-    """Best-effort: mata processos rclone ouvindo em 'port'.
-
-    So mata se a linha de comando do PID mencionar rclone — nunca derruba um
-    processo alheio que por acaso esteja na porta."""
-    for pid in _pids_on_port(port):
-        try:
-            if "rclone" in _proc_cmdline(pid):
-                os.kill(int(pid), signal.SIGTERM)
-        except Exception:
-            pass
 
 
-def start_rclone_serve():
-    """Garante que o 'rclone serve http' esteja rodando na porta 18082.
-
-    Retorna o Popen se este processo iniciou, "external" se já havia um
-    servidor respondendo com o Drive acessível, ou None em caso de falha.
-    """
-    global rclone_server_proc
-    with _rclone_serve_lock:
-        # Já temos um processo vivo iniciado por nós?
-        if rclone_server_proc is not None and rclone_server_proc.poll() is None:
-            return rclone_server_proc
-
-        # Já existe um serve respondendo (ex.: iniciado externamente)?
-        try:
-            import urllib.request as ureq_check
-            ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
-            try:
-                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/?format=json", timeout=5)
-                print(f"[TicianoFlix] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
-                return "external"
-            except Exception:
-                print(f"[TicianoFlix] rclone serve responde mas o Drive está inacessível — tentando reiniciar", flush=True)
-                _kill_rclone_on_port(RCLONE_SERVE_PORT)
-                time.sleep(1)
-        except Exception:
-            pass
-
-        try:
-            proc = subprocess.Popen(
-                # Montado na pasta TicianoFlix, nunca na raiz do Drive: mesmo
-                # com o remote ainda apontando pra raiz, o serve so expoe o
-                # catalogo. Combinado com --read-only, a porta 18082 nao le
-                # nem escreve nada fora dali.
-                ["rclone", "serve", "http", _rc_remote(LOGICAL_ROOT),
-                 "--addr", f"127.0.0.1:{RCLONE_SERVE_PORT}",
-                 "--read-only",
-                 "--drive-chunk-size", "128M",
-                 "--buffer-size", "512M",
-                 "--vfs-cache-mode", "full",
-                 "--vfs-cache-max-age", "720h",
-                 "--vfs-read-chunk-size", "4M",
-                 "--vfs-read-chunk-size-limit", "off",
-                 "--vfs-read-ahead", "512M",
-                 "--log-level", "ERROR"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            rclone_server_proc = proc
-            print(f"[TicianoFlix] Starting rclone serve http on localhost:{RCLONE_SERVE_PORT}...", end=" ", flush=True)
-
-            # Wait for rclone serve to be ready (up to 25s — cold start pode
-            # demorar enquanto o rclone inicializa o VFS e conecta no Drive)
-            for _ in range(25):
-                time.sleep(1)
-                if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
-                    print("ready!", flush=True)
-                    break
-            else:
-                print("timed out, streams may use fallback", flush=True)
-            return proc
-        except FileNotFoundError:
-            print("[TicianoFlix] WARNING: rclone not found, streams will use fallback method", flush=True)
-            return None
-        except Exception as e:
-            print(f"[TicianoFlix] WARNING: could not start rclone serve: {e}", flush=True)
-            return None
 
 
-def restart_rclone_serve():
-    """Mata o serve atual (se houver) e sobe um novo. Usado após configurar o remote."""
-    global rclone_server_proc
-    if rclone_server_proc is not None and rclone_server_proc.poll() is None:
-        try:
-            rclone_server_proc.terminate()
-            rclone_server_proc.wait(timeout=5)
-        except Exception:
-            try:
-                rclone_server_proc.kill()
-            except Exception:
-                pass
-    rclone_server_proc = None
-    _kill_rclone_on_port(RCLONE_SERVE_PORT)
-    time.sleep(1)
-
-    proc = start_rclone_serve()
-    if proc is None:
-        return {"status": "error", "error": "Não foi possível iniciar o rclone serve (rclone está instalado?)."}
-    return {"status": "ok", "serve_running": True, "external": proc == "external"}
 
 
-def start_rclone_webgui():
-    """Sobe o 'rclone rcd --rc-web-gui' (configurador oficial do rclone) na porta 5572."""
-    global rclone_webgui_proc
-    if not RCLONE_GUI_ENABLED:
-        return {"status": "error", "error": (
-            "Configurador desativado por padrao. Inicie o TicianoFlix com "
-            "TICIANOFLIX_RCLONE_GUI=1 e abra pelo proprio computador.")}
-    with _webgui_lock:
-        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
-            return {
-                "status": "ok", "running": True, "local_only": True,
-                "url": f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/",
-            }
-        # Sem usuario/senha: a GUI so escuta em 127.0.0.1, entao nao ha
-        # credencial para vazar por HTTP.
-        _webgui_credentials["user"] = ""
-        _webgui_credentials["pass"] = ""
-        try:
-            proc = subprocess.Popen(
-                ["rclone", "rcd",
-                 "--rc-web-gui",
-                 "--rc-web-gui-no-open-browser",
-                 "--rc-addr", f"127.0.0.1:{RCLONE_WEBGUI_PORT}",
-                 "--rc-no-auth"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except FileNotFoundError:
-            return {"status": "error", "error": "rclone não está instalado."}
-        rclone_webgui_proc = proc
-
-        # Espera o rcd responder (primeira execução pode baixar os assets da GUI)
-        for _ in range(40):
-            time.sleep(0.5)
-            if proc.poll() is not None:
-                break
-            if _urlopen_ok(f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/", timeout=2):
-                break
-        if proc.poll() is not None:
-            return {"status": "error", "error": f"rclone rcd encerrou com código {proc.returncode}."}
-        return {
-            "status": "ok", "running": True, "local_only": True,
-            "url": f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/",
-        }
 
 
-def stop_rclone_webgui():
-    """Encerra o rclone rcd (web GUI), se estiver rodando."""
-    global rclone_webgui_proc
-    with _webgui_lock:
-        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
-            try:
-                rclone_webgui_proc.terminate()
-                rclone_webgui_proc.wait(timeout=5)
-            except Exception:
-                try:
-                    rclone_webgui_proc.kill()
-                except Exception:
-                    pass
-        rclone_webgui_proc = None
-    return {"status": "ok", "running": False}
 
 
-def get_rclone_status():
-    """Status completo do rclone para o modal da UI."""
-    status = {
-        "installed": False,
-        "version": None,
-        "remote_configured": False,
-        "remote_ok": False,
-        "remote_error": None,
-        "serve_running": False,
-        "webgui": {"running": False, "port": RCLONE_WEBGUI_PORT,
-                   "enabled": RCLONE_GUI_ENABLED},
-    }
-    # Instalado? Versão?
-    try:
-        res = subprocess.run(["rclone", "version"], capture_output=True, text=True, timeout=15)
-        if res.returncode == 0 and res.stdout.strip():
-            status["installed"] = True
-            status["version"] = res.stdout.strip().splitlines()[0]
-    except Exception:
-        pass
-
-    if not status["installed"]:
-        return status
-
-    # Remote gdrive: configurado?
-    try:
-        res = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True, timeout=15)
-        remotes = res.stdout.strip().splitlines()
-        status["remote_configured"] = "gdrive:" in remotes
-    except Exception:
-        status["remote_error"] = "Falha ao listar remotes"
-
-    # Remote acessível (autenticação OK)?
-    if status["remote_configured"]:
-        try:
-            res = subprocess.run(["rclone", "lsd", "gdrive:", "--max-depth", "1"],
-                                 capture_output=True, text=True, timeout=20)
-            status["remote_ok"] = res.returncode == 0
-            if not status["remote_ok"]:
-                lines = [l for l in res.stderr.strip().splitlines() if l.strip()]
-                status["remote_error"] = lines[-1] if lines else "Falha na conexão"
-        except subprocess.TimeoutExpired:
-            status["remote_error"] = "Timeout ao testar conexão"
-        except Exception as e:
-            status["remote_error"] = str(e)
-
-    # Serve de streaming ativo?
-    status["serve_running"] = _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
-
-    # Web GUI ativa?
-    if rclone_webgui_proc is not None:
-        status["webgui"]["running"] = rclone_webgui_proc.poll() is None
-        if status["webgui"]["running"]:
-            status["webgui"]["url"] = f"http://127.0.0.1:{RCLONE_WEBGUI_PORT}/"
-            status["webgui"]["local_only"] = True
-    return status
 
 
 def main():
@@ -2994,15 +1859,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        if rclone_server_proc is not None and rclone_server_proc.poll() is None:
-            rclone_server_proc.terminate()
-            try:
-                rclone_server_proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                rclone_server_proc.kill()
-                rclone_server_proc.wait(timeout=1)
-        if rclone_webgui_proc is not None and rclone_webgui_proc.poll() is None:
-            rclone_webgui_proc.terminate()
+        _rclone.shutdown()
         server.server_close()
         print("[TicianoFlix] Servidor parado.")
 
