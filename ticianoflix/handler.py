@@ -277,6 +277,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         subtitle = str(body.get("subtitle", ""))
         if subtitle:
             out["sub"] = _issue_media_token(subtitle)
+        # Poster e fanart tambem saem por /api/stream, entao a TV precisa de um
+        # token para cada um — senao a tela do Chromecast fica sem a arte.
+        # Teto de 4: sao poster e fanart, nao uma galeria.
+        extras = body.get("images")
+        if isinstance(extras, list) and extras:
+            out["imgs"] = {str(p): _issue_media_token(str(p))
+                           for p in extras[:4] if p}
         self._send_json(out)
 
     # ── Painel de administracao ──────────────────────────────

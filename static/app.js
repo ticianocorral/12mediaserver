@@ -812,6 +812,8 @@
 
   // ===== MOVIE INFO =====
   let currentMovieFolder = null;
+  // Arte e ficha do filme aberto, para a TV mostrar algo alem do titulo pelado.
+  let _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
 
   function showMovieInfo(folderPath, event) {
     if (event) event.stopPropagation();
@@ -875,6 +877,17 @@
       const fanart = detail.fanart;
       const subtitle = detail.subtitle;
       const nfo = detail.nfo;
+
+      // Guarda o que a TV vai mostrar. E aqui que poster, fanart e a ficha
+      // existem — no player so ha o caminho do arquivo de video.
+      _castArt = {
+        folder: folderPath,
+        poster: poster ? folderPath + '/' + poster.Name : null,
+        fanart: fanart ? folderPath + '/' + fanart.Name : null,
+        year: year || null,
+        studio: (nfo && nfo.studios && nfo.studios[0]) || null,
+        plot: (nfo && (nfo.tagline || nfo.plot)) || null
+      };
 
       // Background fanart
       if (fanart) {
@@ -1105,12 +1118,16 @@
   let _progressSaveTimer = null;
 
   // Save watch progress to server
-  function _saveProgress() {
+  // posExt/durExt vem da TV quando esta transmitindo — o <video> local esta
+  // pausado la atras e gravaria a posicao errada em "continuar assistindo".
+  function _saveProgress(posExt, durExt) {
     const video = document.getElementById('videoPlayer');
-    if (!_currentPlayFolder || !video || !video.duration || video.duration === 0) return;
-    const pos = video.currentTime || 0;
+    const temExt = (typeof posExt === 'number' && typeof durExt === 'number' && durExt > 0);
+    if (!_currentPlayFolder) return;
+    if (!temExt && (!video || !video.duration || video.duration === 0)) return;
+    const pos = temExt ? posExt : (video.currentTime || 0);
     if (pos < 5) return;
-    const dur = video.duration;
+    const dur = temExt ? durExt : video.duration;
     const pct = (pos / dur) * 100;
     if (pct > 95) {
       _clearProgress(_currentPlayFolder);
@@ -1255,6 +1272,7 @@
       case cast.framework.SessionState.SESSION_ENDED:
         _castSession = null;
         if (btn) { btn.innerHTML = '<svg class="icon-svg"><use href="#i-tv"></use></svg>'; btn.classList.remove('active'); }
+        _showCastingPanel(false);
         console.log('[Cast] Session ended');
         break;
       case cast.framework.SessionState.SESSION_START_FAILED:
@@ -1267,6 +1285,98 @@
 
   function _isCasting() {
     return _castSession !== null;
+  }
+
+  // ===== CONTROLE REMOTO =====
+  // Enquanto transmite, o <video> local fica pausado: os controles precisam
+  // falar com a sessao do Chromecast, senao mexem num player que ninguem ve.
+  function _castMedia() {
+    if (!_isCasting()) return null;
+    try {
+      var s = cast.framework.CastContext.getInstance().getCurrentSession();
+      var m = s ? s.getMediaSession() : null;
+      // Sem midia carregada ainda (ou ja terminou) nao ha o que comandar.
+      return (m && m.playerState !== chrome.cast.media.PlayerState.IDLE) ? m : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _castDuration() {
+    var m = _castMedia();
+    return (m && m.media && m.media.duration) ? m.media.duration : 0;
+  }
+
+  function _castSeekTo(segundos) {
+    var m = _castMedia();
+    if (!m) return false;
+    var dur = _castDuration();
+    var req = new chrome.cast.media.SeekRequest();
+    req.currentTime = Math.max(0, dur ? Math.min(dur, segundos) : segundos);
+    m.seek(req, function() {}, function(e) { console.warn('[Cast] seek falhou:', e); });
+    return true;
+  }
+
+  // Enquanto transmite, o tempo vem do receiver — o <video> local esta parado.
+  let _castTicker = null;
+  let _castUltimoSave = 0;
+
+  function _startCastTicker() {
+    if (_castTicker) clearInterval(_castTicker);
+    _castTicker = setInterval(function() {
+      var m = _castMedia();
+      if (!m) return;
+      var pos = m.getEstimatedTime();
+      var dur = _castDuration();
+      var seek = document.getElementById('seekBar');
+      var time = document.getElementById('timeDisplay');
+      if (seek && dur) seek.value = (pos / dur) * 100;
+      if (time) time.textContent = formatTime(pos) + ' / ' + formatTime(dur);
+      var btn = document.getElementById('playBtn');
+      var tocando = (m.playerState === chrome.cast.media.PlayerState.PLAYING
+                     || m.playerState === chrome.cast.media.PlayerState.BUFFERING);
+      if (btn) {
+        btn.innerHTML = tocando
+          ? '<svg class="icon-svg"><use href="#i-pause"></use></svg>'
+          : '<svg class="icon-svg"><use href="#i-play"></use></svg>';
+      }
+      // "Continuar assistindo" precisa do tempo da TV, nao do player parado.
+      if (tocando && dur && (Date.now() - _castUltimoSave) > 30000) {
+        _castUltimoSave = Date.now();
+        _saveProgress(pos, dur);
+      }
+    }, 1000);
+  }
+
+  function _stopCastTicker() {
+    if (_castTicker) { clearInterval(_castTicker); _castTicker = null; }
+  }
+
+  function _showCastingPanel(mostrar) {
+    var painel = document.getElementById('castingPanel');
+    if (!painel) return;
+    painel.classList.toggle('active', !!mostrar);
+    if (!mostrar) { _stopCastTicker(); return; }
+    var nome = '';
+    try { nome = _castSession.getCastDevice().friendlyName || ''; } catch (e) {}
+    var dev = document.getElementById('castingDevice');
+    if (dev) dev.textContent = nome ? ('para ' + nome) : '';
+    var tit = document.getElementById('castingTitle');
+    var nomeFilme = document.getElementById('playerMovieName');
+    if (tit) tit.textContent = nomeFilme ? nomeFilme.textContent : 'Transmitindo';
+    var img = document.getElementById('castingPoster');
+    if (img) {
+      // Poster quebrado deixaria um buraco com o icone de imagem falha.
+      img.onerror = function() { this.style.display = 'none'; };
+      if (_castArt.poster) {
+        img.style.display = '';
+        img.src = streamUrl(_castArt.poster);
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+    }
+    _startCastTicker();
   }
 
   function toggleCast() {
@@ -1371,7 +1481,11 @@
       var tkRes = await fetch('/api/cast-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: mediaPath, subtitle: currentSubtitlePath || '' })
+        body: JSON.stringify({
+          path: mediaPath,
+          subtitle: currentSubtitlePath || '',
+          images: [_castArt.poster, _castArt.fanart].filter(Boolean)
+        })
       });
       if (tkRes.ok) castTokens = await tkRes.json();
     } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
@@ -1386,9 +1500,30 @@
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
     mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
-    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+
+    // MovieMediaMetadata no lugar do generico: e o que faz a TV desenhar a
+    // ficha do filme (arte, ano, estudio) em vez de uma tela vazia com o titulo.
+    var meta = new chrome.cast.media.MovieMediaMetadata();
     var titleEl = document.getElementById('playerMovieName');
-    mediaInfo.metadata.title = titleEl ? titleEl.textContent : 'TicianoFlix';
+    meta.title = titleEl ? titleEl.textContent : 'TicianoFlix';
+    if (_castArt.year) meta.releaseDate = String(_castArt.year) + '-01-01';
+    if (_castArt.studio) meta.studio = _castArt.studio;
+    if (_castArt.plot) meta.subtitle = _castArt.plot;
+    else if (_castArt.year) meta.subtitle = String(_castArt.year);
+
+    // As imagens tambem saem por /api/stream: sem o token assinado a TV recebe
+    // 401 e fica sem arte.
+    var imgs = castTokens.imgs || {};
+    var arte = [];
+    [_castArt.fanart, _castArt.poster].forEach(function(caminho) {
+      if (!caminho || !imgs[caminho]) return;
+      arte.push(new chrome.cast.Image(
+        baseUrl + '/api/stream?path=' + encodeURIComponent(caminho)
+        + '&t=' + encodeURIComponent(imgs[caminho])));
+    });
+    if (arte.length) meta.images = arte;
+    mediaInfo.metadata = meta;
+    if (video.duration) mediaInfo.duration = video.duration;
 
     // Add subtitle track if available
     var currentSubPath = currentSubtitlePath;
@@ -1435,6 +1570,7 @@
         showToast('📡 Transmitindo para Chromecast', 'info');
         // Pause local video while casting
         video.pause();
+        _showCastingPanel(true);
         // Force enable subtitle track after load (some receivers ignore activeTrackIds).
         // Retry a cada 2s até ~30s: o receiver só associa o track depois que o vídeo
         // carregou/bufferizou (stream via rclone→Drive demora a começar).
@@ -1531,6 +1667,12 @@
     // disco à toa, disputando com a própria reprodução.
     const _local = isLocalPath(filePath);
     if (!_local) _startBgDownload(filePath);
+
+    // A arte guardada e da ficha aberta. Se o video vier de outro caminho
+    // (lista de pasta, busca), ela nao corresponde — melhor nao mandar nada.
+    if (_castArt.folder !== filePath.substring(0, filePath.lastIndexOf('/'))) {
+      _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
+    }
 
     // Show loading state
     video.style.display = 'none';
@@ -1726,10 +1868,22 @@
     video.onvolumechange = updateMuteBtn;
 
     document.getElementById('seekBar').oninput = function() {
+      const dur = _castDuration();
+      if (dur) { _castSeekTo((this.value / 100) * dur); return; }
       const v = document.getElementById('videoPlayer');
       if (v && v.duration) v.currentTime = (this.value / 100) * v.duration;
     };
     document.getElementById('volumeSlider').oninput = function() {
+      if (_isCasting() && _castSession) {
+        try {
+          _castSession.setVolume(parseFloat(this.value)).catch(function(e) {
+            console.warn('[Cast] setVolume falhou:', e);
+          });
+          return;
+        } catch (e) {
+          console.warn('[Cast] volume indisponivel:', e);
+        }
+      }
       const v = document.getElementById('videoPlayer');
       if (v) { v.volume = parseFloat(this.value); v.muted = false; }
       updateMuteBtn();
@@ -1761,6 +1915,15 @@
   function toggleSubtitles() {
     const track = document.getElementById('subtitleTrack');
     const btn = document.getElementById('subtitleToggleBtn');
+    const m = _castMedia();
+    if (m) {
+      // Na TV a faixa e ligada/desligada pelo receiver, nao pelo <track> local.
+      const ativa = (m.activeTrackIds || []).indexOf(1) !== -1;
+      m.editTracksInfo(new chrome.cast.media.EditTracksInfoRequest(ativa ? [] : [1]),
+        function() { btn.classList.toggle('active', !ativa); },
+        function(e) { console.warn('[Cast] editTracksInfo falhou:', e); });
+      return;
+    }
     if (track && track.track) {
       if (track.track.mode === 'showing') {
         track.track.mode = 'disabled';
@@ -1805,6 +1968,7 @@
   }
 
   function _doClosePlayer() {
+    _showCastingPanel(false);
     const video = document.getElementById('videoPlayer');
     // Não fecha durante seek
     if (video && video._seeking) {
@@ -1940,6 +2104,15 @@
   }
 
   function togglePlay() {
+    const m = _castMedia();
+    if (m) {
+      const tocando = (m.playerState === chrome.cast.media.PlayerState.PLAYING
+                       || m.playerState === chrome.cast.media.PlayerState.BUFFERING);
+      const falhou = function(e) { console.warn('[Cast] play/pause falhou:', e); };
+      if (tocando) m.pause(null, function() {}, falhou);
+      else m.play(null, function() {}, falhou);
+      return;   // o ticker atualiza o botao com o estado real do receiver
+    }
     const v = document.getElementById('videoPlayer');
     if (!v) return;
     if (v.paused) v.play().catch(function() {});
@@ -1948,6 +2121,8 @@
   }
 
   function skip(sec) {
+    const m = _castMedia();
+    if (m) { _castSeekTo(m.getEstimatedTime() + sec); return; }
     const v = document.getElementById('videoPlayer');
     if (!v || !v.duration) return;
     v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + sec));
@@ -1955,6 +2130,25 @@
 
   let _volumeBeforeMute = 1;
   function toggleMute() {
+    if (_isCasting() && _castSession) {
+      // Volume da TV, nao do computador. Em try: se a sessao cair entre o
+      // clique e a chamada, o erro nao pode travar o controle.
+      try {
+        const mudo = !_castSession.isMute();
+        _castSession.setMute(mudo).catch(function(e) {
+          console.warn('[Cast] setMute falhou:', e);
+        });
+        const btn = document.getElementById('muteBtn');
+        if (btn) {
+          btn.innerHTML = mudo
+            ? '<svg class="icon-svg"><use href="#i-volume-mute"></use></svg>'
+            : '<svg class="icon-svg"><use href="#i-volume"></use></svg>';
+        }
+        return;
+      } catch (e) {
+        console.warn('[Cast] mudo indisponivel:', e);
+      }
+    }
     const v = document.getElementById('videoPlayer');
     if (!v) return;
     if (v.volume === 0) {

@@ -34,7 +34,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🔄 Serviço systemd** — inicia automaticamente no login
 - **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
-- **📺 Chromecast** — envio para a TV com URL assinada, legendas incluídas, sem abrir o acervo para a rede
+- **📺 Chromecast** — envio para a TV com URL assinada e legendas; a TV mostra pôster, ano e sinopse, e os controles do app comandam a transmissão (play, avançar, volume, legenda)
 
 ---
 

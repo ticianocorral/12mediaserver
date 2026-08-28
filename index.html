@@ -362,6 +362,19 @@
         <track kind="subtitles" id="subtitleTrack" srclang="pt-BR" label="Português" default>
       </video>
 
+      <!-- Estado de transmissão: o vídeo local fica pausado, então sem isto a
+           tela ficaria congelada no último quadro, sem explicação. -->
+      <div class="casting-panel" id="castingPanel">
+        <img class="casting-poster" id="castingPoster" alt="">
+        <div class="casting-wave"><svg class="icon-svg"><use href="#i-cast"></use></svg></div>
+        <div class="casting-title" id="castingTitle">Transmitindo</div>
+        <div class="casting-device" id="castingDevice"></div>
+        <div class="casting-hint">Os controles abaixo comandam a TV.</div>
+        <button class="casting-stop" onclick="toggleCast()">
+          <svg class="icon-svg"><use href="#i-stop"></use></svg> Parar transmissão
+        </button>
+      </div>
+
       <!-- ====== CONTROLES NETFLIX-STYLE ====== -->
       <div class="player-controls" id="playerControls">
         <div class="controls-progress">
