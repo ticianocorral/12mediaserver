@@ -561,12 +561,15 @@
 
     const parts = data.path.split('/').filter(Boolean);
     const genreName = parts.length > 0 ? parts[parts.length - 1] : 'Género';
-    const totalMovies = data.folders.length;
-    const totalVideos = data.videos ? data.videos.length : 0;
-    // Set hero for genre view - simple header
+    // Pasta de filme e vídeo solto na pasta do gênero viram o mesmo cartão na
+    // tela, então contam junto: separar os dois era uma distinção interna que
+    // não dizia nada a quem lê.
+    const total = data.folders.length + (data.videos ? data.videos.length : 0);
     const icon = genreIcon(genreName);
     document.getElementById('heroTitle').innerHTML = icon + ' ' + escHtml(genreName);
-    document.getElementById('heroDesc').innerHTML = totalMovies + ' filme(s) · ' + totalVideos + ' vídeo(s) &middot; <svg class="icon-svg"><use href="#i-film"></use></svg> ' + (totalMovies + totalVideos) + ' títulos';
+    document.getElementById('heroDesc').innerHTML =
+      '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + total
+      + (total === 1 ? ' filme' : ' filmes');
     hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
@@ -578,7 +581,9 @@
         <div class="empty-state">
           <div class="empty-icon"><svg class="icon-svg"><use href="#i-inbox"></use></svg></div>
           <h3>Nenhum filme em "${escHtml(genreName)}"</h3>
-          <p>Adicione filmes nesta pasta do Google Drive para vê-los aqui.</p>
+          <p>${isLocalPath(data.path)
+              ? 'Adicione pastas de filme nesta pasta do disco e clique em Atualizar.'
+              : 'Adicione filmes nesta pasta do Google Drive para vê-los aqui.'}</p>
         </div>`;
       return;
     }
@@ -1441,14 +1446,19 @@
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
 
-    // Start background download immediately (doesn't depend on video playback)
-    _startBgDownload(filePath);
+    // Download de fundo só faz sentido pro Drive: ele existe para forçar o
+    // cache VFS do rclone. Num arquivo local isso leria o filme inteiro do
+    // disco à toa, disputando com a própria reprodução.
+    const _local = isLocalPath(filePath);
+    if (!_local) _startBgDownload(filePath);
 
     // Show loading state
     video.style.display = 'none';
     loading.style.display = 'flex';
     document.getElementById('playerError').style.display = 'none';
-    loading.querySelector('span').textContent = 'Preparando vídeo do Google Drive...';
+    loading.querySelector('span').textContent = _local
+      ? 'Abrindo o vídeo...'
+      : 'Preparando vídeo do Google Drive...';
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1579,13 +1589,16 @@
 
     // Inicia loading — stream começa assim que oncanplay disparar
     loading.querySelector('span').textContent = 'Carregando...';
-    setStreamStatus('cached', 'Cache: 0%');
+    // Arquivo local não passa por cache nenhum — mostrar "Cache: 0%" seria mentira.
+    setStreamStatus('cached', _local ? 'Local' : 'Cache: 0%');
 
     // Timeout: se readyState=0 após 25s, é erro de conexão
     setTimeout(function() {
       if (video.readyState === 0) {
         clearBufferTimer();
-        showPlayerError('O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
+        showPlayerError(_local
+          ? 'O servidor demorou a responder. A fonte deste filme ainda está conectada?'
+          : 'O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
       }
     }, 25000);
 
@@ -2649,7 +2662,7 @@
       const res = await fetch('/api/cache-manager');
       const movies = await res.json();
       if (!movies || movies.length === 0) {
-        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3><p>Escaneie o Google Drive primeiro.</p></div>';
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3><p>Escaneie suas fontes primeiro.</p></div>';
         return;
       }
       _cmMovies = movies;
