@@ -186,19 +186,67 @@
   // ==================== SIDEBAR ====================
   let _sidebarGenresLoaded = false;
 
-  function loadSidebarGenres() {
+  function sourceIcon(kind) {
+    return kind === 'drive'
+      ? '<svg class="icon-svg"><use href="#i-cloud"></use></svg>'
+      : '<svg class="icon-svg"><use href="#i-hard-drive"></use></svg>';
+  }
+
+  // Agrupa os generos pela fonte dona deles. O servidor manda o Path completo
+  // de cada genero, entao nao ha prefixo remontado no cliente.
+  // id da fonte -> nome de exibicao. O id e o mesmo slug que aparece no path
+  // ("/Local/hd-externo"), entao o breadcrumb mostra "HD Externo".
+  const _sourceNames = {};
+
+  function groupGenresBySource(data) {
+    const sources = data.sources || [];
+    sources.forEach(src => { _sourceNames[src.id] = src.name; });
+    const seen = {};
+    const groups = [];
+    // A ordem e a das fontes (Drive primeiro, locais em ordem alfabetica), nao
+    // a ordem alfabetica dos generos — senao as fontes se intercalariam.
+    sources.forEach(src => {
+      seen[src.id] = { id: src.id, source: src, items: [] };
+      groups.push(seen[src.id]);
+    });
+    (data.folders || []).forEach(g => {
+      const id = g.source || '';
+      if (!seen[id]) {
+        seen[id] = { id: id, source: null, items: [] };
+        groups.push(seen[id]);
+      }
+      seen[id].items.push(g);
+    });
+    return groups.filter(grp => grp.items.length > 0);
+  }
+
+  function loadSidebarGenres(force) {
     const container = document.getElementById('sidebarGenres');
-    if (_sidebarGenresLoaded) return;
+    if (_sidebarGenresLoaded && !force) return;
     _sidebarGenresLoaded = true;
     cachedFetch('/api/genres').then(data => {
       if (!data || !data.folders) return;
+      const groups = groupGenresBySource(data);
+      // Com uma fonte so, o cabecalho seria ruido: ele so aparece quando ha
+      // mais de uma para separar.
+      const showHeaders = groups.length > 1;
       let html = '';
-      data.folders.forEach(g => {
-        const name = g.Name || '';
-        const path = '/TicianoFlix/' + name;
-        html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
-          + '<span class="icon">' + genreIcon(name) + '</span> '
-          + escHtml(name) + '</button>';
+      groups.forEach(grp => {
+        const src = grp.source;
+        if (showHeaders) {
+          const off = src && src.online === false;
+          html += '<div class="sidebar-source-label' + (off ? ' offline' : '') + '">'
+            + sourceIcon(src ? src.kind : 'local') + ' '
+            + escHtml(src ? src.name : 'Outros')
+            + (off ? ' · desconectada' : '') + '</div>';
+        }
+        grp.items.forEach(g => {
+          const name = g.Name || '';
+          const path = '/' + g.Path;
+          html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
+            + '<span class="icon">' + genreIcon(name) + '</span> '
+            + escHtml(name) + '</button>';
+        });
       });
       container.innerHTML = html;
     });
@@ -380,6 +428,7 @@
           <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
+      <div id="sourcesHome"></div>
       <div class="genre-section" id="continueWatchingSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title"><svg class="icon-svg"><use href="#i-play"></use></svg> Continuar Assistindo</div>
@@ -392,6 +441,8 @@
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
+
+    renderSourceSections(data);
 
     // Fetch recent movies sorted by actual creation time (from server)
     cachedFetch('/api/recent-movies?limit=30').then(movies => {
@@ -951,13 +1002,23 @@
     const el = document.getElementById('breadcrumb');
     if (!el) return;
     const parts = path ? path.split('/').filter(Boolean) : [];
-    let current = '/TicianoFlix';
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-    parts.forEach((part, i) => {
-      if (i === 0) return; // skip TicianoFlix root, already have Inicio
+
+    // A raiz da fonte ocupa 1 segmento no Drive ("/TicianoFlix") e 2 nas fontes
+    // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
+    // path — remontar com um prefixo fixo gerava link quebrado fora do Drive.
+    const rootLen = isLocalPath(path) ? 2 : 1;
+    if (rootLen === 2 && parts.length >= 2) {
+      const slug = parts[1];
+      html += ' <span class="sep">›</span> <span>'
+        + escHtml(_sourceNames[slug] || slug) + '</span>';
+    }
+
+    let current = '/' + parts.slice(0, rootLen).join('/');
+    parts.slice(rootLen).forEach((part, i, rest) => {
       current += '/' + part;
       const name = part.replace(/[._]/g, ' ');
-      if (i === parts.length - 1) {
+      if (i === rest.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
         html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(current) + '\'))">' + escHtml(name) + '</a>';
@@ -1909,6 +1970,236 @@
     applySubtitleSize();
   });
 
+  // ==================== FONTES ====================
+  // Prefixo logico das fontes locais (espelha LOCAL_ROOT no servidor).
+  const LOCAL_ROOT = '/Local';
+
+  function isLocalPath(path) {
+    const p = '/' + String(path || '').replace(/^\/+/, '');
+    return p === LOCAL_ROOT || p.indexOf(LOCAL_ROOT + '/') === 0;
+  }
+
+  // Uma secao por fonte na home: fica visivel o que some quando o HD sai.
+  function renderSourceSections(data) {
+    const host = document.getElementById('sourcesHome');
+    if (!host) return;
+    const groups = groupGenresBySource(data);
+    const sources = data.sources || [];
+    // Uma fonte so (o caso de quem nunca cadastrou nada): a sidebar ja da
+    // conta, nao vale gastar uma secao inteira da home com isso.
+    if (groups.length === 0 || sources.length < 2) { host.innerHTML = ''; return; }
+
+    let html = '';
+    groups.forEach(grp => {
+      const src = grp.source;
+      const name = src ? src.name : 'Outros';
+      const offline = src && src.online === false;
+      html += '<div class="genre-section">'
+        + '<div class="genre-header" style="cursor:default;border:none">'
+        + '<div class="genre-title">' + sourceIcon(src ? src.kind : 'local') + ' ' + escHtml(name)
+        + '<span class="genre-count">(' + grp.items.length + (grp.items.length === 1 ? ' gênero' : ' gêneros') + ')</span>'
+        + (offline ? '<span class="src-section-badge">desconectada</span>' : '')
+        + '</div></div><div class="src-pills">';
+      grp.items.forEach(g => {
+        const gname = g.Name || '';
+        html += '<button class="src-pill" onclick="loadPath(decodeURIComponent(\'' + enc('/' + g.Path) + '\'))">'
+          + genreIcon(gname) + ' ' + escHtml(gname) + '</button>';
+      });
+      html += '</div></div>';
+    });
+
+    // Fontes cadastradas que ainda nao tem genero indexado (recem-adicionada,
+    // ou desconectada antes do primeiro scan) — senao ela sumiria da home.
+    const withGenres = {};
+    groups.forEach(g => { withGenres[g.id] = true; });
+    sources.forEach(src => {
+      if (withGenres[src.id]) return;
+      html += '<div class="genre-section">'
+        + '<div class="genre-header" style="cursor:default;border:none">'
+        + '<div class="genre-title">' + sourceIcon(src.kind) + ' ' + escHtml(src.name)
+        + (src.online === false
+            ? '<span class="src-section-badge">desconectada</span>'
+            : '<span class="genre-count">(sem filmes indexados)</span>')
+        + '</div></div></div>';
+    });
+    host.innerHTML = html;
+  }
+
+  function openSourcesModal() {
+    document.getElementById('sourcesModal').classList.add('active');
+    _loadSources();
+  }
+
+  function closeSourcesModal() {
+    document.getElementById('sourcesModal').classList.remove('active');
+  }
+
+  document.getElementById('sourcesModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSourcesModal();
+  });
+
+  function _srcMsg(text, kind) {
+    const el = document.getElementById('sourcesMsg');
+    if (el) { el.textContent = text; el.className = 'user-msg ' + kind; }
+  }
+
+  async function _loadSources() {
+    const box = document.getElementById('sourcesBox');
+    if (!box) return;
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando fontes...</span></div>';
+    try {
+      const [srcData, detData] = await Promise.all([
+        fetch('/api/sources').then(r => r.json()),
+        fetch('/api/sources/detect').then(r => r.json()).catch(() => ({ candidates: [] }))
+      ]);
+      _renderSources(srcData.sources || [], (detData && detData.candidates) || []);
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Não foi possível carregar as fontes.</div>';
+    }
+  }
+
+  function _renderSources(sources, candidates) {
+    let html = '<div class="user-section-title">No acervo</div>';
+
+    sources.forEach(src => {
+      const isDrive = src.kind === 'drive';
+      const offline = src.online === false;
+      html += '<div class="user-row src-row">'
+        + '<div class="src-main">'
+        + '<div class="user-name">' + sourceIcon(src.kind) + ' ' + escHtml(src.name)
+        + '<span class="user-tag ' + (isDrive ? 'drive' : 'local') + '">' + (isDrive ? 'nuvem' : 'local') + '</span>'
+        + (offline ? '<span class="user-tag offline">desconectada</span>' : '')
+        + '</div>'
+        + (src.root ? '<div class="src-path">' + escHtml(src.root) + '</div>' : '')
+        + '<div class="src-counts">' + src.genres + (src.genres === 1 ? ' gênero · ' : ' gêneros · ')
+        + src.movies + (src.movies === 1 ? ' filme' : ' filmes') + '</div>'
+        + '</div>'
+        + '<button class="user-btn" title="Escanear só esta fonte" onclick="scanSource(decodeURIComponent(\'' + enc(src.id) + '\'))">'
+        + '<svg class="icon-svg"><use href="#i-refresh"></use></svg></button>'
+        + (isDrive ? '' :
+            '<button class="user-btn danger" id="srcDel-' + enc(src.id) + '" '
+            + 'title="Tirar do acervo (os arquivos no disco não são apagados)" '
+            + 'onclick="removeSource(decodeURIComponent(\'' + enc(src.id) + '\'), decodeURIComponent(\'' + enc(src.name) + '\'))">'
+            + '<svg class="icon-svg"><use href="#i-trash"></use></svg></button>')
+        + '</div>';
+    });
+
+    if (candidates.length > 0) {
+      html += '<div class="user-section-title">Detectadas neste computador</div>'
+        + '<div class="src-hint">Clique para adicionar ao acervo.</div>'
+        + '<div class="src-detected">';
+      candidates.forEach(c => {
+        const icon = c.kind === 'volume' ? '#i-hard-drive' : '#i-folder';
+        html += '<button class="src-detected-btn" title="' + escHtml(c.path) + '" '
+          + 'onclick="addSource(decodeURIComponent(\'' + enc(c.name) + '\'), decodeURIComponent(\'' + enc(c.path) + '\'))">'
+          + '<svg class="icon-svg"><use href="' + icon + '"></use></svg> ' + escHtml(c.name)
+          + ' <svg class="icon-svg"><use href="#i-plus"></use></svg></button>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="user-section-title">Adicionar uma pasta</div>'
+      + '<div class="src-hint">A pasta precisa estar organizada como o Drive: '
+      + '<b>Gênero / Filme (ano) / arquivo</b> — com o <code>.nfo</code> e o '
+      + '<code>poster.jpg</code> dentro da pasta do filme.</div>'
+      + '<div class="user-form">'
+      + '<input type="text" id="srcName" placeholder="Nome (ex.: HD Externo)" autocomplete="off">'
+      + '<input type="text" id="srcPath" placeholder="Caminho (ex.: /Volumes/MeuHD/Filmes)" autocomplete="off">'
+      + '<button class="user-btn" onclick="addSourceFromForm()">'
+      + '<svg class="icon-svg"><use href="#i-plus"></use></svg> Adicionar</button>'
+      + '</div>'
+      + '<div id="sourcesMsg"></div>';
+
+    document.getElementById('sourcesBox').innerHTML = html;
+    const input = document.getElementById('srcPath');
+    if (input) {
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') addSourceFromForm(); });
+    }
+  }
+
+  async function _srcPost(url, body) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.status !== 'ok') {
+        _srcMsg(data.error || 'Falhou.', 'err');
+        return null;
+      }
+      return data;
+    } catch (e) {
+      _srcMsg('Erro de rede.', 'err');
+      return null;
+    }
+  }
+
+  async function addSource(name, path) {
+    const data = await _srcPost('/api/sources/add', { name: name, path: path });
+    if (!data) return;
+    _invalidateCatalog();
+    await _loadSources();
+    _srcMsg(data.message || 'Fonte adicionada.', 'ok');
+    showToast('💽 ' + name + ' adicionada ao acervo', '');
+  }
+
+  function addSourceFromForm() {
+    const pathEl = document.getElementById('srcPath');
+    const nameEl = document.getElementById('srcName');
+    const path = pathEl ? pathEl.value.trim() : '';
+    if (!path) { _srcMsg('Informe o caminho da pasta.', 'err'); return; }
+    addSource(nameEl && nameEl.value.trim() ? nameEl.value.trim() : path.split('/').pop(), path);
+  }
+
+  // Remocao em duas etapas: o primeiro clique so arma o botao. Tirar uma fonte
+  // apaga o catalogo dela (os arquivos no disco ficam), entao vale confirmar.
+  let _srcPendingRemove = null;
+  async function removeSource(id, name) {
+    if (_srcPendingRemove !== id) {
+      _srcPendingRemove = id;
+      const btn = document.getElementById('srcDel-' + id);
+      if (btn) btn.innerHTML = 'Confirmar?';
+      _srcMsg('Clique de novo para tirar "' + name + '" do acervo. Os arquivos no disco não são apagados.', 'err');
+      setTimeout(() => {
+        if (_srcPendingRemove === id) { _srcPendingRemove = null; _loadSources(); }
+      }, 6000);
+      return;
+    }
+    _srcPendingRemove = null;
+    const data = await _srcPost('/api/sources/remove', { id: id });
+    if (!data) return;
+    _invalidateCatalog();
+    await _loadSources();
+    _srcMsg('"' + name + '" saiu do acervo. Os arquivos continuam no disco.', 'ok');
+  }
+
+  async function scanSource(id) {
+    // /api/refresh responde "scanning" | "already_scanning", nao "ok".
+    try {
+      const res = await fetch('/api/refresh?source=' + encodeURIComponent(id),
+                              { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'already_scanning') {
+        _srcMsg('Já existe um scan em andamento.', 'err');
+        return;
+      }
+      _srcMsg('Escaneando... o catálogo se atualiza sozinho ao terminar.', 'ok');
+      _watchScanProgress();
+    } catch (e) {
+      _srcMsg('Erro de rede.', 'err');
+    }
+  }
+
+  // O catalogo mudou: derruba o cache do frontend e redesenha home e sidebar.
+  function _invalidateCatalog() {
+    _frontCache = {};
+    _sidebarGenresLoaded = false;
+    loadSidebarGenres(true);
+    if (isHomePage(currentPath)) loadPath(currentPath || '', true);
+  }
+
   // ==================== CONTAS ====================
   let _me = null;
 
@@ -1921,8 +2212,10 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          const btn = document.getElementById('usersBtn');
-          if (btn) btn.style.display = '';
+          ['usersBtn', 'sourcesBtn'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) btn.style.display = '';
+          });
         }
       }
     } catch (e) {}
@@ -2237,11 +2530,14 @@
 
       const allMovies = [];
       for (const genre of genresData.folders) {
-        const listRes = await fetch('/api/list?path=' + encodeURIComponent('/TicianoFlix/' + genre.Name));
+        // O path completo do genero vem do servidor — ele pode estar em
+        // qualquer fonte, nao so no Drive.
+        const genrePath = '/' + genre.Path;
+        const listRes = await fetch('/api/list?path=' + encodeURIComponent(genrePath));
         const listData = await listRes.json();
         if (listData && listData.folders) {
           listData.folders.forEach(f => {
-            allMovies.push('/TicianoFlix/' + genre.Name + '/' + f.Name);
+            allMovies.push(genrePath + '/' + f.Name);
           });
         }
       }
@@ -2395,10 +2691,13 @@
     filtered.forEach((m, idx) => {
       const title = (m.title || m.name || '').replace(/[._]/g, ' ');
       const nameClean = title.replace(/\.[^.]+$/, '');
+      const isLocal = isLocalPath(m.path);
       const isCached = m.cached;
-      const isDownloading = _cmDownloading.has(m.path);
-      const statusClass = isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached');
-      let statusLabel = isDownloading ? '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%' : (isCached ? '<svg class="icon-svg"><use href="#i-download"></use></svg> Offline' : '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Online');
+      const isDownloading = !isLocal && _cmDownloading.has(m.path);
+      const statusClass = isLocal ? 'cached' : (isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached'));
+      let statusLabel = isLocal
+        ? '<svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local'
+        : (isDownloading ? '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%' : (isCached ? '<svg class="icon-svg"><use href="#i-download"></use></svg> Offline' : '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Online'));
       // Reuse cached progress from download tracker if available
       if (isDownloading && _cmPcts && _cmPcts[m.path] !== undefined) {
         statusLabel = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + _cmPcts[m.path] + '%';
@@ -2416,7 +2715,11 @@
       html += '<div class="cache-item-title" title="' + escHtml(nameClean) + '">' + escHtml(nameClean) + '</div>';
       html += '<span class="cache-item-status ' + statusClass + '" id="cmStatus-' + idx + '">' + statusLabel + '</span>';
 
-      if (isDownloading) {
+      if (isLocal) {
+        // Ja esta no disco do usuario: nao ha o que baixar, e apagar aqui
+        // significaria mexer no arquivo dele.
+        html += '<button class="cache-item-btn" disabled style="opacity:0.4" title="Filme numa fonte local — sempre disponivel"><svg class="icon-svg"><use href="#i-check"></use></svg></button>';
+      } else if (isDownloading) {
         html += '<button class="cache-item-btn" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-clock"></use></svg></button>';
       } else if (isCached) {
         html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + enc(m.path) + '\', ' + idx + ')"><svg class="icon-svg"><use href="#i-trash"></use></svg> Apagar</button>';
@@ -2912,6 +3215,119 @@
   let _refreshFallbackTimer = null;
   let _scanProgressTimer = null;
 
+  // Acompanha o scan em andamento: barra de progresso, limpeza dos timers e
+  // recarga do catalogo no fim. Usado pelo botao Atualizar e pelo scan de uma
+  // fonte so, no modal de Fontes.
+  function _watchScanProgress() {
+    const btn = document.getElementById('refreshBtn');
+    const icon = btn ? btn.querySelector('.icon') : null;
+    // Show progress bar
+    const pbar = document.getElementById('scanProgressBar');
+    const pfill = document.getElementById('scanProgressFill');
+    const ptext = document.getElementById('scanProgressText');
+    pbar.style.display = 'block';
+    pfill.style.width = '0%';
+    ptext.textContent = 'Preparando...';
+
+    // Visual feedback: spin icon, highlight text
+    if (btn) btn.classList.add('loading');
+    if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+
+    // Start polling scan-progress
+    if (_scanProgressTimer) clearInterval(_scanProgressTimer);
+    _scanProgressTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/scan-progress');
+        const s = await r.json();
+        pfill.style.width = s.percent + '%';
+        // Com mais de uma fonte, dizer qual esta sendo escaneada agora.
+        const srcPrefix = (s.source_total > 1 && s.source_current)
+          ? s.source_current + ' — ' : '';
+        if (s.phase === 'genres') {
+          if (s.movie_index > 0) {
+            ptext.textContent = `${srcPrefix}${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
+          } else {
+            ptext.textContent = `${srcPrefix}Gênero ${s.genre_index}/${s.genre_total}`;
+          }
+        } else if (s.phase === 'listing_root') {
+          ptext.textContent = s.source_current ? ('Listando ' + s.source_current + '...') : 'Listando raiz...';
+        } else if (s.phase === 'done') {
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
+          clearTimeout(_refreshFallbackTimer);
+          _refreshFallbackTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          _frontCache = {};
+          _sidebarGenresLoaded = false;
+          loadSidebarGenres(true);
+          showToast('Escaneamento concluído!', 'success');
+          loadPath(currentPath || '');
+        } else if (s.phase === 'error') {
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          showToast('Erro ao escanear. Confira o Drive e as fontes locais.', 'error');
+          loadPath(currentPath || '');
+        }
+      } catch (_) {}
+    }, 800);
+
+    // Also poll cache-status as fallback (backward compat)
+    let attempts = 0;
+    _refreshPollTimer = setInterval(async () => {
+      attempts++;
+      try {
+        const r = await fetch('/api/cache-status');
+        const s = await r.json();
+        if (s.cached) {
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          clearTimeout(_refreshFallbackTimer);
+          _refreshFallbackTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          _frontCache = {};
+          _sidebarGenresLoaded = false;
+          loadSidebarGenres(true);
+          showToast('Escaneamento concluído!', 'success');
+          loadPath(currentPath || '');
+        }
+      } catch (_) {}
+      if (attempts > 120) {
+        clearInterval(_refreshPollTimer);
+        _refreshPollTimer = null;
+        clearInterval(_scanProgressTimer);
+        _scanProgressTimer = null;
+        if (btn) btn.classList.remove('loading');
+        if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+        pbar.style.display = 'none';
+        loadPath(currentPath || '');
+      }
+    }, 1500);
+
+    _refreshFallbackTimer = setTimeout(() => {
+      clearInterval(_refreshPollTimer);
+      _refreshPollTimer = null;
+      clearInterval(_scanProgressTimer);
+      _scanProgressTimer = null;
+      btn.classList.remove('loading');
+      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+      pbar.style.display = 'none';
+      _frontCache = {};
+      loadPath(currentPath || '');
+    }, 240000);
+
+  }
+
   async function refreshCache() {
     const btn = document.getElementById('refreshBtn');
     const icon = btn.querySelector('.icon');
@@ -2925,103 +3341,7 @@
         return;
       }
 
-      // Show progress bar
-      const pbar = document.getElementById('scanProgressBar');
-      const pfill = document.getElementById('scanProgressFill');
-      const ptext = document.getElementById('scanProgressText');
-      pbar.style.display = 'block';
-      pfill.style.width = '0%';
-      ptext.textContent = 'Preparando...';
-
-      // Visual feedback: spin icon, highlight text
-      btn.classList.add('loading');
-      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-
-      // Start polling scan-progress
-      if (_scanProgressTimer) clearInterval(_scanProgressTimer);
-      _scanProgressTimer = setInterval(async () => {
-        try {
-          const r = await fetch('/api/scan-progress');
-          const s = await r.json();
-          pfill.style.width = s.percent + '%';
-          if (s.phase === 'genres') {
-            if (s.movie_index > 0) {
-              ptext.textContent = `${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
-            } else {
-              ptext.textContent = `Gênero ${s.genre_index}/${s.genre_total}`;
-            }
-          } else if (s.phase === 'listing_root') {
-            ptext.textContent = 'Listando raiz...';
-          } else if (s.phase === 'done') {
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            clearInterval(_refreshPollTimer);
-            _refreshPollTimer = null;
-            clearTimeout(_refreshFallbackTimer);
-            _refreshFallbackTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            _frontCache = {};
-            showToast('Escaneamento concluído!', 'success');
-            loadPath(currentPath || '');
-          } else if (s.phase === 'error') {
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            showToast('Erro ao escanear Google Drive', 'error');
-            loadPath(currentPath || '');
-          }
-        } catch (_) {}
-      }, 800);
-
-      // Also poll cache-status as fallback (backward compat)
-      let attempts = 0;
-      _refreshPollTimer = setInterval(async () => {
-        attempts++;
-        try {
-          const r = await fetch('/api/cache-status');
-          const s = await r.json();
-          if (s.cached) {
-            clearInterval(_refreshPollTimer);
-            _refreshPollTimer = null;
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            clearTimeout(_refreshFallbackTimer);
-            _refreshFallbackTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            _frontCache = {};
-            showToast('Escaneamento concluído!', 'success');
-            loadPath(currentPath || '');
-          }
-        } catch (_) {}
-        if (attempts > 120) {
-          clearInterval(_refreshPollTimer);
-          _refreshPollTimer = null;
-          clearInterval(_scanProgressTimer);
-          _scanProgressTimer = null;
-          btn.classList.remove('loading');
-          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-          pbar.style.display = 'none';
-          loadPath(currentPath || '');
-        }
-      }, 1500);
-
-      _refreshFallbackTimer = setTimeout(() => {
-        clearInterval(_refreshPollTimer);
-        _refreshPollTimer = null;
-        clearInterval(_scanProgressTimer);
-        _scanProgressTimer = null;
-        btn.classList.remove('loading');
-        if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-        pbar.style.display = 'none';
-        _frontCache = {};
-        loadPath(currentPath || '');
-      }, 240000);
+      _watchScanProgress();
 
     } catch(e) {
       btn.classList.remove('loading');

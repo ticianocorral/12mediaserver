@@ -36,6 +36,13 @@ RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
 # root_folder_id, esse prefixo nao existe do lado do rclone — veja paths._rc().
 LOGICAL_ROOT = "/TicianoFlix"
 
+# ── Fontes locais ────────────────────────────────────────────
+# O Drive deixou de ser a unica fonte: HD externo, pendrive e pastas do proprio
+# computador entram no catalogo montados sob este prefixo logico, um nivel por
+# fonte ("/Local/hd-externo/Terror/Alien (1979)/filme.mkv"). O Drive continua em
+# LOGICAL_ROOT, entao nenhum path ja gravado no banco muda de forma.
+LOCAL_ROOT = "/Local"
+
 # ── Caminhos ─────────────────────────────────────────────────
 # A raiz do projeto e o diretorio acima do pacote: o index.html e os favicons
 # ficam la, ao lado do server.py.
@@ -49,6 +56,10 @@ IMAGE_CACHE_DIR = CACHE_DIR / "images"
 SUBS_CACHE_DIR = CACHE_DIR / "subs"
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
 AUTH_PATH = CACHE_DIR / "auth.json"
+# Fonte e configuracao, nao cache: fica fora do SQLite (como o auth.json) para
+# que restaurar um backup feito em outra maquina nao importe caminhos que nao
+# existem aqui.
+SOURCES_PATH = CACHE_DIR / "sources.json"
 SECRET_PATH = CACHE_DIR / "secret.key"
 
 for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR):
@@ -70,6 +81,7 @@ MAX_NFO_BYTES = 2 * 1024 * 1024         # teto de um arquivo .nfo
 WRITE_ROUTES = frozenset({
     "/api/refresh", "/api/clear-cache", "/api/uncache",
     "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
+    "/api/sources/add", "/api/sources/remove",
 })
 
 # Rotas alcancaveis sem sessao.
@@ -82,8 +94,11 @@ PUBLIC_PATHS = frozenset({
 TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
 
 # Rotas restritas a administradores.
+# Apontar o servidor para uma pasta do computador expoe aquele diretorio na LAN
+# para qualquer conta logada: cadastrar e remover fonte e decisao de admin.
 ADMIN_PATHS = frozenset({
     "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
+    "/api/sources/add", "/api/sources/remove", "/api/sources/detect",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

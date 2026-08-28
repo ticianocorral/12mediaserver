@@ -728,6 +728,60 @@
   .rclone-action-btn:hover { background: rgba(255,255,255,0.15); }
   .rclone-action-btn.primary { background: var(--accent); color: #fff; }
   .rclone-action-btn.primary:hover { filter: brightness(1.15); }
+
+  /* ===== Fontes do acervo (Drive, HD externo, pendrive, pasta local) ===== */
+  .src-row { align-items: flex-start; flex-wrap: wrap; }
+  .src-main { flex: 1 1 200px; min-width: 0; }
+  .src-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text3);
+    word-break: break-all; margin-top: 3px;
+  }
+  .src-counts { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .user-tag.offline { background: rgba(255,167,38,0.18); color: #ffb74d; }
+  .user-tag.local   { background: rgba(66,165,245,0.18); color: #64b5f6; }
+  .user-tag.drive   { background: rgba(255,255,255,0.10); color: var(--text3); }
+  .src-hint {
+    font-size: 12px; color: var(--text3);
+    line-height: 1.5; margin: 2px 0 10px;
+  }
+  .src-detected {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+  }
+  .src-detected-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px dashed rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.03); color: var(--text);
+    border-radius: 999px; padding: 6px 12px; font-size: 12px;
+    cursor: pointer; transition: all var(--transition);
+    font-family: inherit;
+  }
+  .src-detected-btn:hover { background: rgba(255,255,255,0.10); border-style: solid; }
+
+  /* Secao por fonte na home */
+  .src-section-badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    padding: 2px 9px; border-radius: 999px; margin-left: 8px;
+    background: rgba(255,167,38,0.18); color: #ffb74d;
+    vertical-align: middle;
+  }
+  .src-pills { display: flex; flex-wrap: wrap; gap: 10px; }
+  .src-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--surface); color: var(--text);
+    border-radius: var(--radius); padding: 10px 16px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: all var(--transition); font-family: inherit;
+  }
+  .src-pill:hover { background: rgba(255,255,255,0.10); transform: translateY(-2px); }
+  .sidebar-source-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text3);
+    padding: 12px 16px 4px;
+  }
+  .sidebar-source-label.offline { color: #ffb74d; }
   /* Aviso de acesso ao Drive mais largo que o necessario. */
   .rclone-warn {
     margin: 10px 0 4px;

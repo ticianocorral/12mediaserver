@@ -20,6 +20,7 @@ from pathlib import Path
 from .config import (
     PROJECT_ROOT,
     PORT,
+    LOGICAL_ROOT,
     RCLONE_BACKUP_REMOTE,
     BACKUP_FOLDER,
     RCLONE_SERVE_PORT,
@@ -85,10 +86,12 @@ from .rclone import (
     get_rclone_status,
 )
 from . import scanner as _scanner
+from . import sources as _sources
 from .nfo import _fetch_nfo_from_db
 from .queries import (
     cached_list_directory, cached_movie_detail, cached_get_file_info,
-    cached_search_files, cached_all_movies, _find_poster_cached,
+    cached_search_files, cached_all_movies, cached_source_counts,
+    _find_poster_cached,
 )
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
@@ -389,8 +392,19 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self._send_json({"error": msg}, status)
 
     def _stream_file(self, path):
-        """Stream a file. Images are cached locally; videos go through rclone proxy."""
+        """Stream a file, escolhendo o caminho pela fonte dona do path."""
         ext = Path(path).suffix.lower()
+
+        # Fonte local (HD externo, pendrive, disco): os bytes ja estao aqui —
+        # nada de rclone, nada de cache intermediario.
+        if _sources.is_local(path):
+            self._stream_local(path)
+            return
+        if _sources.under_local_root(path):
+            # Path de fonte local que nao existe mais. Nao pode escorregar pro
+            # ramo do rclone: viraria um 502 sem sentido.
+            self._send_error("Fonte local nao encontrada — ela foi removida?", 404)
+            return
 
         # Small images: cache locally after first fetch
         if ext in IMAGE_EXTENSIONS:
@@ -399,6 +413,103 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # Videos and other files: proxy through rclone serve or fallback
         self._stream_video_direct(path)
+
+    @staticmethod
+    def _parse_range(range_header, size):
+        """"bytes=inicio-fim" -> (inicio, fim) inclusivo, ou None se invalido.
+
+        Cobre tambem a forma sufixo ("bytes=-500", os ultimos 500 bytes), que o
+        <video> usa para ler o final do container antes de tocar um .mp4.
+        """
+        if not range_header or not range_header.startswith("bytes="):
+            return None
+        # Multiplos ranges numa requisicao exigiriam multipart/byteranges; o
+        # player nunca pede isso, entao atendemos o primeiro.
+        spec = range_header[len("bytes="):].split(",")[0].strip()
+        first, sep, last = spec.partition("-")
+        if not sep:
+            return None
+        try:
+            if not first:
+                n = int(last)
+                if n <= 0:
+                    return None
+                start = max(0, size - n)
+                end = size - 1
+            else:
+                start = int(first)
+                end = int(last) if last else size - 1
+        except ValueError:
+            return None
+        if start < 0 or start >= size or start > end:
+            return None
+        return start, min(end, size - 1)
+
+    def _stream_local(self, path):
+        """Serve um arquivo do disco com suporte a Range.
+
+        O Range e o que faz o <video> conseguir pular no meio do filme: sem
+        206 + Content-Range o player so consegue tocar do inicio.
+        """
+        real = _sources.local_real_path(path)
+        if real is None:
+            # Path fora da raiz da fonte (ou fonte inexistente). Nunca detalhar
+            # o motivo: isso viraria uma sonda do sistema de arquivos.
+            self._send_error("Forbidden", 403)
+            return
+        try:
+            if not real.is_file():
+                raise FileNotFoundError
+            size = real.stat().st_size
+        except OSError:
+            self._send_error("Arquivo indisponivel — a fonte esta conectada?", 404)
+            return
+
+        ext = Path(path).suffix.lower()
+        mime = self._guess_mime(path)
+        range_header = self.headers.get("Range")
+        start, end = 0, max(size - 1, 0)
+        partial = False
+
+        if range_header and size > 0:
+            parsed = self._parse_range(range_header, size)
+            if parsed is None:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self._send_media_cors()
+                self.end_headers()
+                return
+            start, end = parsed
+            partial = True
+
+        length = (end - start + 1) if size > 0 else 0
+
+        self.send_response(206 if partial else 200)
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Content-Type", mime)
+        self.send_header("Accept-Ranges", "bytes")
+        if ext in IMAGE_EXTENSIONS:
+            self.send_header("Cache-Control", "max-age=86400")
+        self._send_media_cors()
+        self.end_headers()
+
+        try:
+            with open(real, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    buf = f.read(min(65536, remaining))
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+                    remaining -= len(buf)
+        except (BrokenPipeError, ConnectionResetError):
+            pass   # o player fechou ou pulou pra outro trecho
+        except OSError as e:
+            sys.stderr.write(f"[TicianoFlix] Falha lendo arquivo local: {e}\n")
 
     def _stream_image_cached(self, path):
         """Stream an image file, caching it locally on first access."""
@@ -591,44 +702,66 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             sys.stderr.write(f"[ERROR] Direct stream failed: {e}\n")
 
-    def _serve_subtitle(self, path):
-        """Serve a subtitle file, converting SRT→VTT if needed.
-        Caches locally on first fetch for speed."""
+    @staticmethod
+    def _decode_subtitle(raw_bytes):
+        """UTF-8 primeiro, latin-1 depois (encoding comum em SRT antigo)."""
+        try:
+            return raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw_bytes.decode("latin-1")
+
+    def _read_subtitle_text(self, path):
+        """Texto bruto da legenda, buscado na fonte dona do path.
+
+        Legenda de fonte local vem direto do disco — nao faz sentido copiar pro
+        cache um arquivo que ja e local. A do Drive continua no rclone cat com
+        cache em disco.
+        """
+        if _sources.is_local(path):
+            real = _sources.local_real_path(path)
+            if real is None or not real.is_file():
+                return None
+            try:
+                return self._decode_subtitle(real.read_bytes())
+            except OSError:
+                return None
+
         cache_key = "sub_" + path.strip("/").replace("/", "_").replace(" ", "_")
         cache_path = SUBS_CACHE_DIR / cache_key
-
-        # Try local cache first
         try:
             if cache_path.exists():
-                raw = cache_path.read_text(encoding="utf-8", errors="replace")
-            else:
-                raise FileNotFoundError
-        except (OSError, FileNotFoundError):
-            # Fetch via rclone cat
-            remote_path = _rc_remote(path)
-            try:
-                result = subprocess.run(
-                    ["rclone", "cat", remote_path],
-                    capture_output=True, timeout=30
-                )
-                if result.returncode != 0:
-                    self._send_error("Subtitle not found", 404)
-                    return
-                # Tenta UTF-8 primeiro, fallback pra latin-1 (comum em SRT)
-                raw_bytes = result.stdout
-                try:
-                    raw = raw_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    raw = raw_bytes.decode("latin-1")
-                # Cache local (sempre UTF-8)
-                try:
-                    cache_path.write_text(raw, encoding="utf-8")
-                except Exception:
-                    pass
-            except Exception as e:
-                sys.stderr.write(f"[TicianoFlix] Subtitle fetch failed: {e}\n")
-                self._send_error("Subtitle not found", 404)
-                return
+                return cache_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+
+        try:
+            result = subprocess.run(
+                ["rclone", "cat", _rc_remote(path)],
+                capture_output=True, timeout=30
+            )
+            if result.returncode != 0:
+                return None
+            raw = self._decode_subtitle(result.stdout)
+        except Exception as e:
+            sys.stderr.write(f"[TicianoFlix] Subtitle fetch failed: {e}\n")
+            return None
+
+        # Cache local (sempre UTF-8)
+        try:
+            cache_path.write_text(raw, encoding="utf-8")
+        except Exception:
+            pass
+        return raw
+
+    def _serve_subtitle(self, path):
+        """Serve a subtitle file, converting SRT→VTT if needed."""
+        if _sources.under_local_root(path) and not _sources.is_local(path):
+            self._send_error("Fonte local nao encontrada — ela foi removida?", 404)
+            return
+        raw = self._read_subtitle_text(path)
+        if raw is None:
+            self._send_error("Subtitle not found", 404)
+            return
 
         ext = Path(path).suffix.lower()
 
@@ -651,13 +784,16 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # VTT/ASS already supported or passed through
             body = raw
 
+        # Content-Length em BYTES, nao em caracteres: legenda com acento tem
+        # mais bytes que caracteres em UTF-8 e chegava truncada no player.
+        payload = body.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/vtt; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(len(payload)))
         self._send_media_cors()
         self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
-        self.wfile.write(body.encode("utf-8"))
+        self.wfile.write(payload)
 
     def _guess_mime(self, path):
         """Guess MIME type for a file."""
@@ -884,6 +1020,74 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._send_error(f"Falha ao restaurar do Drive: {e}")
 
+    # ── Fontes do catalogo (Drive + pastas locais) ──────────────
+
+    def _source_payload(self, source):
+        counts = cached_source_counts(source["mount"])
+        payload = {
+            "id": source["id"],
+            "kind": source["kind"],
+            "name": source["name"],
+            "mount": source["mount"],
+            "online": _sources.is_online(source),
+            "genres": counts["genres"],
+            "movies": counts["movies"],
+        }
+        # O caminho no disco so interessa a quem pode gerenciar fontes, e
+        # descreve a maquina do servidor — nao vai pra sessao comum.
+        if self._is_admin():
+            payload["root"] = source["root"]
+        return payload
+
+    def _handle_sources_list(self):
+        self._send_json({
+            "sources": [self._source_payload(s) for s in _sources.list_sources()],
+        })
+
+    def _handle_sources_detect(self):
+        """Volumes e pastas de midia sugeridos. So sugere — nao cadastra nada."""
+        try:
+            self._send_json({"candidates": _sources.detect_volumes()})
+        except Exception as e:
+            self._send_exception(e)
+
+    def _handle_source_add(self):
+        body = self._read_json_body() or {}
+        source, err = _sources.add_source(body.get("name", ""), body.get("path", ""))
+        if err:
+            self._send_json({"status": "error", "error": err}, 400)
+            return
+        # Primeiro scan ja sai daqui: sem ele a fonte apareceria vazia.
+        scan = _scanner.start_background_scan(source["id"])
+        if scan == "already_scanning":
+            # So existe uma vaga de scan por vez. Melhor dizer isso do que
+            # deixar a fonte recem-criada parecendo vazia sem explicacao.
+            message = ("Fonte adicionada. Ja havia um scan em andamento — "
+                       "clique em Atualizar quando ele terminar.")
+        else:
+            message = "Fonte adicionada. Escaneando..."
+        self._send_json({"status": "ok", "scan": scan, "message": message,
+                         "source": self._source_payload(source)})
+
+    def _handle_source_remove(self):
+        body = self._read_json_body() or {}
+        source_id = str(body.get("id", "")).strip()
+        source = _sources.get_source(source_id)
+        if not source or source["kind"] != "local":
+            self._send_json({"status": "error",
+                             "error": "Fonte local nao encontrada."}, 404)
+            return
+        _sources.remove_source(source_id)
+        # O catalogo dela sai junto — senao ficariam filmes apontando pra
+        # uma fonte que o app nao conhece mais.
+        conn = get_db()
+        try:
+            _scanner._remove_folder_tree(conn, source["mount"])
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok"})
+
     def do_POST(self):
         self._reset_request_state()
         if not self._security_gate():
@@ -1093,9 +1297,27 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._serve_file(path)
             return
 
-        # API: Refresh cache (scan drive)
+        # API: Refresh cache (escaneia todas as fontes, ou so uma)
         if path == "/api/refresh":
-            self._send_json({"status": _scanner.start_background_scan()})
+            source_id = params.get("source", [""])[0].strip() or None
+            self._send_json({"status": _scanner.start_background_scan(source_id)})
+            return
+
+        # API: Fontes do catalogo
+        if path == "/api/sources":
+            self._handle_sources_list()
+            return
+
+        if path == "/api/sources/detect":
+            self._handle_sources_detect()
+            return
+
+        if path == "/api/sources/add":
+            self._handle_source_add()
+            return
+
+        if path == "/api/sources/remove":
+            self._handle_source_remove()
             return
 
         # API: Scan progress
@@ -1195,6 +1417,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             folder_path = params.get("path", [""])[0]
             if not folder_path:
                 self._send_json({"status": "error", "error": "Missing path"}, 400)
+                return
+            if _sources.is_local(folder_path):
+                self._send_json({"status": "ok", "local": True,
+                                 "message": "Filme em fonte local — ja disponivel offline."})
                 return
             try:
                 # Find the video file for this folder
@@ -1339,6 +1565,11 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if not file_path:
                 self._send_json({"cached": False})
                 return
+            # Arquivo em fonte local ja esta no disco: offline por definicao,
+            # e o cache VFS do rclone nao tem nada a ver com ele.
+            if _sources.is_local(file_path):
+                self._send_json({"cached": True, "local": True})
+                return
             self._send_json({"cached": _is_file_cached(file_path)})
             return
 
@@ -1377,6 +1608,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # Um caminho vazio ou minusculo casaria com todo o cache VFS.
             if len(folder_path.strip("/")) < 2 or folder_path.strip("/") in (".", ".."):
                 self._send_json({"status": "error", "error": "Caminho invalido"}, 400)
+                return
+            # Fonte local nao passa pelo cache VFS: apagar aqui seria apagar o
+            # filme do HD do usuario.
+            if _sources.is_local(folder_path):
+                self._send_json(
+                    {"status": "error",
+                     "error": "Esse filme esta numa fonte local — nao ha cache a remover."},
+                    400)
                 return
             try:
                 # Get the video file name from the database directly
@@ -1469,24 +1708,40 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: List genres with content (from cache)
         if path == "/api/genres":
+            wanted = params.get("source", [""])[0].strip()
             conn = get_db()
             genre_rows = conn.execute(
                 "SELECT * FROM folders WHERE depth=1 AND has_video=1 ORDER BY name"
             ).fetchall()
             conn.close()
+
+            all_sources = _sources.list_sources()
+            folders = []
+            for row in genre_rows:
+                owner = _sources.resolve(row["path"])
+                source_id = owner["id"] if owner else ""
+                if wanted and source_id != wanted:
+                    continue
+                folders.append({
+                    "Path": row["path"].lstrip("/"),
+                    "Name": row["name"],
+                    "Size": 0,
+                    "MimeType": "inode/directory",
+                    "ModTime": "",
+                    "IsDir": True,
+                    "has_video": True,
+                    "source": source_id,
+                })
             data = {
-                "path": "/TicianoFlix",
-                "folders": [
-                    {
-                        "Path": row["path"].lstrip("/"),
-                        "Name": row["name"],
-                        "Size": 0,
-                        "MimeType": "inode/directory",
-                        "ModTime": "",
-                        "IsDir": True,
-                        "has_video": True,
-                    }
-                    for row in genre_rows
+                "path": LOGICAL_ROOT,
+                "folders": folders,
+                # A home monta uma secao por fonte a partir daqui, numa
+                # requisicao so — por isso as fontes vem junto dos generos.
+                "sources": [
+                    {"id": s["id"], "kind": s["kind"], "name": s["name"],
+                     "online": _sources.is_online(s)}
+                    for s in all_sources
+                    if not wanted or s["id"] == wanted
                 ],
                 "videos": [],
                 "subtitles": [],

@@ -71,6 +71,17 @@ SCHEMA = """
 """
 
 
+def like_prefix(path):
+    """Prefixo para `LIKE ? ESCAPE '\\'`, com os curingas do LIKE neutralizados.
+
+    Sem isso uma pasta chamada "Alien_1979" casaria com "Alien-1979" — o `_` e
+    curinga de um caractere no LIKE, e uma remocao de subarvore levaria junto a
+    pasta vizinha.
+    """
+    escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return escaped + "/%"
+
+
 def get_db():
     """Conexao nova, ja com WAL e busy_timeout."""
     conn = sqlite3.connect(str(DB_PATH), timeout=10)

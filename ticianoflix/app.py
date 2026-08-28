@@ -21,6 +21,8 @@ from .netutil import (
 )
 from .rclone import start_rclone_serve
 from . import rclone as _rclone
+from . import sources as _sources
+from . import scanner as _scanner
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
 from .handler import TicianoFlixHandler
@@ -35,13 +37,20 @@ def main():
     # Start rclone serve http (persistent connection = much faster streams)
     start_rclone_serve()
 
+    # Um backup restaurado de outra maquina traz as pastas locais dela junto.
+    # Sem esta poda elas ficariam no catalogo apontando pra lugar nenhum.
+    try:
+        _scanner.prune_orphan_sources()
+    except Exception as e:
+        print(f"[TicianoFlix] Falha ao podar fontes orfas: {e}", flush=True)
+
     # No auto-scan on startup — user must click refresh manually
     conn = get_db()
     count = conn.execute("SELECT COUNT(*) as c FROM folders").fetchone()["c"]
     conn.close()
 
     if count == 0:
-        print("[TicianoFlix] Cache vazio. Clique em 🔄 (Atualizar) para escanear o Google Drive.", flush=True)
+        print("[TicianoFlix] Cache vazio. Clique em 🔄 (Atualizar) para escanear as fontes.", flush=True)
     else:
         cache_age = ""
         t = get_cache_time()
@@ -101,8 +110,15 @@ def main():
     else:
         banner += """
 ║                                              ║"""
+    local = _sources.local_sources()
+    if local:
+        online = sum(1 for s in local if _sources.is_online(s))
+        fontes = f"{len(local)} local(is), {online} conectada(s)"
+    else:
+        fontes = "nenhuma cadastrada"
     banner += f"""
-║  📁 Google Drive via rclone (cached + http)  ║
+║  ☁️  Google Drive via rclone (cached + http)  ║
+║  💽 Fontes locais: {fontes:<26}║
 ║                                              ║
 ║  ⚡ /api/refresh - rescan drive               ║
 ║  🚀 rclone proxy on localhost:{RCLONE_SERVE_PORT}        ║

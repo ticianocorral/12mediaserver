@@ -9,7 +9,7 @@ from pathlib import Path
 from .config import (
     IMAGE_EXTENSIONS, LOGICAL_ROOT, SUBTITLE_EXTENSIONS, VIDEO_EXTENSIONS,
 )
-from .db import get_db
+from .db import get_db, like_prefix
 from .nfo import _fetch_nfo
 
 def cached_list_directory(path):
@@ -237,6 +237,24 @@ def cached_all_movies():
             "poster": poster,
         })
     return results
+
+
+def cached_source_counts(mount):
+    """Quantos generos e filmes o catalogo tem sob um ponto de montagem."""
+    like = like_prefix(mount)
+    conn = get_db()
+    try:
+        genres = conn.execute(
+            "SELECT COUNT(*) AS c FROM folders "
+            "WHERE depth=1 AND has_video=1 AND path LIKE ? ESCAPE '\\'",
+            (like,)).fetchone()["c"]
+        movies = conn.execute(
+            "SELECT COUNT(*) AS c FROM folders "
+            "WHERE depth=2 AND has_video=1 AND path LIKE ? ESCAPE '\\'",
+            (like,)).fetchone()["c"]
+    finally:
+        conn.close()
+    return {"genres": genres, "movies": movies}
 
 
 def _find_poster_cached(folder_path):
