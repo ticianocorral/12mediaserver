@@ -404,10 +404,32 @@
     document.getElementById('heroDesc').textContent = '';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
-    // A home tem tres secoes e so: novidades, o que ficou pela metade e o que
-    // esta baixado. Navegar por fonte e por genero e papel da barra lateral,
-    // que ja agrupa os generos pela fonte dona.
+    // A home tem tres secoes de filme: novidades, o que ficou pela metade e o
+    // que esta baixado. Navegar por fonte e por genero e papel da barra
+    // lateral, que ja agrupa os generos pela fonte dona.
     container.innerHTML = `
+      <div class="home-stats">
+        <div class="home-stat">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
+          <div class="home-stat-num" id="statMovies">—</div>
+          <div class="home-stat-label">Filmes no acervo</div>
+        </div>
+        <div class="home-stat" onclick="openSourcesOrSettings()" title="Fontes do acervo">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></div>
+          <div class="home-stat-num" id="statSources">—</div>
+          <div class="home-stat-label" id="statSourcesLabel">Fontes conectadas</div>
+        </div>
+        <div class="home-stat" onclick="openCacheManager()" title="Gerenciar o cache offline">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-download"></use></svg></div>
+          <div class="home-stat-num" id="statDownloaded">—</div>
+          <div class="home-stat-label" id="statDownloadedLabel">Baixados do Drive</div>
+        </div>
+        <div class="home-stat" onclick="refreshCache()" title="Escanear todas as fontes agora">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-refresh"></use></svg></div>
+          <div class="home-stat-num" id="statScan">—</div>
+          <div class="home-stat-label">Último scan</div>
+        </div>
+      </div>
       <div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Últimos Adicionados</div>
@@ -428,6 +450,8 @@
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
+
+    _loadHomeStats();
 
     // Fetch recent movies sorted by actual creation time (from server)
     cachedFetch('/api/recent-movies?limit=30').then(movies => {
@@ -514,6 +538,62 @@
 
     // Carrega filmes marcados como offline
     _renderOfflineGrid();
+  }
+
+  // "há 5 min" / "há 2 h" / "há 3 dias" — o valor cru (timestamp) nao diz nada
+  // a quem so quer saber se o catalogo esta velho.
+  function tempoDesde(ts) {
+    if (!ts) return 'nunca';
+    const seg = Math.max(0, Math.floor(Date.now() / 1000) - parseInt(ts, 10));
+    if (seg < 90) return 'agora';
+    const min = Math.floor(seg / 60);
+    if (min < 60) return min + ' min';
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + ' h';
+    const d = Math.floor(h / 24);
+    return d + (d === 1 ? ' dia' : ' dias');
+  }
+
+  // Estatisticas da home. As duas fontes de dado ja existiam; o que muda e
+  // mostrar o que importa num acervo com varias fontes, em vez de contar
+  // generos.
+  function _loadHomeStats() {
+    cachedFetch('/api/cache-status').then(st => {
+      if (!st) return;
+      const filmes = document.getElementById('statMovies');
+      if (filmes) filmes.textContent = st.movies != null ? st.movies : '—';
+      const scan = document.getElementById('statScan');
+      if (scan) scan.textContent = tempoDesde(st.last_updated);
+      const baixLabel = document.getElementById('statDownloadedLabel');
+      const uso = st.usage && st.usage.details ? st.usage.details.vfs : 0;
+      if (baixLabel && uso > 0) {
+        baixLabel.textContent = 'Baixados · ' + formatSize(uso);
+      }
+    });
+
+    const baix = document.getElementById('statDownloaded');
+    if (baix) baix.textContent = _cachedSet.size;
+
+    cachedFetch('/api/sources').then(d => {
+      if (!d || !d.sources) return;
+      const el = document.getElementById('statSources');
+      const label = document.getElementById('statSourcesLabel');
+      if (!el) return;
+      const total = d.sources.length;
+      const online = d.sources.filter(s => s.online).length;
+      el.textContent = (online === total) ? String(total) : (online + '/' + total);
+      if (label) {
+        label.textContent = (online === total)
+          ? (total === 1 ? 'Fonte conectada' : 'Fontes conectadas')
+          : 'Fontes conectadas';
+      }
+    });
+  }
+
+  // O painel de fontes e de admin; quem nao e cai no hub de Ajustes.
+  function openSourcesOrSettings() {
+    if (_me && _me.role === 'admin') openSourcesModal();
+    else openSettingsModal();
   }
 
   function genreIcon(name) {
