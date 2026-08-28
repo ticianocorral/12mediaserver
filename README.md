@@ -24,7 +24,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
-- **📦 Indicador Offline** — filmes 100% cacheados aparecem com badge 📥 e seção especial na home
+- **📦 Baixados do Drive** — filmes da nuvem 100% cacheados ganham selo e seção própria na home (filmes de fonte local não entram: eles já estão no disco)
 - **🧹 Limpar Cache** — botão para remover vídeos baixados do cache VFS
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive

@@ -437,7 +437,7 @@
       </div>
       <div class="genre-section" id="offlineSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title"><svg class="icon-svg"><use href="#i-box"></use></svg> Disponíveis Offline</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixados do Drive</div>
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
@@ -795,8 +795,10 @@
         return;
       }
 
-      // Check VFS cache on server if not already marked
-      if (!_cachedSet.has(folderPath) && detail.video && detail.video.Name) {
+      // Cache VFS só existe pro Drive: em fonte local a pergunta não se aplica
+      // e a requisição seria desperdício.
+      if (!isLocalPath(folderPath) && !_cachedSet.has(folderPath)
+          && detail.video && detail.video.Name) {
         const filePath = folderPath + '/' + detail.video.Name;
         fetch('/api/check-cached?path=' + encodeURIComponent(filePath)).then(r => r.json()).then(d => {
           if (d.cached) _markCached(folderPath);
@@ -923,7 +925,9 @@
 
           <div class="movie-info-actions">
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
-            ${_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Offline</span>' : ''}
+            ${isLocalPath(folderPath)
+                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
+                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
             ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))"><svg class="icon-svg"><use href="#i-check"></use></svg> Já assisti</button>'}
           </div>
           </div>
@@ -2403,11 +2407,18 @@
   }
 
   // ==================== OFFLINE CACHE TRACKER ====================
-  const _cachedSet = new Set(JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]'));
+  // Só filmes do Drive baixados pro cache VFS. Filme em fonte local está no
+  // disco por natureza — não foi "baixado", e misturar os dois esvaziava o
+  // sentido da seção. O filter limpa o que versões anteriores gravaram.
+  const _cachedSet = new Set(
+    JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]')
+      .filter(p => !isLocalPath(p))
+  );
   function _isCached(folderPath) {
     return _cachedSet.has(folderPath);
   }
   function _markCached(folderPath) {
+    if (isLocalPath(folderPath)) return;
     if (!_cachedSet.has(folderPath)) {
       _cachedSet.add(folderPath);
       localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
@@ -2421,6 +2432,9 @@
       if (!movies) return;
       let changed = false;
       movies.forEach(m => {
+        // O servidor reporta cached=true para filme local (ele está no disco);
+        // aqui a pergunta é outra: foi baixado do Drive?
+        if (isLocalPath(m.path)) return;
         if (m.cached && !_cachedSet.has(m.path)) {
           _cachedSet.add(m.path);
           changed = true;
@@ -2565,7 +2579,7 @@
       }
 
       for (const moviePath of allMovies) {
-        if (_cachedSet.has(moviePath)) continue;
+        if (isLocalPath(moviePath) || _cachedSet.has(moviePath)) continue;
         const detail = await apiFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath));
         if (!detail || !detail.video) continue;
         const video = detail.video;
@@ -2587,7 +2601,7 @@
     const grid = document.getElementById('offlineGrid');
     if (!section || !grid) return;
 
-    const paths = [..._cachedSet];
+    const paths = [..._cachedSet].filter(p => !isLocalPath(p));
     if (paths.length === 0) {
       section.style.display = 'none';
       grid.innerHTML = '';
@@ -2818,9 +2832,7 @@
             // Update local data
             const local = _cmMovies.find(m => m.path === folderPath);
             if (local) local.cached = true;
-            // Also update _cachedSet in localStorage
-            _cachedSet.add(folderPath);
-            localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+            _markCached(folderPath);
             _renderCacheList(_cmMovies);
             // Refresh offline section on home and cache usage
             _renderOfflineGrid();
