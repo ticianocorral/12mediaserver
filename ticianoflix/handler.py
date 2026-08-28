@@ -1066,6 +1066,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                        "clique em Atualizar quando ele terminar.")
         else:
             message = "Fonte adicionada. Escaneando..."
+        if source.get("descended"):
+            # A raiz foi ancorada mais fundo: dizer qual, senao o usuario nao
+            # entende por que o caminho mostrado nao e o que ele escolheu.
+            message += f" Os filmes estao em {source['root']} — foi essa pasta que entrou."
         self._send_json({"status": "ok", "scan": scan, "message": message,
                          "source": self._source_payload(source)})
 

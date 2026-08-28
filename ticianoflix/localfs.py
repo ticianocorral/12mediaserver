@@ -11,6 +11,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import VIDEO_EXTENSIONS
+
 # Teto de profundidade relativa a raiz da fonte. A estrutura util e
 # Genero/Filme/arquivo (3 niveis); o resto e rede de seguranca contra uma pasta
 # escolhida por engano com uma arvore gigante.
@@ -101,6 +103,90 @@ def list_tree(root):
                 "ID": "",
             })
     return entries
+
+
+# Quantas subpastas olhar por nivel ao procurar a raiz do acervo. Um HD com
+# centenas de pastas soltas nao pode transformar o cadastro numa varredura longa.
+MAX_PROBE_DIRS = 300
+
+
+def _subdirs(base, limit=MAX_PROBE_DIRS):
+    """Subpastas visiveis de `base`, sem seguir symlink."""
+    out = []
+    try:
+        with os.scandir(base) as it:
+            for entry in it:
+                if _skip(entry.name):
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        out.append(Path(entry.path))
+                except OSError:
+                    continue
+                if len(out) >= limit:
+                    break
+    except (OSError, PermissionError):
+        pass
+    return out
+
+
+def _has_video(folder):
+    try:
+        with os.scandir(folder) as it:
+            for entry in it:
+                if entry.is_file(follow_symlinks=False) and \
+                        Path(entry.name).suffix.lower() in VIDEO_EXTENSIONS:
+                    return True
+    except (OSError, PermissionError):
+        pass
+    return False
+
+
+def count_movies(base):
+    """Quantas pastas `base/<genero>/<filme>/` tem video dentro.
+
+    E a mesma forma que o scanner espera; serve de nota para decidir onde
+    ancorar a fonte.
+    """
+    total = 0
+    for genre in _subdirs(base):
+        for movie in _subdirs(genre):
+            if _has_video(movie):
+                total += 1
+    return total
+
+
+def find_catalog_root(root, max_descend=2):
+    """Acha, dentro de `root`, a pasta que realmente e a raiz do acervo.
+
+    Os volumes e pastas que o usuario escolhe costumam ficar um ou dois niveis
+    acima do acervo de verdade — "/Volumes/MeuHD" com os filmes em
+    "/Volumes/MeuHD/TicianoFlix/Genero/Filme". Como o scanner le a estrutura em
+    posicao fixa (genero a 1 nivel, filme a 2), cadastrar o volume cru daria um
+    catalogo vazio sem explicacao. Aqui a raiz e ancorada onde os filmes estao.
+
+    Devolve `root` quando ja e a raiz certa ou quando nada e encontrado.
+    """
+    root = Path(root)
+    if count_movies(root) > 0:
+        return root
+
+    level = [root]
+    for _ in range(max_descend):
+        best_count, best_dir = 0, None
+        nxt = []
+        for parent in level:
+            for sub in _subdirs(parent):
+                nxt.append(sub)
+                n = count_movies(sub)
+                if n > best_count:
+                    best_count, best_dir = n, sub
+        if best_dir is not None:
+            return best_dir
+        if not nxt:
+            break
+        level = nxt
+    return root
 
 
 def read_bytes(path, max_bytes):

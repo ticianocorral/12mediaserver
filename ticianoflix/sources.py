@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 from .config import LOCAL_ROOT, LOGICAL_ROOT, RCLONE_REMOTE, SOURCES_PATH
+from . import localfs as _localfs
 
 DRIVE_ID = "drive"
 
@@ -168,10 +169,19 @@ def validate_root(raw_root):
 
 
 def add_source(name, raw_root):
-    """Cadastra uma fonte local. Devolve (fonte, erro)."""
+    """Cadastra uma fonte local. Devolve (fonte, erro).
+
+    A pasta escolhida costuma ficar um ou dois niveis acima do acervo (o volume
+    "/Volumes/MeuHD" com os filmes em "MeuHD/TicianoFlix/Genero/Filme"). Como o
+    scanner le a estrutura em posicao fixa, ancoramos a fonte onde os filmes
+    realmente estao — senao o catalogo sairia vazio sem explicacao.
+    """
     root, err = validate_root(raw_root)
     if err:
         return None, err
+    chosen = _localfs.find_catalog_root(root)
+    descended = chosen != root
+    root = chosen
 
     with _lock:
         existing = _load_raw()
@@ -193,6 +203,8 @@ def add_source(name, raw_root):
             "root": str(root),
             "mount": local_mount(source_id),
             "added_at": time.time(),
+            # Sinaliza pro handler avisar que a raiz nao foi a escolhida.
+            "descended": descended,
         }
         existing.append(source)
         try:

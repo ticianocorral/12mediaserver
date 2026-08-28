@@ -208,6 +208,14 @@ A pasta precisa ter **a mesma estrutura do Drive** — `Gênero / Filme (ano) /
 arquivo`, com o `.nfo` e o `poster.jpg` dentro da pasta do filme. Cada fonte
 vira uma seção própria na home e um grupo na barra lateral.
 
+**Não precisa apontar exato.** O volume que você escolhe quase sempre fica um ou
+dois níveis acima do acervo de verdade — você pluga o HD e escolhe
+`/Volumes/MeuHD`, mas os filmes estão em `/Volumes/MeuHD/TicianoFlix/Terror/...`.
+Ao cadastrar, o TicianoFlix procura a pasta que realmente tem a estrutura
+`Gênero / Filme / vídeo` (até dois níveis abaixo) e ancora a fonte ali, avisando
+qual pasta escolheu. Se houver dois acervos irmãos, ele fica com o maior — o
+outro você cadastra como uma segunda fonte.
+
 Uma vez indexado, o filme local se comporta como qualquer outro: busca, A-Z,
 continuar assistindo, legendas, metadados NFO e Chromecast funcionam igual — só
 que os bytes saem direto do disco, sem passar pelo rclone.
