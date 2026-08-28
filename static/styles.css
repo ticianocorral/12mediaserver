@@ -240,19 +240,11 @@
     color: rgba(255,255,255,0.35);
     border-top: 1px solid rgba(255,255,255,0.06);
     margin-top: 4px;
-  }
-  .sidebar-cache-usage .rclone-link {
-    margin-left: 6px;
-    font-size: 12px;
-    text-decoration: none;
+    /* Virou o atalho do gerenciador de cache: o numero ja era sobre o cache. */
     cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.15s;
+    transition: color var(--transition);
   }
-  .sidebar-cache-usage .rclone-link:hover {
-    opacity: 1;
-  }
-
+  .sidebar-cache-usage:hover { color: rgba(255,255,255,0.7); }
   /* ====== MAIN CONTENT ====== */
   .main {
     padding-top: 28px;
@@ -728,6 +720,13 @@
   .rclone-action-btn:hover { background: rgba(255,255,255,0.15); }
   .rclone-action-btn.primary { background: var(--accent); color: #fff; }
   .rclone-action-btn.primary:hover { filter: brightness(1.15); }
+
+  .cache-manager-actions {
+    display: flex; justify-content: flex-end;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .cache-manager-actions .rclone-action-btn { flex: 0 0 auto; min-width: 0; }
 
   /* ===== Fontes do acervo (Drive, HD externo, pendrive, pasta local) ===== */
   .src-row { align-items: flex-start; flex-wrap: wrap; }

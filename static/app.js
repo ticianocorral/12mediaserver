@@ -1987,6 +1987,29 @@
     applySubtitleSize();
   });
 
+  // ==================== AJUSTES (hub) ====================
+  // Os painéis de manutenção eram sete botões no rodapé da sidebar, cada um
+  // usado uma vez a cada muito tempo. Agora moram atrás de um item só; o que
+  // fica visível é o que se usa toda hora (Atualizar e Sair).
+  function openSettingsModal() {
+    document.getElementById('settingsModal').classList.add('active');
+  }
+
+  function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('active');
+  }
+
+  // Sai do hub e abre o painel escolhido — dois modais abertos ao mesmo tempo
+  // deixariam o fundo escurecido duas vezes.
+  function fromSettings(abrir) {
+    closeSettingsModal();
+    abrir();
+  }
+
+  document.getElementById('settingsModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSettingsModal();
+  });
+
   // ==================== FONTES ====================
   // Prefixo logico das fontes locais (espelha LOCAL_ROOT no servidor).
   const LOCAL_ROOT = '/Local';
@@ -2238,9 +2261,9 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          ['usersBtn', 'sourcesBtn'].forEach(id => {
-            const btn = document.getElementById(id);
-            if (btn) btn.style.display = '';
+          ['settingsUsers', 'settingsSources'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = '';
           });
         }
       }
@@ -2457,6 +2480,13 @@
       if (d.status === 'ok') {
         showToast('🧹 Cache limpo com sucesso!', 'success');
         document.getElementById('cacheUsageSize').textContent = '0B';
+        // O botao agora fica dentro do gerenciador: se ele estiver aberto,
+        // a lista precisa refletir que nada esta mais baixado.
+        if (document.getElementById('cacheManagerModal').classList.contains('active')) {
+          _cmMovies.forEach(m => { if (!isLocalPath(m.path)) m.cached = false; });
+          _renderCacheList(_cmMovies);
+          _updateCacheStats();
+        }
         loadPath(currentPath || '');
       } else {
         showToast('Erro ao limpar cache: ' + (d.error || 'desconhecido'), 'error');

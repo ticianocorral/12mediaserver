@@ -20,12 +20,12 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
 - **👥 Painel de contas** — administradores adicionam, removem, promovem e redefinem senhas
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
-- **📁 Scan manual** de cada fonte, com proteção contra scans concorrentes
+- **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha. Protegido contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
 - **📦 Baixados do Drive** — filmes da nuvem 100% cacheados ganham selo e seção própria na home (filmes de fonte local não entram: eles já estão no disco)
-- **🧹 Limpar Cache** — botão para remover vídeos baixados do cache VFS
+- **🧹 Limpar cache** — apaga os vídeos baixados, dentro do próprio gerenciador de cache
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
@@ -63,7 +63,7 @@ Crie um remote chamado `gdrive:` com:
 > avisa enquanto estiver largo. Veja [Acesso ao Google Drive](#acesso-ao-google-drive).
 
 > 💡 Depois de instalado, dá pra configurar pelo próprio TicianoFlix:
-> clique em **☁️ rclone** no menu lateral — ele mostra o status (instalado,
+> **⚙️ Ajustes › ☁️ rclone** no menu lateral — ele mostra o status (instalado,
 > remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
 > oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
 
@@ -143,13 +143,13 @@ conta vira o administrador.
 O código existe para fechar a janela em que qualquer pessoa na sua rede poderia
 criar a conta inicial antes de você — quem não tem acesso ao terminal da máquina
 não passa dessa tela. Depois disso o código não vale mais: contas novas só pelo
-painel **👥 Contas**.
+painel **⚙️ Ajustes › 👥 Contas**.
 
 Feito o login, clique em 🔄 para escanear seu Drive.
 
 ### 4. Criar contas para a casa
 
-No menu lateral, **👥 Contas** (visível apenas para administradores) permite
+Em **⚙️ Ajustes › 👥 Contas** (visível apenas para administradores) dá para
 adicionar pessoas, remover, promover a administrador e redefinir senhas.
 Não existe auto-cadastro: só quem está nessa lista consegue entrar.
 
@@ -196,7 +196,7 @@ TicianoFlix/
 
 ### Fontes locais (HD externo, pendrive, pasta do computador)
 
-O Drive não precisa ser o único acervo. Em **💽 Fontes** (menu lateral, só para
+O Drive não precisa ser o único acervo. Em **⚙️ Ajustes › 💽 Fontes do acervo** (só para
 administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
 
 - os **volumes conectados** aparecem prontos pra adicionar com um clique
@@ -354,7 +354,7 @@ Você não precisa lembrar disso sozinho:
 
 - **Os instaladores perguntam.** Se o remote estiver mais largo que o
   necessário, eles oferecem corrigir na hora.
-- **O painel avisa.** Em **☁️ rclone**, a linha *Acesso ao Google Drive* mostra
+- **O painel avisa.** Em **⚙️ Ajustes › ☁️ rclone**, a linha *Acesso ao Google Drive* mostra
   o nível atual e, quando está largo, explica o risco e dá o comando.
 
 Para rodar manualmente, a qualquer momento:
@@ -472,7 +472,7 @@ images/ · subs/    # Cache de pôsteres e legendas
 
 ### Limpar cache de vídeos
 
-Clique em **🧹 Limpar Cache** na sidebar ou execute:
+Abra **⚙️ Ajustes › 📦 Cache offline** e clique em **Limpar tudo**, ou execute:
 
 ```bash
 rm -rf ~/.cache/rclone/vfs/
