@@ -171,17 +171,28 @@ def validate_root(raw_root):
 def add_source(name, raw_root):
     """Cadastra uma fonte local. Devolve (fonte, erro).
 
-    A pasta escolhida costuma ficar um ou dois niveis acima do acervo (o volume
-    "/Volumes/MeuHD" com os filmes em "MeuHD/TicianoFlix/Genero/Filme"). Como o
-    scanner le a estrutura em posicao fixa, ancoramos a fonte onde os filmes
-    realmente estao — senao o catalogo sairia vazio sem explicacao.
+    A fonte precisa conter uma pasta chamada "TicianoFlix" — a mesma convencao
+    do Drive. Ela pode estar na pasta escolhida ou ate dois niveis abaixo, ja
+    que o volume que o usuario seleciona costuma ficar acima do acervo
+    ("/Volumes/MeuHD" com os filmes em "MeuHD/Filmes/TicianoFlix/...").
+
+    Sem essa pasta o cadastro e recusado: o scanner le a estrutura em posicao
+    fixa, entao aceitar uma pasta qualquer produziria um catalogo vazio sem
+    explicacao.
     """
     root, err = validate_root(raw_root)
     if err:
         return None, err
-    chosen = _localfs.find_catalog_root(root)
-    descended = chosen != root
-    root = chosen
+
+    catalog = _localfs.find_catalog_dir(root)
+    if catalog is None:
+        return None, (
+            f'Nao encontrei uma pasta "TicianoFlix" em {root}. '
+            "Crie uma pasta com esse nome e ponha os generos dentro dela "
+            "(TicianoFlix/Terror/Filme (2024)/filme.mkv) — e a mesma organizacao "
+            "do Google Drive.")
+    descended = catalog != root
+    root = catalog
 
     with _lock:
         existing = _load_raw()
@@ -366,7 +377,10 @@ def detect_volumes():
             return
         seen.add(real)
         found.append({"path": str(real), "name": real.name or str(real),
-                      "kind": kind})
+                      "kind": kind,
+                      # Ja tem a pasta TicianoFlix dentro? A UI destaca essas,
+                      # para o usuario nao clicar no que vai ser recusado.
+                      "pronto": _localfs.has_catalog_dir(real)})
 
     for kind, base in _candidate_dirs():
         if kind == "volume:direct":
@@ -382,4 +396,6 @@ def detect_volumes():
         for entry in entries:
             offer(entry, "volume")
 
+    # As que ja estao prontas primeiro.
+    found.sort(key=lambda c: (not c["pronto"], c["name"].lower()))
     return found

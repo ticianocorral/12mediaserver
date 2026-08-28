@@ -204,17 +204,29 @@ administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
   Windows), e as pastas de mídia do usuário (`~/Movies`, `~/Videos`) também;
 - ou cole o caminho à mão, se preferir.
 
-A pasta precisa ter **a mesma estrutura do Drive** — `Gênero / Filme (ano) /
-arquivo`, com o `.nfo` e o `poster.jpg` dentro da pasta do filme. Cada fonte
-vira uma seção própria na home e um grupo na barra lateral.
+A regra é **uma só, igual à do Drive: tem que existir uma pasta chamada
+`TicianoFlix`**, com os gêneros dentro dela.
 
-**Não precisa apontar exato.** O volume que você escolhe quase sempre fica um ou
-dois níveis acima do acervo de verdade — você pluga o HD e escolhe
-`/Volumes/MeuHD`, mas os filmes estão em `/Volumes/MeuHD/TicianoFlix/Terror/...`.
-Ao cadastrar, o TicianoFlix procura a pasta que realmente tem a estrutura
-`Gênero / Filme / vídeo` (até dois níveis abaixo) e ancora a fonte ali, avisando
-qual pasta escolheu. Se houver dois acervos irmãos, ele fica com o maior — o
-outro você cadastra como uma segunda fonte.
+```
+/Volumes/MeuHD/
+└── TicianoFlix/            ← o nome é obrigatório
+    ├── Terror/
+    │   └── Alien (1979)/
+    │       ├── Alien (1979).mkv
+    │       ├── Alien (1979).nfo
+    │       └── poster.jpg
+    └── Ficção Científica/
+```
+
+**Não precisa apontar exato.** O volume que você escolhe quase sempre fica acima
+do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
+`/Volumes/MeuHD/Filmes/TicianoFlix/...`. O TicianoFlix procura essa pasta na
+raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
+encontrou. Maiúsculas não importam (`ticianoflix` serve).
+
+Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar —
+em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.
+No modal, os volumes detectados que já têm a pasta aparecem marcados com ✓.
 
 Uma vez indexado, o filme local se comporta como qualquer outro: busca, A-Z,
 continuar assistindo, legendas, metadados NFO e Chromecast funcionam igual — só

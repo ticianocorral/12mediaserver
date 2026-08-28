@@ -2086,22 +2086,31 @@
 
     if (candidates.length > 0) {
       html += '<div class="user-section-title">Detectadas neste computador</div>'
-        + '<div class="src-hint">Clique para adicionar ao acervo.</div>'
+        + '<div class="src-hint">As marcadas com <svg class="icon-svg"><use href="#i-check"></use></svg> '
+        + 'já têm uma pasta <b>TicianoFlix</b> dentro e entram na hora.</div>'
         + '<div class="src-detected">';
       candidates.forEach(c => {
         const icon = c.kind === 'volume' ? '#i-hard-drive' : '#i-folder';
-        html += '<button class="src-detected-btn" title="' + escHtml(c.path) + '" '
+        // Sem a pasta TicianoFlix dentro, o cadastro seria recusado — melhor
+        // deixar isso visivel antes do clique.
+        const dica = c.pronto ? c.path : c.path + ' — sem uma pasta TicianoFlix dentro';
+        html += '<button class="src-detected-btn' + (c.pronto ? ' pronto' : '') + '" '
+          + 'title="' + escHtml(dica) + '" '
           + 'onclick="addSource(decodeURIComponent(\'' + enc(c.name) + '\'), decodeURIComponent(\'' + enc(c.path) + '\'))">'
           + '<svg class="icon-svg"><use href="' + icon + '"></use></svg> ' + escHtml(c.name)
-          + ' <svg class="icon-svg"><use href="#i-plus"></use></svg></button>';
+          + (c.pronto
+              ? ' <svg class="icon-svg"><use href="#i-check"></use></svg>'
+              : ' <svg class="icon-svg"><use href="#i-plus"></use></svg>')
+          + '</button>';
       });
       html += '</div>';
     }
 
     html += '<div class="user-section-title">Adicionar uma pasta</div>'
-      + '<div class="src-hint">A pasta precisa estar organizada como o Drive: '
-      + '<b>Gênero / Filme (ano) / arquivo</b> — com o <code>.nfo</code> e o '
-      + '<code>poster.jpg</code> dentro da pasta do filme.</div>'
+      + '<div class="src-hint">A pasta precisa ter uma pasta <b>TicianoFlix</b> dentro '
+      + '(ou até dois níveis abaixo), organizada como no Drive:<br>'
+      + '<code>TicianoFlix / Gênero / Filme (ano) / filme.mkv</code> — com o '
+      + '<code>.nfo</code> e o <code>poster.jpg</code> junto do vídeo.</div>'
       + '<div class="user-form">'
       + '<input type="text" id="srcName" placeholder="Nome (ex.: HD Externo)" autocomplete="off">'
       + '<input type="text" id="srcPath" placeholder="Caminho (ex.: /Volumes/MeuHD/Filmes)" autocomplete="off">'

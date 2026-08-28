@@ -757,6 +757,9 @@
     font-family: inherit;
   }
   .src-detected-btn:hover { background: rgba(255,255,255,0.10); border-style: solid; }
+  .src-detected-btn.pronto {
+    border-style: solid; border-color: rgba(76,175,80,0.45); color: #a5d6a7;
+  }
 
   /* Secao por fonte na home */
   .src-section-badge {

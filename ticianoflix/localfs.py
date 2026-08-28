@@ -105,9 +105,19 @@ def list_tree(root):
     return entries
 
 
-# Quantas subpastas olhar por nivel ao procurar a raiz do acervo. Um HD com
+# Nome fixo da pasta que marca a raiz de um acervo, igual ao do Drive. Exigir
+# esse nome torna o cadastro previsivel: nao ha adivinhacao de estrutura nem
+# desempate entre pastas parecidas.
+CATALOG_DIR_NAME = "ticianoflix"
+
+# Quantas subpastas olhar por nivel ao procurar a pasta do acervo. Um HD com
 # centenas de pastas soltas nao pode transformar o cadastro numa varredura longa.
 MAX_PROBE_DIRS = 300
+
+# Quantos niveis abaixo da pasta escolhida procurar. O volume que o usuario
+# escolhe costuma ficar um ou dois niveis acima do acervo:
+# "/Volumes/MeuHD" -> "/Volumes/MeuHD/Filmes/TicianoFlix".
+MAX_PROBE_DEPTH = 2
 
 
 def _subdirs(base, limit=MAX_PROBE_DIRS):
@@ -130,63 +140,35 @@ def _subdirs(base, limit=MAX_PROBE_DIRS):
     return out
 
 
-def _has_video(folder):
-    try:
-        with os.scandir(folder) as it:
-            for entry in it:
-                if entry.is_file(follow_symlinks=False) and \
-                        Path(entry.name).suffix.lower() in VIDEO_EXTENSIONS:
-                    return True
-    except (OSError, PermissionError):
-        pass
-    return False
+def find_catalog_dir(root, max_descend=MAX_PROBE_DEPTH):
+    """Acha a pasta "TicianoFlix" em `root` ou ate `max_descend` niveis abaixo.
 
+    Devolve None quando nao existe — o cadastro entao e recusado, em vez de
+    aceitar uma pasta qualquer e produzir um catalogo vazio sem explicacao.
 
-def count_movies(base):
-    """Quantas pastas `base/<genero>/<filme>/` tem video dentro.
-
-    E a mesma forma que o scanner espera; serve de nota para decidir onde
-    ancorar a fonte.
-    """
-    total = 0
-    for genre in _subdirs(base):
-        for movie in _subdirs(genre):
-            if _has_video(movie):
-                total += 1
-    return total
-
-
-def find_catalog_root(root, max_descend=2):
-    """Acha, dentro de `root`, a pasta que realmente e a raiz do acervo.
-
-    Os volumes e pastas que o usuario escolhe costumam ficar um ou dois niveis
-    acima do acervo de verdade — "/Volumes/MeuHD" com os filmes em
-    "/Volumes/MeuHD/TicianoFlix/Genero/Filme". Como o scanner le a estrutura em
-    posicao fixa (genero a 1 nivel, filme a 2), cadastrar o volume cru daria um
-    catalogo vazio sem explicacao. Aqui a raiz e ancorada onde os filmes estao.
-
-    Devolve `root` quando ja e a raiz certa ou quando nada e encontrado.
+    A comparacao ignora maiusculas: o usuario nao deve tropecar em "Ticianoflix".
     """
     root = Path(root)
-    if count_movies(root) > 0:
+    if root.name.lower() == CATALOG_DIR_NAME:
         return root
 
     level = [root]
     for _ in range(max_descend):
-        best_count, best_dir = 0, None
-        nxt = []
+        proximo = []
         for parent in level:
             for sub in _subdirs(parent):
-                nxt.append(sub)
-                n = count_movies(sub)
-                if n > best_count:
-                    best_count, best_dir = n, sub
-        if best_dir is not None:
-            return best_dir
-        if not nxt:
+                if sub.name.lower() == CATALOG_DIR_NAME:
+                    return sub
+                proximo.append(sub)
+        if not proximo:
             break
-        level = nxt
-    return root
+        level = proximo
+    return None
+
+
+def has_catalog_dir(root):
+    """Atalho de leitura: essa pasta ja esta pronta pra virar fonte?"""
+    return find_catalog_dir(root) is not None
 
 
 def read_bytes(path, max_bytes):
