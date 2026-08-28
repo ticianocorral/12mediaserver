@@ -332,6 +332,21 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._start_session(target)
         self._send_json({"status": "ok"})
 
+    def _media_token_ok(self):
+        """True quando a requisicao traz um token de midia valido para o proprio
+        arquivo que ela pede.
+
+        E a credencial do Chromecast: ele busca a midia sozinho, sem cookie. O
+        token e assinado por HMAC, vale para um arquivo so e expira em 12h; so
+        e emitido por /api/cast-token, que exige sessao e Origin local.
+        """
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path not in TOKEN_PATHS:
+            return False
+        params = urllib.parse.parse_qs(parsed.query)
+        return _valid_media_token(params.get("path", [""])[0],
+                                  params.get("t", [""])[0])
+
     def _security_gate(self):
         """Bloqueia DNS rebinding (Host publico) e leitura cross-site (Origin de
         terceiro). Chromecast e <video> nao mandam Origin e passam normalmente."""
@@ -339,9 +354,41 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_error("Host nao permitido", 403)
             return False
         if not _origin_allowed(self.headers.get("Origin")):
-            self._send_error("Origem nao permitida", 403)
-            return False
+            # O receiver do Chromecast busca a faixa de legenda COM CORS — e
+            # exigencia do Cast para faixas de texto — entao manda um Origin de
+            # terceiro (ou "null"). O video passa porque elemento de midia nao
+            # manda Origin; a legenda batia aqui e morria em 403.
+            # Liberar so faz sentido porque nessas rotas quem autoriza e o token
+            # por arquivo, nao a origem: o cookie de sessao e SameSite=Lax e nem
+            # viaja numa requisicao cross-site.
+            if not self._media_token_ok():
+                self._send_error("Origem nao permitida", 403)
+                return False
         return True
+
+    def do_OPTIONS(self):
+        """Preflight de CORS.
+
+        O receiver do Chromecast faz um OPTIONS antes de buscar a legenda. Sem
+        do_OPTIONS o BaseHTTPRequestHandler nem responde, e a faixa some sem
+        erro visivel.
+        """
+        self._reset_request_state()
+        if not _host_allowed(self.headers.get("Host")):
+            self._send_error("Host nao permitido", 403)
+            return
+        origin = self.headers.get("Origin")
+        if (urllib.parse.urlparse(self.path).path not in TOKEN_PATHS
+                or not (_origin_allowed(origin) or self._media_token_ok())):
+            self._send_error("Origem nao permitida", 403)
+            return
+        self.send_response(204)
+        self._send_media_cors()
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Range, Content-Type")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _require_write_origin(self):
         """Operacoes que alteram estado exigem Origin local explicito — e o que
@@ -355,13 +402,22 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
     def _send_media_cors(self):
         """CORS restrito: '*' apenas quando nao ha Origin (Chromecast, <video>,
-        download direto). Com Origin, ecoa somente se for local."""
+        download direto). Com Origin, ecoa se for local — ou se o token de midia
+        autorizar, que e o caso da legenda buscada pelo receiver do Cast."""
         origin = self.headers.get("Origin")
         if not origin:
             self.send_header("Access-Control-Allow-Origin", "*")
         elif _origin_allowed(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
+        elif self._media_token_ok():
+            # "null" nao pode ser ecoado; vira "*", que aqui nao concede nada
+            # alem do que o token assinado ja concedeu.
+            self.send_header("Access-Control-Allow-Origin",
+                             "*" if origin == "null" else origin)
+            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Expose-Headers",
+                         "Content-Length, Content-Range, Accept-Ranges")
 
     def _send_exception(self, e, status=500):
         """Detalhe completo no log do servidor, mensagem generica para o cliente."""

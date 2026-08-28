@@ -1403,13 +1403,27 @@
       track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      mediaInfo.activeTrackIds = [1];
+      // Estilo explicito: sem ele alguns receivers desenham a legenda com
+      // fundo transparente e ela some em cena clara.
+      var estilo = new chrome.cast.media.TextTrackStyle();
+      estilo.backgroundColor = '#00000099';
+      estilo.foregroundColor = '#FFFFFFFF';
+      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.OUTLINE;
+      estilo.edgeColor = '#000000FF';
+      estilo.fontScale = 1.0;
+      mediaInfo.textTrackStyle = estilo;
       console.log('[Cast] Subtitle URL:', subUrl);
     } else {
       console.log('[Cast] No subtitle track available (currentSubtitlePath is null)');
     }
 
     var request = new chrome.cast.media.LoadRequest(mediaInfo);
+    // activeTrackIds vive no LoadRequest, nao no MediaInfo — estava no lugar
+    // errado, e por isso a legenda dependia inteiramente do editTracksInfo
+    // depois do load.
+    if (currentSubPath) {
+      request.activeTrackIds = [1];
+    }
     // Start from current position if the video has played
     if (video.currentTime > 0) {
       request.currentTime = video.currentTime;
