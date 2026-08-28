@@ -404,22 +404,10 @@
     document.getElementById('heroDesc').textContent = '';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
-    const folders = data.folders || [];
-    const totalGenres = folders.length;
-
+    // A home tem tres secoes e so: novidades, o que ficou pela metade e o que
+    // esta baixado. Navegar por fonte e por genero e papel da barra lateral,
+    // que ja agrupa os generos pela fonte dona.
     container.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px">
-        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
-          <div style="font-size:28px;font-weight:800">${totalGenres}</div>
-          <div style="font-size:13px;color:var(--text3)">Gêneros</div>
-        </div>
-        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-disc"></use></svg></div>
-          <div style="font-size:28px;font-weight:800" id="totalMovieCount">…</div>
-          <div style="font-size:13px;color:var(--text3)">Filmes</div>
-        </div>
-      </div>
       <div class="genre-section">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Últimos Adicionados</div>
@@ -428,7 +416,6 @@
           <div class="loading"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
-      <div id="sourcesHome"></div>
       <div class="genre-section" id="continueWatchingSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
           <div class="genre-title"><svg class="icon-svg"><use href="#i-play"></use></svg> Continuar Assistindo</div>
@@ -441,8 +428,6 @@
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
-
-    renderSourceSections(data);
 
     // Fetch recent movies sorted by actual creation time (from server)
     cachedFetch('/api/recent-movies?limit=30').then(movies => {
@@ -458,9 +443,6 @@
       }
       // Show up to 7 newest
       const recent = movies.slice(0, 7);
-      // Update total count in stats card
-      var countEl = document.getElementById('totalMovieCount');
-      if (countEl) countEl.textContent = movies.length;
 
       let html = '';
       recent.forEach((m, idx) => {
@@ -2017,52 +1999,6 @@
   function isLocalPath(path) {
     const p = '/' + String(path || '').replace(/^\/+/, '');
     return p === LOCAL_ROOT || p.indexOf(LOCAL_ROOT + '/') === 0;
-  }
-
-  // Uma secao por fonte na home: fica visivel o que some quando o HD sai.
-  function renderSourceSections(data) {
-    const host = document.getElementById('sourcesHome');
-    if (!host) return;
-    const groups = groupGenresBySource(data);
-    const sources = data.sources || [];
-    // Uma fonte so (o caso de quem nunca cadastrou nada): a sidebar ja da
-    // conta, nao vale gastar uma secao inteira da home com isso.
-    if (groups.length === 0 || sources.length < 2) { host.innerHTML = ''; return; }
-
-    let html = '';
-    groups.forEach(grp => {
-      const src = grp.source;
-      const name = src ? src.name : 'Outros';
-      const offline = src && src.online === false;
-      html += '<div class="genre-section">'
-        + '<div class="genre-header" style="cursor:default;border:none">'
-        + '<div class="genre-title">' + sourceIcon(src ? src.kind : 'local') + ' ' + escHtml(name)
-        + '<span class="genre-count">(' + grp.items.length + (grp.items.length === 1 ? ' gênero' : ' gêneros') + ')</span>'
-        + (offline ? '<span class="src-section-badge">desconectada</span>' : '')
-        + '</div></div><div class="src-pills">';
-      grp.items.forEach(g => {
-        const gname = g.Name || '';
-        html += '<button class="src-pill" onclick="loadPath(decodeURIComponent(\'' + enc('/' + g.Path) + '\'))">'
-          + genreIcon(gname) + ' ' + escHtml(gname) + '</button>';
-      });
-      html += '</div></div>';
-    });
-
-    // Fontes cadastradas que ainda nao tem genero indexado (recem-adicionada,
-    // ou desconectada antes do primeiro scan) — senao ela sumiria da home.
-    const withGenres = {};
-    groups.forEach(g => { withGenres[g.id] = true; });
-    sources.forEach(src => {
-      if (withGenres[src.id]) return;
-      html += '<div class="genre-section">'
-        + '<div class="genre-header" style="cursor:default;border:none">'
-        + '<div class="genre-title">' + sourceIcon(src.kind) + ' ' + escHtml(src.name)
-        + (src.online === false
-            ? '<span class="src-section-badge">desconectada</span>'
-            : '<span class="genre-count">(sem filmes indexados)</span>')
-        + '</div></div></div>';
-    });
-    host.innerHTML = html;
   }
 
   function openSourcesModal() {

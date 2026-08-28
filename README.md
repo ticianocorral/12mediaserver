@@ -20,7 +20,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
 - **👥 Painel de contas** — administradores adicionam, removem, promovem e redefinem senhas
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
-- **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha. Protegido contra scans concorrentes
+- **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
@@ -228,6 +228,8 @@ Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar 
 em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.
 No modal, os volumes detectados que já têm a pasta aparecem marcados com ✓.
 
+Cada fonte vira um grupo próprio na barra lateral, com os gêneros dela embaixo.
+
 Uma vez indexado, o filme local se comporta como qualquer outro: busca, A-Z,
 continuar assistindo, legendas, metadados NFO e Chromecast funcionam igual — só
 que os bytes saem direto do disco, sem passar pelo rclone.
@@ -237,7 +239,7 @@ que os bytes saem direto do disco, sem passar pelo rclone.
 | Situação | O que acontece |
 |---|---|
 | HD desconectado no momento do scan | A fonte é pulada e **o catálogo dela é preservado** — nada é apagado. Ela aparece marcada como *desconectada*. |
-| Filme numa fonte local | Já conta como disponível offline. Não há o que baixar pro cache, e o botão de apagar cache não aparece. |
+| Filme numa fonte local | Ganha o selo **Local**. Não há o que baixar pro cache, e ele não entra em *Baixados do Drive* — nunca foi baixado. |
 | Remover uma fonte | Sai do catálogo. **Os arquivos no disco não são tocados.** |
 | Backup restaurado de outra máquina | As fontes daquela máquina são podadas do catálogo no boot, já que os caminhos não existem aqui. |
 
