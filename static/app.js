@@ -1538,14 +1538,23 @@
       track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      // Estilo explicito: sem ele alguns receivers desenham a legenda com
-      // fundo transparente e ela some em cena clara.
+      // Legenda no estilo Apple TV: texto branco sem contorno, numa caixa
+      // escura translucida de cantos arredondados que abraca o texto.
+      // O contorno preto (edgeType OUTLINE) e o visual "Classic", nao o da
+      // Apple — ali a legibilidade vem da caixa, nao da borda das letras.
       var estilo = new chrome.cast.media.TextTrackStyle();
-      estilo.backgroundColor = '#00000099';
       estilo.foregroundColor = '#FFFFFFFF';
-      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.OUTLINE;
-      estilo.edgeColor = '#000000FF';
+      estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
+      estilo.fontStyle = chrome.cast.media.TextTrackFontStyle.NORMAL;
       estilo.fontScale = 1.0;
+      // Sem borda nas letras.
+      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.NONE;
+      // A caixa e a "window" (envolve o bloco todo), nao o backgroundColor
+      // (que pinta atras de cada linha e daria um retangulo duro).
+      estilo.backgroundColor = '#00000000';
+      estilo.windowType = chrome.cast.media.TextTrackWindowType.ROUNDED_CORNERS;
+      estilo.windowColor = '#000000B3';   // preto a ~70%
+      estilo.windowRoundedCornerRadius = 12;
       mediaInfo.textTrackStyle = estilo;
       console.log('[Cast] Subtitle URL:', subUrl);
     } else {
