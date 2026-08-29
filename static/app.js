@@ -1555,7 +1555,7 @@
       // (que pinta atras de cada linha e daria um retangulo duro).
       estilo.backgroundColor = '#00000000';
       estilo.windowType = chrome.cast.media.TextTrackWindowType.ROUNDED_CORNERS;
-      estilo.windowColor = '#000000B3';   // preto a ~70%
+      estilo.windowColor = '#000000D9';   // preto a ~85%
       estilo.windowRoundedCornerRadius = 12;
       mediaInfo.textTrackStyle = estilo;
       console.log('[Cast] Subtitle URL:', subUrl);
