@@ -77,7 +77,7 @@
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 4000;
+    z-index: 600;    /* toast */
     background: var(--surface);
     color: var(--text);
     padding: 12px 24px;
@@ -111,14 +111,62 @@
   .breadcrumb a:hover { color: var(--text); }
   .breadcrumb .sep { color: var(--text3); }
 
-  /* ====== SIDEBAR FIXA ====== */
+  /* ====== BARRA SUPERIOR E GAVETA (celular) ======
+     Escondidas no desktop; a media query de 768px liga as duas. */
+  .topbar {
+    display: none;
+    position: fixed; top: 0; left: 0; right: 0; height: 54px;
+    align-items: center; justify-content: space-between; gap: 8px;
+    padding: 0 6px;
+    background: var(--bg2);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    z-index: 200;
+  }
+  .topbar-btn {
+    flex: 0 0 auto;
+    /* 44px e o minimo confortavel para o dedo */
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: none; color: var(--text);
+    font-size: 21px; cursor: pointer; border-radius: var(--radius);
+  }
+  .topbar-btn:active { background: rgba(255,255,255,0.10); }
+  .topbar-logo {
+    font-size: 19px; font-weight: 800; color: var(--primary);
+    letter-spacing: -.02em; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sidebar-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+  }
+  .sidebar-backdrop.ativo { display: block; }
+
+  /* ====== ORDEM DE EMPILHAMENTO ======
+     Uma escala so, no lugar dos valores soltos que existiam (1500, 3001, 3002,
+     3003, 3004, 4000). O que motivou: a ficha do filme estava em 1500 e a barra
+     lateral em 3001, entao a barra pintava por cima dela. No desktop passava
+     despercebido — ela so cobre a faixa esquerda; no celular, onde a barra vira
+     gaveta e ocupa a tela toda, engolia a ficha inteira.
+
+       100  fundo escurecido da gaveta
+       200  barra lateral e barra superior — acima do fundo, senao ele comeria
+            os toques nos itens da gaveta (a gaveta aparecia mas nao clicava)
+       300  ficha do filme
+       400  player
+       500  modais
+       600  toast
+  */
   .sidebar {
+    transition: transform 0.22s ease;
     position: fixed;
     top: 0;
     left: 0;
     width: 220px;
     height: 100vh;
-    z-index: 3001;
+    z-index: 200;    /* barra lateral */
     background: var(--bg2);
     border-right: 1px solid rgba(255,255,255,0.06);
     display: flex;
@@ -629,7 +677,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 3004;
+    z-index: 500;    /* modais */
     background: rgba(0,0,0,0.75);
     backdrop-filter: blur(6px);
     animation: fadeIn 0.25s ease;
@@ -941,7 +989,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 3003;
+    z-index: 400;    /* player */
     background: rgba(0,0,0,0.92);
     backdrop-filter: blur(4px);
     animation: fadeIn 0.3s ease;
@@ -1282,7 +1330,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 1500;
+    z-index: 300;    /* ficha do filme */
     background: rgba(0,0,0,0.95);
     backdrop-filter: blur(8px);
     animation: fadeIn 0.3s ease;
@@ -1296,7 +1344,7 @@
     top: 0;
     left: 220px;
     right: 0;
-    z-index: 3002;
+    z-index: 10;     /* relativo a ficha, que ja e um contexto de empilhamento */
     padding: 16px 24px;
     font-size: 13px;
     background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
@@ -1555,6 +1603,14 @@
     background: rgba(102,187,106,0.08);
   }
 
+  /* Menu "mais" do player.
+     No desktop o wrapper e transparente ao layout (display:contents): os botoes
+     secundarios ficam na barra exatamente como sempre estiveram. No celular a
+     media query o transforma num menu suspenso — sem remontar DOM e sem id
+     duplicado, que e o que aconteceria se os botoes fossem copiados. */
+  .ctrl-more { display: none; }
+  .player-more { display: contents; }
+
   /* ====== RESPONSIVE ====== */
   @media (max-width: 1024px) {
     .main { padding-left: 24px; padding-right: 24px; }
@@ -1564,6 +1620,21 @@
     .movie-info-actions { justify-content: center; }
   }
   @media (max-width: 768px) {
+    /* ── Barra lateral vira gaveta ──────────────────────────
+       Ela era fixa em 220px sempre. Num aparelho de 375px isso deixava 155px
+       de conteudo — os cartoes cortados e o grid virando uma tira. */
+    .topbar { display: flex; }
+    .sidebar {
+      width: min(280px, 82vw);
+      transform: translateX(-100%);
+      box-shadow: none;
+    }
+    .sidebar.aberta { transform: none; box-shadow: 2px 0 24px rgba(0,0,0,0.5); }
+    .main {
+      margin-left: 0;
+      padding-top: 68px;   /* 54 da barra + respiro */
+    }
+
     .main { padding-left: 16px; padding-right: 16px; }
     .logo { font-size: 22px; }
     .hero { height: 200px; border-radius: var(--radius); margin-bottom: 24px; }
@@ -1576,6 +1647,70 @@
     .movie-info-content { padding: 0 20px; margin: 40px auto; }
     .movie-info-poster { flex: 0 0 160px; }
     .movie-info-details h1 { font-size: 26px; }
+
+    /* ── Controles do player em duas faixas ──────────────────
+       Dez botoes numa linha so pediam 654px e tinham 336: volume, velocidade,
+       legenda, Cast e tela cheia ficavam fora da tela. O Cast era o pior a se
+       perder — o celular e o aparelho de onde mais se transmite. */
+    .player-controls { padding: 30px 10px 10px; }
+    .controls-main { flex-wrap: wrap; gap: 6px; }
+    .controls-left, .controls-right {
+      flex: 1 1 100%;
+      justify-content: center;
+    }
+    /* Os secundarios nao sao escondidos um a um: eles vivem dentro do
+       .player-more, que aqui deixa de ser transparente ao layout e vira um
+       menu suspenso. Assim nao ha id duplicado nem elemento remontado. */
+    .controls-right .file-size { display: none; }
+    .player-controls .ctrl-btn { min-width: 44px; min-height: 44px; }
+    .time-display { font-size: 12px; }
+    .ctrl-more { display: inline-flex !important; }
+    .player-more {
+      display: none;
+      position: absolute; right: 10px; bottom: 100%;
+      margin-bottom: 8px; padding: 8px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      flex-direction: column; gap: 4px; min-width: 200px;
+    }
+    .player-more.ativo { display: flex; }
+    .player-more .ctrl-btn {
+      width: 100%; justify-content: flex-start; gap: 10px;
+      padding: 10px 12px; min-height: 44px; border-radius: var(--radius);
+    }
+    .player-more .ctrl-btn:active { background: rgba(255,255,255,0.10); }
+    .player-more .volume-wrap { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
+    /* A trilha do volume nasce com width:0 e so cresce no :hover — que nao
+       existe em tela de toque. Sem isto o controle fica com largura zero. */
+    .player-more .volume-wrap .volume-slider {
+      width: auto; flex: 1 1 auto; min-width: 110px; height: 6px;
+    }
+    /* Polegar maior: 12px e dificil de pegar com o dedo. */
+    .player-more .volume-slider::-webkit-slider-thumb { width: 18px; height: 18px; }
+    .player-more .volume-slider::-moz-range-thumb { width: 18px; height: 18px; }
+    /* A barra de progresso: o polegar dela e opacity:0 e so aparece no
+       :hover. Em toque ficava invisivel — nao dava para saber onde arrastar. */
+    .seek-bar { height: 6px; }
+    .seek-bar::-webkit-slider-thumb { width: 16px; height: 16px; opacity: 1; }
+    .seek-bar::-moz-range-thumb { width: 16px; height: 16px; opacity: 1; }
+    .controls-progress { padding: 6px 0; }
+
+    /* Painel de transmissao: cartaz menor, para caber com os controles */
+    .casting-poster { width: 92px; max-height: 138px; margin-bottom: 10px; }
+    .casting-title { font-size: 16px; }
+
+    /* Estatisticas da home: 4 cartoes numa coluna empurrariam os filmes
+       para muito abaixo da dobra */
+    .home-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .home-stat { padding: 14px 10px; }
+    .home-stat-num { font-size: 21px; }
+
+    /* Formulario de fontes: nome e caminho lado a lado nao cabem */
+    .user-form input[type=text], .user-form input[type=password] { flex: 1 1 100%; }
+    .user-form .user-btn { width: 100%; }
+    .src-row { gap: 8px; }
   }
   @media (max-width: 480px) {
     .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }

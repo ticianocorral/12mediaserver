@@ -30,7 +30,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
 - **🔍 Busca** por título com debounce
-- **📱 Responsivo** — funciona no celular também
+- **📱 Responsivo de verdade** — no celular a barra lateral vira gaveta, os controles do player se reorganizam em duas faixas (nada de botão fora da tela) e tudo responde a toque
 - **🔄 Serviço systemd** — inicia automaticamente no login
 - **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)

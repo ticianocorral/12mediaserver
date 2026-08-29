@@ -37,6 +37,7 @@
     <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="9" x2="7" y2="9"/><line x1="2" y1="15" x2="7" y2="15"/><line x1="17" y1="9" x2="22" y2="9"/><line x1="17" y1="15" x2="22" y2="15"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
     <symbol id="i-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
     <symbol id="i-hard-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
     <symbol id="i-unplug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 5.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
@@ -114,6 +115,21 @@
 
   <!-- ====== TOAST NOTIFICATION ====== -->
   <div class="toast" id="toast"></div>
+
+  <!-- ====== BARRA SUPERIOR (só no celular) ======
+       A barra lateral vira gaveta no celular e leva a busca junto — ela é o
+       único lugar do app com o campo de pesquisa. Daí a lupa aqui, que abre a
+       gaveta já com o campo em foco. -->
+  <div class="topbar" id="topbar">
+    <button class="topbar-btn" onclick="toggleSidebar()" aria-label="Abrir menu">
+      <svg class="icon-svg"><use href="#i-menu"></use></svg>
+    </button>
+    <span class="topbar-logo" onclick="loadPath('')">TicianoFlix</span>
+    <button class="topbar-btn" onclick="abrirBusca()" aria-label="Buscar filmes">
+      <svg class="icon-svg"><use href="#i-search"></use></svg>
+    </button>
+  </div>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
   <!-- ====== SIDEBAR ====== -->
   <div class="sidebar" id="sidebar">
@@ -391,14 +407,19 @@
           <div class="controls-right">
             <span class="stream-status" id="streamStatus"></span>
             <span class="file-size" id="playerFileSize"></span>
-            <div class="volume-wrap">
-              <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()" title="Mudo"><svg class="icon-svg"><use href="#i-volume"></use></svg></button>
-              <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+            <!-- Secundários: no desktop este wrapper é display:contents e eles
+                 ficam na barra como sempre; no celular vira menu suspenso. -->
+            <div class="player-more" id="playerMore">
+              <div class="volume-wrap">
+                <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()" title="Mudo"><svg class="icon-svg"><use href="#i-volume"></use></svg></button>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+              </div>
+              <button class="ctrl-btn" id="speedBtn" onclick="cycleSpeed()" title="Velocidade">1×</button>
+              <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho legenda">Aa <span id="subtitleSizeLabel">Gde</span></button>
+              <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon" class="subtitle-swatch" style="background:#ffd700"></span> <span id="subtitleColorLabel">Amar</span></button>
             </div>
-            <button class="ctrl-btn" id="speedBtn" onclick="cycleSpeed()" title="Velocidade">1×</button>
             <button class="ctrl-btn ctrl-sub" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Legenda">CC</button>
-            <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho legenda">Aa <span id="subtitleSizeLabel">Gde</span></button>
-            <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon" class="subtitle-swatch" style="background:#ffd700"></span> <span id="subtitleColorLabel">Amar</span></button>
+            <button class="ctrl-btn ctrl-more" onclick="togglePlayerMore(event)" title="Mais controles">⋯</button>
             <button class="ctrl-btn ctrl-cast" id="castBtn" onclick="toggleCast()" title="Transmitir" style="display:none"><svg class="icon-svg"><use href="#i-tv"></use></svg></button>
             <button class="ctrl-btn" onclick="toggleFullscreen()" title="Tela cheia"><svg class="icon-svg"><use href="#i-maximize"></use></svg></button>
           </div>
