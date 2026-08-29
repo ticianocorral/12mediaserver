@@ -1538,10 +1538,9 @@
       track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      // Legenda no estilo Apple TV: texto branco sem contorno, numa caixa
-      // escura translucida de cantos arredondados que abraca o texto.
-      // O contorno preto (edgeType OUTLINE) e o visual "Classic", nao o da
-      // Apple — ali a legibilidade vem da caixa, nao da borda das letras.
+      // Legenda no espirito da Apple TV: texto branco sobre caixa escura, sem
+      // contorno nas letras (contorno e o visual "Classic"). O canto
+      // arredondado nao da pra reproduzir — veja o comentario do backgroundColor.
       var estilo = new chrome.cast.media.TextTrackStyle();
       estilo.foregroundColor = '#FFFFFFFF';
       estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
@@ -1549,14 +1548,17 @@
       // 0.8 do tamanho padrao do receiver: a legenda do Cast sai grande demais
       // numa TV vista da distancia normal de sofa.
       estilo.fontScale = 0.8;
-      // Sem borda nas letras.
-      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.NONE;
-      // A caixa e a "window" (envolve o bloco todo), nao o backgroundColor
-      // (que pinta atras de cada linha e daria um retangulo duro).
-      estilo.backgroundColor = '#00000000';
-      estilo.windowType = chrome.cast.media.TextTrackWindowType.ROUNDED_CORNERS;
-      estilo.windowColor = '#000000D9';   // preto a ~85%
-      estilo.windowRoundedCornerRadius = 12;
+      // A caixa vem do backgroundColor, nao da "window": o receiver padrao do
+      // Google ignora windowType/windowColor, e apostar neles deixava a legenda
+      // sem fundo nenhum na TV — branco puro, ilegivel em cena clara.
+      // O preco e perder o canto arredondado: o backgroundColor pinta um
+      // retangulo colado no texto. Fundo visivel vale mais que canto bonito.
+      estilo.backgroundColor = '#000000D9';   // preto a ~85%
+      estilo.windowType = chrome.cast.media.TextTrackWindowType.NONE;
+      // Sombra como seguro: se ate o backgroundColor for ignorado, o texto
+      // ainda se separa do fundo. Onde a caixa aparece, ela some contra o preto.
+      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.DROP_SHADOW;
+      estilo.edgeColor = '#000000FF';
       mediaInfo.textTrackStyle = estilo;
       console.log('[Cast] Subtitle URL:', subUrl);
     } else {
