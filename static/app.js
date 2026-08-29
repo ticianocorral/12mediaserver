@@ -1546,7 +1546,9 @@
       estilo.foregroundColor = '#FFFFFFFF';
       estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
       estilo.fontStyle = chrome.cast.media.TextTrackFontStyle.NORMAL;
-      estilo.fontScale = 1.0;
+      // 0.8 do tamanho padrao do receiver: a legenda do Cast sai grande demais
+      // numa TV vista da distancia normal de sofa.
+      estilo.fontScale = 0.8;
       // Sem borda nas letras.
       estilo.edgeType = chrome.cast.media.TextTrackEdgeType.NONE;
       // A caixa e a "window" (envolve o bloco todo), nao o backgroundColor
