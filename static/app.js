@@ -183,6 +183,40 @@
     document.getElementById('hero').style.display = 'none';
   }
 
+  // ==================== GAVETA (celular) ====================
+  // No celular a barra lateral sai do fluxo e vira gaveta; a barra superior
+  // cuida do acesso. No desktop nada disso e usado — a barra fica fixa como
+  // sempre esteve e estas funcoes nunca sao chamadas.
+  function abrirGaveta(aberta) {
+    const sb = document.getElementById('sidebar');
+    const bd = document.getElementById('sidebarBackdrop');
+    if (!sb) return;
+    sb.classList.toggle('aberta', aberta);
+    if (bd) bd.classList.toggle('ativo', aberta);
+    // Trava a rolagem do fundo enquanto a gaveta cobre a tela.
+    document.body.style.overflow = aberta ? 'hidden' : '';
+  }
+
+  function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    abrirGaveta(!(sb && sb.classList.contains('aberta')));
+  }
+
+  function closeSidebar() { abrirGaveta(false); }
+
+  function gavetaAberta() {
+    const sb = document.getElementById('sidebar');
+    return !!(sb && sb.classList.contains('aberta'));
+  }
+
+  // A lupa da barra superior: o campo de busca mora dentro da gaveta, entao
+  // abrir uma coisa sem a outra deixaria o usuario sem caminho.
+  function abrirBusca() {
+    abrirGaveta(true);
+    const campo = document.getElementById('searchInput');
+    if (campo) setTimeout(function() { campo.focus(); }, 240);
+  }
+
   // ==================== SIDEBAR ====================
   let _sidebarGenresLoaded = false;
 
@@ -266,6 +300,7 @@
   }
 
   function loadPathInternal(path) {
+    closeSidebar();
     currentPath = path;
     document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
     document.getElementById('searchInput').value = '';
@@ -897,9 +932,14 @@
       }
 
       // Poster image
+      // Havia placeholder para "sem cartaz", mas nao para "cartaz que falhou
+      // ao carregar" — nesse caso sobrava o glifo de imagem quebrada, bem
+      // visivel no celular, onde o cartaz fica acima do titulo.
+      const semCartaz = '<div class=\'placeholder\'><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>';
       const posterImg = poster
-        ? '<img src="' + posterUrl(folderPath, poster.Name) + '" alt="' + escHtml(titleClean) + '">'
-        : '<div class="placeholder"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
+        ? '<img src="' + posterUrl(folderPath, poster.Name) + '" alt="' + escHtml(titleClean)
+          + '" onerror="this.outerHTML=' + JSON.stringify(semCartaz).replace(/"/g, '&quot;') + '">'
+        : semCartaz.replace(/'/g, '"');
 
       const videoPath = video ? (folderPath + '/' + video.Name) : null;
 
@@ -1050,6 +1090,7 @@
   // Close movie info on Escape
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      if (gavetaAberta()) { closeSidebar(); return; }
       const confirmModal = document.getElementById('confirmModal');
       if (confirmModal.classList.contains('active')) {
         closeConfirmModal();
@@ -1981,6 +2022,7 @@
   }
 
   function _doClosePlayer() {
+    fecharPlayerMore();
     _showCastingPanel(false);
     const video = document.getElementById('videoPlayer');
     // Não fecha durante seek
@@ -2212,6 +2254,26 @@
 
   // Auto-hide controls
   let _controlsTimer = null;
+  // Menu dos controles secundarios (so aparece no celular).
+  function togglePlayerMore(ev) {
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('playerMore');
+    if (m) m.classList.toggle('ativo');
+    showControls();
+  }
+
+  function fecharPlayerMore() {
+    const m = document.getElementById('playerMore');
+    if (m) m.classList.remove('ativo');
+  }
+
+  // Toque fora fecha o menu — sem isto ele ficaria aberto sobre o filme.
+  document.addEventListener('click', function(e) {
+    const m = document.getElementById('playerMore');
+    if (!m || !m.classList.contains('ativo')) return;
+    if (!m.contains(e.target) && !e.target.closest('.ctrl-more')) fecharPlayerMore();
+  });
+
   function showControls() {
     const bar = document.getElementById('playerControls');
     const hdr = document.querySelector('.player-container .player-header');
@@ -2227,7 +2289,9 @@
         bar.classList.remove('force-show');
         if (hdr) hdr.classList.remove('force-show');
         if (container) container.classList.remove('controls-visible');
-      }, 3000);
+        // 5s em vez de 3: no celular o dedo leva mais tempo para achar o botao
+        // do que o cursor, e nao ha mousemove para trazer a barra de volta.
+      }, 5000);
     }
   }
   // Show on any mouse move over player
@@ -2235,6 +2299,16 @@
     const bar = document.getElementById('playerControls');
     if (bar && bar.closest('.player-overlay.active')) showControls();
   });
+
+  // Em tela de toque nao ha hover nem mousemove: sem isto os controles so
+  // apareciam no onplay e sumiam sozinhos, sem jeito de trazer de volta.
+  document.addEventListener('touchstart', function(e) {
+    const overlay = document.getElementById('playerOverlay');
+    if (!overlay || !overlay.classList.contains('active')) return;
+    // Toque num controle nao deve reiniciar o ciclo antes da acao acontecer.
+    if (e.target.closest('.player-controls, .player-header')) return;
+    showControls();
+  }, { passive: true });
 
   document.getElementById('playerOverlay').onclick = function(e) {
     // Apenas o botão fechar e Escape fecham — clique fora não fecha
