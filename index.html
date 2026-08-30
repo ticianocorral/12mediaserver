@@ -34,6 +34,7 @@
     <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
     <symbol id="i-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></symbol>
     <symbol id="i-cast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><circle cx="2" cy="20" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-airplay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 21 7 21 12 15" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="9" x2="7" y2="9"/><line x1="2" y1="15" x2="7" y2="15"/><line x1="17" y1="9" x2="22" y2="9"/><line x1="17" y1="15" x2="22" y2="15"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
     <symbol id="i-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></symbol>
@@ -421,6 +422,11 @@
             <button class="ctrl-btn ctrl-sub" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Legenda">CC</button>
             <button class="ctrl-btn ctrl-more" onclick="togglePlayerMore(event)" title="Mais controles">⋯</button>
             <button class="ctrl-btn ctrl-cast" id="castBtn" onclick="toggleCast()" title="Transmitir" style="display:none"><svg class="icon-svg"><use href="#i-tv"></use></svg></button>
+            <!-- O Chromecast nao funciona em navegador de iPhone (a Apple nao
+                 expoe a API que o SDK do Google usa). AirPlay e o caminho
+                 nativo da Apple; so aparece quando o proprio <video> confirma
+                 suporte (Safari e Chrome-iOS, que roda sobre o mesmo motor). -->
+            <button class="ctrl-btn ctrl-airplay" id="airplayBtn" onclick="toggleAirplay()" title="AirPlay" style="display:none"><svg class="icon-svg"><use href="#i-airplay"></use></svg></button>
             <button class="ctrl-btn" onclick="toggleFullscreen()" title="Tela cheia"><svg class="icon-svg"><use href="#i-maximize"></use></svg></button>
           </div>
         </div>

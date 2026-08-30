@@ -1271,6 +1271,8 @@
   .ctrl-speed { font-size: 12px; min-width: 32px; text-align: center; }
   .ctrl-cast { font-size: 16px; }
   .ctrl-cast.active { color: #4285f4; }
+  .ctrl-airplay { font-size: 16px; }
+  .ctrl-airplay.active { color: var(--primary); }
 
   /* Volume */
   .volume-wrap {
