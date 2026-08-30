@@ -3344,6 +3344,15 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.11.0',
+      title: 'AirPlay como alternativa ao Chromecast no iPhone',
+      changes: [
+        'Botão de AirPlay ao lado do de Chromecast, visível só quando o próprio `<video>` confirma suporte (feature detection via `webkitShowPlaybackTargetPicker`, não user-agent sniffing)',
+        'Ao clicar, vídeo e legenda trocam para uma URL assinada (mesmo mecanismo de token do Chromecast) antes de abrir o seletor nativo do iOS',
+        '`_fetchMediaToken()` extraído como helper compartilhado entre Cast e AirPlay, no lugar da lógica duplicada',
+      ],
+    },
+    {
       version: '1.10.3',
       title: 'modais e menu lateral cortados no Safari/Chrome do iPhone',
       changes: [

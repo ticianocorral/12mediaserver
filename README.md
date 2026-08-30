@@ -605,6 +605,15 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.11 — AirPlay como alternativa ao Chromecast no iPhone
+
+- Botão de AirPlay ao lado do de Chromecast, visível só quando o próprio `<video>` confirma suporte (feature detection via `webkitShowPlaybackTargetPicker`, não user-agent sniffing)
+
+- Ao clicar, vídeo e legenda trocam para uma URL assinada (mesmo mecanismo de token do Chromecast) antes de abrir o seletor nativo do iOS
+
+- `_fetchMediaToken()` extraído como helper compartilhado entre Cast e AirPlay, no lugar da lógica duplicada
+
+
 ### v1.10.3 — modais e menu lateral cortados no Safari/Chrome do iPhone
 
 - modais e menu lateral cortados no Safari/Chrome do iPhone
