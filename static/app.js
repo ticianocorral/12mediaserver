@@ -3274,6 +3274,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.10.1',
+      title: 'wrapper nativo do macOS para de depender de $HOME/TicianoFlix fixo',
+      changes: [
+        '`ticianoflix-server.c` resolve `server.py` como caminho relativo ao `cwd`, em vez de montar `$HOME/TicianoFlix/server.py`',
+      ],
+    },
+    {
       version: '1.10.0',
       title: 'responsividade real no celular',
       changes: [

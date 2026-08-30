@@ -604,6 +604,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.10.1 — wrapper nativo do macOS para de depender de $HOME/TicianoFlix fixo
+
+- `ticianoflix-server.c` resolve `server.py` como caminho relativo ao `cwd`, em vez de montar `$HOME/TicianoFlix/server.py`
+
+
 ### v1.10 — responsividade real no celular
 
 - Barra lateral vira gaveta abaixo de 768px, com barra superior fixa (menu, logo, busca)
