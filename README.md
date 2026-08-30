@@ -604,6 +604,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.10.3 — modais e menu lateral cortados no Safari/Chrome do iPhone
+
+- modais e menu lateral cortados no Safari/Chrome do iPhone
+
+
 ### v1.10.2 — icone de play do logo quebrava pra linha de baixo no desktop
 
 - `.logo-text` ganha `white-space: nowrap` + `flex-shrink: 0`: ícone e nome nunca mais quebram entre si

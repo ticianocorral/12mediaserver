@@ -3274,6 +3274,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.10.3',
+      title: 'modais e menu lateral cortados no Safari/Chrome do iPhone',
+      changes: [
+        'modais e menu lateral cortados no Safari/Chrome do iPhone',
+      ],
+    },
+    {
       version: '1.10.2',
       title: 'icone de play do logo quebrava pra linha de baixo no desktop',
       changes: [
