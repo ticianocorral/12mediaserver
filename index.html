@@ -37,6 +37,9 @@
     <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="9" x2="7" y2="9"/><line x1="2" y1="15" x2="7" y2="15"/><line x1="17" y1="9" x2="22" y2="9"/><line x1="17" y1="15" x2="22" y2="15"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
     <symbol id="i-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-hard-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-unplug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 5.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
     <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
@@ -134,7 +137,7 @@
       <div id="sidebarGenres"></div>
     </div>
     <div class="sidebar-footer">
-      <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear Google Drive em busca de filmes novos">
+      <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear todas as fontes em busca de filmes novos">
         <span class="icon"><svg class="icon-svg"><use href="#i-refresh"></use></svg></span> Atualizar
       </button>
       <div id="scanProgressBar" class="scan-progress-container" style="display:none">
@@ -143,24 +146,13 @@
         </div>
         <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
       </div>
-      <button class="sidebar-item" onclick="openBackupModal()" title="Backup, upload e restauração">
-        <span class="icon"><svg class="icon-svg"><use href="#i-save"></use></svg></span> Backup
-      </button>
-      <button class="sidebar-item" onclick="openCacheManager()" title="Gerenciar cache offline — baixar ou apagar filmes">
-        <span class="icon"><svg class="icon-svg"><use href="#i-box"></use></svg></span> Gerenciar Cache
-      </button>
-      <button class="sidebar-item" onclick="clearCache()" title="Limpar cache offline">
-        <span class="icon"><svg class="icon-svg"><use href="#i-broom"></use></svg></span> Limpar Cache
-      </button>
-      <button class="sidebar-item" id="usersBtn" style="display:none" onclick="openUsersModal()" title="Gerenciar quem tem acesso">
-        <span class="icon"><svg class="icon-svg"><use href="#i-users"></use></svg></span> Contas
+      <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
+        <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
       </button>
       <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
         <span class="icon"><svg class="icon-svg"><use href="#i-logout"></use></svg></span> <span id="logoutLabel">Sair</span>
       </button>
-      <div class="sidebar-cache-usage" id="cacheUsage"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span>
-        <a class="rclone-link" href="#" onclick="openRcloneModal();return false;" title="rclone — status e configuração"><svg class="icon-svg"><use href="#i-cloud"></use></svg></a>
-      </div>
+      <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
     </div>
   </div>
 
@@ -234,12 +226,79 @@
         <div class="cache-manager-list" id="cmList">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando filmes...</span></div>
         </div>
+        <div class="cache-manager-actions">
+          <button class="rclone-action-btn" onclick="clearCache()" title="Apaga todos os vídeos baixados. Os filmes continuam no Drive.">
+            <svg class="icon-svg"><use href="#i-broom"></use></svg> Limpar tudo
+          </button>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- ====== RCLONE MODAL ====== -->
   <!-- ====== CONTAS MODAL ====== -->
+  <!-- ====== AJUSTES (hub) ====== -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal" style="width:520px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-gear"></use></svg> Ajustes</span>
+        <button class="modal-close" onclick="closeSettingsModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="backup-option" id="settingsSources" style="display:none" onclick="fromSettings(openSourcesModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Fontes do acervo</div>
+            <div class="backup-option-desc">Google Drive, HD externo, pendrive e pastas do computador</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="fromSettings(openCacheManager)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-box"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Cache offline</div>
+            <div class="backup-option-desc">Baixar filmes do Drive para assistir sem internet, ou liberar espaço</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="fromSettings(openBackupModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-save"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Backup &amp; Restaurar</div>
+            <div class="backup-option-desc">Salvar o catálogo num arquivo ou no Drive, e restaurar depois</div>
+          </div>
+        </div>
+        <div class="backup-option" id="settingsUsers" style="display:none" onclick="fromSettings(openUsersModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-users"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Contas</div>
+            <div class="backup-option-desc">Quem tem acesso, senhas e permissões</div>
+          </div>
+        </div>
+        <div class="backup-option" onclick="fromSettings(openRcloneModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
+          <div>
+            <div class="backup-option-title">rclone</div>
+            <div class="backup-option-desc">Status da conexão com o Google Drive e nível de acesso</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== FONTES (HD externo, pendrive, pasta local) ====== -->
+  <div class="modal-overlay" id="sourcesModal">
+    <div class="modal" style="width:600px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Fontes do acervo</span>
+        <button class="modal-close" onclick="closeSourcesModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="sourcesBox">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando fontes...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="usersModal">
     <div class="modal" style="width:560px">
       <div class="modal-header">
@@ -302,6 +361,19 @@
       <video id="videoPlayer" style="display:none">
         <track kind="subtitles" id="subtitleTrack" srclang="pt-BR" label="Português" default>
       </video>
+
+      <!-- Estado de transmissão: o vídeo local fica pausado, então sem isto a
+           tela ficaria congelada no último quadro, sem explicação. -->
+      <div class="casting-panel" id="castingPanel">
+        <img class="casting-poster" id="castingPoster" alt="">
+        <div class="casting-wave"><svg class="icon-svg"><use href="#i-cast"></use></svg></div>
+        <div class="casting-title" id="castingTitle">Transmitindo</div>
+        <div class="casting-device" id="castingDevice"></div>
+        <div class="casting-hint">Os controles abaixo comandam a TV.</div>
+        <button class="casting-stop" onclick="toggleCast()">
+          <svg class="icon-svg"><use href="#i-stop"></use></svg> Parar transmissão
+        </button>
+      </div>
 
       <!-- ====== CONTROLES NETFLIX-STYLE ====== -->
       <div class="player-controls" id="playerControls">

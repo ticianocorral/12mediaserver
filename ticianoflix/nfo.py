@@ -13,6 +13,8 @@ import xml.etree.ElementTree as ET
 from .config import MAX_NFO_BYTES
 from .db import get_db
 from .paths import rc_remote as _rc_remote
+from . import localfs as _localfs
+from . import sources as _sources
 
 def _parse_nfo(xml_text):
     """Parse Kodi-style NFO XML into a dict of metadata."""
@@ -94,8 +96,47 @@ def _parse_nfo(xml_text):
     }
 
 
+def _local_nfo_file(folder_path):
+    """Arquivo .nfo de uma pasta local.
+
+    Prefere o nome da pasta (convencao do Kodi/tinyMediaManager) e cai para
+    qualquer .nfo presente — no disco listar a pasta e barato, entao vale
+    aceitar acervos gravados como "movie.nfo".
+    """
+    folder = _sources.local_real_path(folder_path)
+    if folder is None or not folder.is_dir():
+        return None
+    preferred = folder / (folder.name + ".nfo")
+    if preferred.is_file():
+        return preferred
+    try:
+        for entry in sorted(folder.iterdir()):
+            if entry.is_file() and entry.suffix.lower() == ".nfo":
+                return entry
+    except OSError:
+        pass
+    return None
+
+
 def _fetch_nfo_raw(folder_path):
-    """Fetch NFO XML text for a movie folder via rclone. No caching."""
+    """Texto XML do NFO de um filme, direto da fonte. Sem cache.
+
+    Despacha por fonte: pasta local le do disco, Drive continua no rclone cat.
+    """
+    if _sources.is_local(folder_path):
+        nfo_file = _local_nfo_file(folder_path)
+        if nfo_file is None:
+            return None
+        raw = _localfs.read_bytes(nfo_file, MAX_NFO_BYTES)
+        if raw is None:
+            sys.stderr.write("[TicianoFlix] NFO ignorado (acima de %d bytes): %s\n"
+                             % (MAX_NFO_BYTES, nfo_file))
+            return None
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw.decode("latin-1", errors="replace")
+
     nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
     remote_path = _rc_remote(nfo_path)
     try:
@@ -163,31 +204,22 @@ def _fetch_nfo_from_db(folder_path):
 
 
 def _fetch_nfo(folder_path):
-    """Fetch and parse NFO metadata. Tries DB first, then downloads via rclone."""
+    """Metadados do NFO, do banco quando ja indexado, da fonte quando nao."""
     # Try DB cache first
     from_db = _fetch_nfo_from_db(folder_path)
     if from_db:
         return from_db
 
-    # Fallback: fetch via rclone
-    nfo_path = f"{folder_path.strip('/')}/{folder_path.strip('/').split('/')[-1]}.nfo"
-    remote_path = _rc_remote(nfo_path)
-    try:
-        result = subprocess.run(
-            ["rclone", "cat", remote_path],
-            capture_output=True, text=True, timeout=15
-        )
-        if result.returncode != 0:
-            return None
-        parsed = _parse_nfo(result.stdout)
-        if parsed:
-            # Save to DB for next time
-            conn = get_db()
-            try:
-                _save_nfo_to_db(conn, folder_path, parsed)
-                conn.commit()
-            finally:
-                conn.close()
-        return parsed
-    except Exception:
+    # Fallback: le da fonte (disco ou Drive) e memoriza pra proxima
+    raw = _fetch_nfo_raw(folder_path)
+    if not raw:
         return None
+    parsed = _parse_nfo(raw)
+    if parsed:
+        conn = get_db()
+        try:
+            _save_nfo_to_db(conn, folder_path, parsed)
+            conn.commit()
+        finally:
+            conn.close()
+    return parsed

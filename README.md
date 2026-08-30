@@ -1,6 +1,6 @@
 <div align="center">
   <h1>🎬 TicianoFlix</h1>
-  <p><strong>Netflix-style movie player for Google Drive — self-hosted, lightweight, instant.</strong></p>
+  <p><strong>Netflix-style movie player for Google Drive, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
   <p>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
@@ -13,18 +13,19 @@
 
 ## 📖 Sobre
 
-TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive** em um catálogo de filmes no estilo Netflix. Ele escaneia pastas organizadas por gênero, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
+TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive** — e também **HD externo, pendrive ou pastas do próprio computador** — num catálogo de filmes no estilo Netflix. Ele escaneia pastas organizadas por gênero, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
 
 ### ✨ Funcionalidades
 
 - **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
 - **👥 Painel de contas** — administradores adicionam, removem, promovem e redefinem senhas
-- **📁 Scan manual** do Google Drive com proteção contra scans concorrentes
+- **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
+- **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
-- **📦 Indicador Offline** — filmes 100% cacheados aparecem com badge 📥 e seção especial na home
-- **🧹 Limpar Cache** — botão para remover vídeos baixados do cache VFS
+- **📦 Baixados do Drive** — filmes da nuvem 100% cacheados ganham selo e seção própria na home (filmes de fonte local não entram: eles já estão no disco)
+- **🧹 Limpar cache** — apaga os vídeos baixados, dentro do próprio gerenciador de cache
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
@@ -33,7 +34,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🔄 Serviço systemd** — inicia automaticamente no login
 - **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
-- **📺 Chromecast** — envio para a TV com URL assinada, sem abrir o acervo para a rede
+- **📺 Chromecast** — envio para a TV com URL assinada e legendas; a TV mostra pôster, ano e sinopse, e os controles do app comandam a transmissão (play, avançar, volume, legenda)
 
 ---
 
@@ -62,7 +63,7 @@ Crie um remote chamado `gdrive:` com:
 > avisa enquanto estiver largo. Veja [Acesso ao Google Drive](#acesso-ao-google-drive).
 
 > 💡 Depois de instalado, dá pra configurar pelo próprio TicianoFlix:
-> clique em **☁️ rclone** no menu lateral — ele mostra o status (instalado,
+> **⚙️ Ajustes › ☁️ rclone** no menu lateral — ele mostra o status (instalado,
 > remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
 > oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
 
@@ -142,13 +143,13 @@ conta vira o administrador.
 O código existe para fechar a janela em que qualquer pessoa na sua rede poderia
 criar a conta inicial antes de você — quem não tem acesso ao terminal da máquina
 não passa dessa tela. Depois disso o código não vale mais: contas novas só pelo
-painel **👥 Contas**.
+painel **⚙️ Ajustes › 👥 Contas**.
 
 Feito o login, clique em 🔄 para escanear seu Drive.
 
 ### 4. Criar contas para a casa
 
-No menu lateral, **👥 Contas** (visível apenas para administradores) permite
+Em **⚙️ Ajustes › 👥 Contas** (visível apenas para administradores) dá para
 adicionar pessoas, remover, promover a administrador e redefinir senhas.
 Não existe auto-cadastro: só quem está nessa lista consegue entrar.
 
@@ -193,6 +194,60 @@ TicianoFlix/
 └── Trash/
 ```
 
+### Fontes locais (HD externo, pendrive, pasta do computador)
+
+O Drive não precisa ser o único acervo. Em **⚙️ Ajustes › 💽 Fontes do acervo** (só para
+administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
+
+- os **volumes conectados** aparecem prontos pra adicionar com um clique
+  (`/Volumes` no macOS, `/media` e `/run/media` no Linux, letras de unidade no
+  Windows), e as pastas de mídia do usuário (`~/Movies`, `~/Videos`) também;
+- ou cole o caminho à mão, se preferir.
+
+A regra é **uma só, igual à do Drive: tem que existir uma pasta chamada
+`TicianoFlix`**, com os gêneros dentro dela.
+
+```
+/Volumes/MeuHD/
+└── TicianoFlix/            ← o nome é obrigatório
+    ├── Terror/
+    │   └── Alien (1979)/
+    │       ├── Alien (1979).mkv
+    │       ├── Alien (1979).nfo
+    │       └── poster.jpg
+    └── Ficção Científica/
+```
+
+**Não precisa apontar exato.** O volume que você escolhe quase sempre fica acima
+do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
+`/Volumes/MeuHD/Filmes/TicianoFlix/...`. O TicianoFlix procura essa pasta na
+raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
+encontrou. Maiúsculas não importam (`ticianoflix` serve).
+
+Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar —
+em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.
+No modal, os volumes detectados que já têm a pasta aparecem marcados com ✓.
+
+Cada fonte vira um grupo próprio na barra lateral, com os gêneros dela embaixo.
+
+Uma vez indexado, o filme local se comporta como qualquer outro: busca, A-Z,
+continuar assistindo, legendas, metadados NFO e Chromecast funcionam igual — só
+que os bytes saem direto do disco, sem passar pelo rclone.
+
+**Detalhes que valem saber:**
+
+| Situação | O que acontece |
+|---|---|
+| HD desconectado no momento do scan | A fonte é pulada e **o catálogo dela é preservado** — nada é apagado. Ela aparece marcada como *desconectada*. |
+| Filme numa fonte local | Ganha o selo **Local**. Não há o que baixar pro cache, e ele não entra em *Baixados do Drive* — nunca foi baixado. |
+| Remover uma fonte | Sai do catálogo. **Os arquivos no disco não são tocados.** |
+| Backup restaurado de outra máquina | As fontes daquela máquina são podadas do catálogo no boot, já que os caminhos não existem aqui. |
+
+> 🔒 Só administradores cadastram fontes, e o servidor recusa pastas amplas
+> demais (a raiz do sistema, o home puro) — cadastrar uma delas publicaria o
+> computador inteiro na rede local. Todo acesso a arquivo é confinado à raiz da
+> fonte: `..` e symlink apontando pra fora recebem **403**.
+
 ### Metadados NFO
 
 O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
@@ -220,18 +275,29 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 ## ⚙️ Arquitetura
 
 ```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  Navegador   │────▶│  server.py       │────▶│  rclone serve │
-│  localhost:   │     │  ThreadingHTTP   │     │  :18082       │
-│  9187         │◀────│  Server          │◀────│  (read-only)  │
-└──────────────┘     └────────┬─────────┘     └──────┬───────┘
-                              │                      │
-                              ▼                      ▼
-                     ┌──────────────┐      ┌──────────────────┐
-                     │  SQLite      │      │  Google Drive    │
-                     │  (cache)     │      │  pasta TicianoFlix│
-                     └──────────────┘      └──────────────────┘
+┌──────────────┐     ┌──────────────────┐     ┌───────────────┐
+│  Navegador   │────▶│  server.py       │────▶│ rclone serve  │
+│  localhost:  │     │  ThreadingHTTP   │     │ :18082        │
+│  9187        │◀────│  Server          │◀────│ (read-only)   │
+└──────────────┘     └───┬──────────┬───┘     └───────┬───────┘
+                         │          │                 │
+                         ▼          ▼                 ▼
+              ┌──────────────┐  ┌────────────┐  ┌──────────────────┐
+              │  SQLite      │  │ disco      │  │  Google Drive    │
+              │  (catálogo)  │  │ (Range)    │  │ pasta TicianoFlix│
+              └──────────────┘  └─────┬──────┘  └──────────────────┘
+                                      │
+                                      ▼
+                          ┌────────────────────────┐
+                          │ HD externo · pendrive  │
+                          │ pasta do computador    │
+                          └────────────────────────┘
 ```
+
+O catálogo é um só: o SQLite guarda caminhos lógicos (`/TicianoFlix/...` para o
+Drive, `/Local/<fonte>/...` para as pastas locais) e cada requisição é roteada
+para a fonte dona daquele caminho. Por isso busca, A-Z, continuar assistindo e
+Chromecast valem para as duas origens sem código duplicado.
 
 ### Stack
 
@@ -239,7 +305,7 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 |--------|-----------|
 | **Backend** | Python 3 puro (`http.server.ThreadingHTTPServer`) |
 | **Frontend** | HTML + CSS + Vanilla JS (`cachedFetch` com TTL 2 min, `pushState` history) |
-| **Streaming** | `rclone serve http` (VFS cache full, chunk 4M, read-ahead 512M) |
+| **Streaming** | Drive: `rclone serve http` (VFS cache full, chunk 4M, read-ahead 512M) · Local: leitura direta do disco com HTTP Range |
 | **Cache** | SQLite (browsing) + RAM (movie details) + VFS rclone (download offline) |
 | **Init** | systemd user service |
 
@@ -290,7 +356,7 @@ Você não precisa lembrar disso sozinho:
 
 - **Os instaladores perguntam.** Se o remote estiver mais largo que o
   necessário, eles oferecem corrigir na hora.
-- **O painel avisa.** Em **☁️ rclone**, a linha *Acesso ao Google Drive* mostra
+- **O painel avisa.** Em **⚙️ Ajustes › ☁️ rclone**, a linha *Acesso ao Google Drive* mostra
   o nível atual e, quando está largo, explica o risco e dá o comando.
 
 Para rodar manualmente, a qualquer momento:
@@ -366,7 +432,9 @@ TicianoFlix/
 │   ├── templates.py       #   tela de login servida pelo Python
 │   ├── rclone.py          #   comandos, cache VFS, processo do serve
 │   ├── nfo.py             #   metadados Kodi / tinyMediaManager
-│   ├── scanner.py         #   varredura do Drive e indexação
+│   ├── sources.py         #   registro de fontes e confinamento de caminho
+│   ├── localfs.py         #   listagem de pasta local no formato do rclone
+│   ├── scanner.py         #   varredura das fontes e indexação
 │   ├── queries.py         #   consultas ao cache
 │   ├── handler.py         #   roteamento HTTP e streaming
 │   └── app.py             #   composição e ciclo de vida
@@ -394,6 +462,7 @@ Fora do repositório, em `~/.cache/ticianoflix/`:
 ```
 ticianoflix.db     # Catálogo (SQLite)
 auth.json          # Contas e hashes de senha  (600)
+sources.json       # Fontes locais cadastradas (600)
 secret.key         # Chave HMAC das sessões    (600)
 cert.pem / key.pem # Certificado HTTPS         (600)
 images/ · subs/    # Cache de pôsteres e legendas
@@ -405,7 +474,7 @@ images/ · subs/    # Cache de pôsteres e legendas
 
 ### Limpar cache de vídeos
 
-Clique em **🧹 Limpar Cache** na sidebar ou execute:
+Abra **⚙️ Ajustes › 📦 Cache offline** e clique em **Limpar tudo**, ou execute:
 
 ```bash
 rm -rf ~/.cache/rclone/vfs/

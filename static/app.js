@@ -186,19 +186,67 @@
   // ==================== SIDEBAR ====================
   let _sidebarGenresLoaded = false;
 
-  function loadSidebarGenres() {
+  function sourceIcon(kind) {
+    return kind === 'drive'
+      ? '<svg class="icon-svg"><use href="#i-cloud"></use></svg>'
+      : '<svg class="icon-svg"><use href="#i-hard-drive"></use></svg>';
+  }
+
+  // Agrupa os generos pela fonte dona deles. O servidor manda o Path completo
+  // de cada genero, entao nao ha prefixo remontado no cliente.
+  // id da fonte -> nome de exibicao. O id e o mesmo slug que aparece no path
+  // ("/Local/hd-externo"), entao o breadcrumb mostra "HD Externo".
+  const _sourceNames = {};
+
+  function groupGenresBySource(data) {
+    const sources = data.sources || [];
+    sources.forEach(src => { _sourceNames[src.id] = src.name; });
+    const seen = {};
+    const groups = [];
+    // A ordem e a das fontes (Drive primeiro, locais em ordem alfabetica), nao
+    // a ordem alfabetica dos generos — senao as fontes se intercalariam.
+    sources.forEach(src => {
+      seen[src.id] = { id: src.id, source: src, items: [] };
+      groups.push(seen[src.id]);
+    });
+    (data.folders || []).forEach(g => {
+      const id = g.source || '';
+      if (!seen[id]) {
+        seen[id] = { id: id, source: null, items: [] };
+        groups.push(seen[id]);
+      }
+      seen[id].items.push(g);
+    });
+    return groups.filter(grp => grp.items.length > 0);
+  }
+
+  function loadSidebarGenres(force) {
     const container = document.getElementById('sidebarGenres');
-    if (_sidebarGenresLoaded) return;
+    if (_sidebarGenresLoaded && !force) return;
     _sidebarGenresLoaded = true;
     cachedFetch('/api/genres').then(data => {
       if (!data || !data.folders) return;
+      const groups = groupGenresBySource(data);
+      // Com uma fonte so, o cabecalho seria ruido: ele so aparece quando ha
+      // mais de uma para separar.
+      const showHeaders = groups.length > 1;
       let html = '';
-      data.folders.forEach(g => {
-        const name = g.Name || '';
-        const path = '/TicianoFlix/' + name;
-        html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
-          + '<span class="icon">' + genreIcon(name) + '</span> '
-          + escHtml(name) + '</button>';
+      groups.forEach(grp => {
+        const src = grp.source;
+        if (showHeaders) {
+          const off = src && src.online === false;
+          html += '<div class="sidebar-source-label' + (off ? ' offline' : '') + '">'
+            + sourceIcon(src ? src.kind : 'local') + ' '
+            + escHtml(src ? src.name : 'Outros')
+            + (off ? ' · desconectada' : '') + '</div>';
+        }
+        grp.items.forEach(g => {
+          const name = g.Name || '';
+          const path = '/' + g.Path;
+          html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
+            + '<span class="icon">' + genreIcon(name) + '</span> '
+            + escHtml(name) + '</button>';
+        });
       });
       container.innerHTML = html;
     });
@@ -356,20 +404,30 @@
     document.getElementById('heroDesc').textContent = '';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
-    const folders = data.folders || [];
-    const totalGenres = folders.length;
-
+    // A home tem tres secoes de filme: novidades, o que ficou pela metade e o
+    // que esta baixado. Navegar por fonte e por genero e papel da barra
+    // lateral, que ja agrupa os generos pela fonte dona.
     container.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px">
-        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
-          <div style="font-size:28px;font-weight:800">${totalGenres}</div>
-          <div style="font-size:13px;color:var(--text3)">Gêneros</div>
+      <div class="home-stats">
+        <div class="home-stat">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
+          <div class="home-stat-num" id="statMovies">—</div>
+          <div class="home-stat-label">Filmes no acervo</div>
         </div>
-        <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;text-align:center;border:1px solid rgba(255,255,255,0.06)">
-          <div style="font-size:36px;margin-bottom:8px"><svg class="icon-svg"><use href="#i-disc"></use></svg></div>
-          <div style="font-size:28px;font-weight:800" id="totalMovieCount">…</div>
-          <div style="font-size:13px;color:var(--text3)">Filmes</div>
+        <div class="home-stat" onclick="openSourcesOrSettings()" title="Fontes do acervo">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></div>
+          <div class="home-stat-num" id="statSources">—</div>
+          <div class="home-stat-label" id="statSourcesLabel">Fontes conectadas</div>
+        </div>
+        <div class="home-stat" onclick="openCacheManager()" title="Gerenciar o cache offline">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-download"></use></svg></div>
+          <div class="home-stat-num" id="statDownloaded">—</div>
+          <div class="home-stat-label" id="statDownloadedLabel">Baixados do Drive</div>
+        </div>
+        <div class="home-stat" onclick="refreshCache()" title="Escanear todas as fontes agora">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-refresh"></use></svg></div>
+          <div class="home-stat-num" id="statScan">—</div>
+          <div class="home-stat-label">Último scan</div>
         </div>
       </div>
       <div class="genre-section">
@@ -388,10 +446,12 @@
       </div>
       <div class="genre-section" id="offlineSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title"><svg class="icon-svg"><use href="#i-box"></use></svg> Disponíveis Offline</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixados do Drive</div>
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
+
+    _loadHomeStats();
 
     // Fetch recent movies sorted by actual creation time (from server)
     cachedFetch('/api/recent-movies?limit=30').then(movies => {
@@ -407,9 +467,6 @@
       }
       // Show up to 7 newest
       const recent = movies.slice(0, 7);
-      // Update total count in stats card
-      var countEl = document.getElementById('totalMovieCount');
-      if (countEl) countEl.textContent = movies.length;
 
       let html = '';
       recent.forEach((m, idx) => {
@@ -483,6 +540,62 @@
     _renderOfflineGrid();
   }
 
+  // "há 5 min" / "há 2 h" / "há 3 dias" — o valor cru (timestamp) nao diz nada
+  // a quem so quer saber se o catalogo esta velho.
+  function tempoDesde(ts) {
+    if (!ts) return 'nunca';
+    const seg = Math.max(0, Math.floor(Date.now() / 1000) - parseInt(ts, 10));
+    if (seg < 90) return 'agora';
+    const min = Math.floor(seg / 60);
+    if (min < 60) return min + ' min';
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + ' h';
+    const d = Math.floor(h / 24);
+    return d + (d === 1 ? ' dia' : ' dias');
+  }
+
+  // Estatisticas da home. As duas fontes de dado ja existiam; o que muda e
+  // mostrar o que importa num acervo com varias fontes, em vez de contar
+  // generos.
+  function _loadHomeStats() {
+    cachedFetch('/api/cache-status').then(st => {
+      if (!st) return;
+      const filmes = document.getElementById('statMovies');
+      if (filmes) filmes.textContent = st.movies != null ? st.movies : '—';
+      const scan = document.getElementById('statScan');
+      if (scan) scan.textContent = tempoDesde(st.last_updated);
+      const baixLabel = document.getElementById('statDownloadedLabel');
+      const uso = st.usage && st.usage.details ? st.usage.details.vfs : 0;
+      if (baixLabel && uso > 0) {
+        baixLabel.textContent = 'Baixados · ' + formatSize(uso);
+      }
+    });
+
+    const baix = document.getElementById('statDownloaded');
+    if (baix) baix.textContent = _cachedSet.size;
+
+    cachedFetch('/api/sources').then(d => {
+      if (!d || !d.sources) return;
+      const el = document.getElementById('statSources');
+      const label = document.getElementById('statSourcesLabel');
+      if (!el) return;
+      const total = d.sources.length;
+      const online = d.sources.filter(s => s.online).length;
+      el.textContent = (online === total) ? String(total) : (online + '/' + total);
+      if (label) {
+        label.textContent = (online === total)
+          ? (total === 1 ? 'Fonte conectada' : 'Fontes conectadas')
+          : 'Fontes conectadas';
+      }
+    });
+  }
+
+  // O painel de fontes e de admin; quem nao e cai no hub de Ajustes.
+  function openSourcesOrSettings() {
+    if (_me && _me.role === 'admin') openSourcesModal();
+    else openSettingsModal();
+  }
+
   function genreIcon(name) {
     const icons = {
       'terror': '<svg class="icon-svg"><use href="#i-ghost"></use></svg>', 'horror': '<svg class="icon-svg"><use href="#i-ghost"></use></svg>',
@@ -510,12 +623,15 @@
 
     const parts = data.path.split('/').filter(Boolean);
     const genreName = parts.length > 0 ? parts[parts.length - 1] : 'Género';
-    const totalMovies = data.folders.length;
-    const totalVideos = data.videos ? data.videos.length : 0;
-    // Set hero for genre view - simple header
+    // Pasta de filme e vídeo solto na pasta do gênero viram o mesmo cartão na
+    // tela, então contam junto: separar os dois era uma distinção interna que
+    // não dizia nada a quem lê.
+    const total = data.folders.length + (data.videos ? data.videos.length : 0);
     const icon = genreIcon(genreName);
     document.getElementById('heroTitle').innerHTML = icon + ' ' + escHtml(genreName);
-    document.getElementById('heroDesc').innerHTML = totalMovies + ' filme(s) · ' + totalVideos + ' vídeo(s) &middot; <svg class="icon-svg"><use href="#i-film"></use></svg> ' + (totalMovies + totalVideos) + ' títulos';
+    document.getElementById('heroDesc').innerHTML =
+      '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + total
+      + (total === 1 ? ' filme' : ' filmes');
     hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
     document.getElementById('heroBg').style.backgroundImage = 'none';
 
@@ -527,7 +643,9 @@
         <div class="empty-state">
           <div class="empty-icon"><svg class="icon-svg"><use href="#i-inbox"></use></svg></div>
           <h3>Nenhum filme em "${escHtml(genreName)}"</h3>
-          <p>Adicione filmes nesta pasta do Google Drive para vê-los aqui.</p>
+          <p>${isLocalPath(data.path)
+              ? 'Adicione pastas de filme nesta pasta do disco e clique em Atualizar.'
+              : 'Adicione filmes nesta pasta do Google Drive para vê-los aqui.'}</p>
         </div>`;
       return;
     }
@@ -694,6 +812,8 @@
 
   // ===== MOVIE INFO =====
   let currentMovieFolder = null;
+  // Arte e ficha do filme aberto, para a TV mostrar algo alem do titulo pelado.
+  let _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
 
   function showMovieInfo(folderPath, event) {
     if (event) event.stopPropagation();
@@ -739,8 +859,10 @@
         return;
       }
 
-      // Check VFS cache on server if not already marked
-      if (!_cachedSet.has(folderPath) && detail.video && detail.video.Name) {
+      // Cache VFS só existe pro Drive: em fonte local a pergunta não se aplica
+      // e a requisição seria desperdício.
+      if (!isLocalPath(folderPath) && !_cachedSet.has(folderPath)
+          && detail.video && detail.video.Name) {
         const filePath = folderPath + '/' + detail.video.Name;
         fetch('/api/check-cached?path=' + encodeURIComponent(filePath)).then(r => r.json()).then(d => {
           if (d.cached) _markCached(folderPath);
@@ -755,6 +877,17 @@
       const fanart = detail.fanart;
       const subtitle = detail.subtitle;
       const nfo = detail.nfo;
+
+      // Guarda o que a TV vai mostrar. E aqui que poster, fanart e a ficha
+      // existem — no player so ha o caminho do arquivo de video.
+      _castArt = {
+        folder: folderPath,
+        poster: poster ? folderPath + '/' + poster.Name : null,
+        fanart: fanart ? folderPath + '/' + fanart.Name : null,
+        year: year || null,
+        studio: (nfo && nfo.studios && nfo.studios[0]) || null,
+        plot: (nfo && (nfo.tagline || nfo.plot)) || null
+      };
 
       // Background fanart
       if (fanart) {
@@ -867,7 +1000,9 @@
 
           <div class="movie-info-actions">
             ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
-            ${_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Offline</span>' : ''}
+            ${isLocalPath(folderPath)
+                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
+                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
             ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))"><svg class="icon-svg"><use href="#i-check"></use></svg> Já assisti</button>'}
           </div>
           </div>
@@ -951,13 +1086,23 @@
     const el = document.getElementById('breadcrumb');
     if (!el) return;
     const parts = path ? path.split('/').filter(Boolean) : [];
-    let current = '/TicianoFlix';
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-    parts.forEach((part, i) => {
-      if (i === 0) return; // skip TicianoFlix root, already have Inicio
+
+    // A raiz da fonte ocupa 1 segmento no Drive ("/TicianoFlix") e 2 nas fontes
+    // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
+    // path — remontar com um prefixo fixo gerava link quebrado fora do Drive.
+    const rootLen = isLocalPath(path) ? 2 : 1;
+    if (rootLen === 2 && parts.length >= 2) {
+      const slug = parts[1];
+      html += ' <span class="sep">›</span> <span>'
+        + escHtml(_sourceNames[slug] || slug) + '</span>';
+    }
+
+    let current = '/' + parts.slice(0, rootLen).join('/');
+    parts.slice(rootLen).forEach((part, i, rest) => {
       current += '/' + part;
       const name = part.replace(/[._]/g, ' ');
-      if (i === parts.length - 1) {
+      if (i === rest.length - 1) {
         html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
       } else {
         html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(current) + '\'))">' + escHtml(name) + '</a>';
@@ -973,12 +1118,16 @@
   let _progressSaveTimer = null;
 
   // Save watch progress to server
-  function _saveProgress() {
+  // posExt/durExt vem da TV quando esta transmitindo — o <video> local esta
+  // pausado la atras e gravaria a posicao errada em "continuar assistindo".
+  function _saveProgress(posExt, durExt) {
     const video = document.getElementById('videoPlayer');
-    if (!_currentPlayFolder || !video || !video.duration || video.duration === 0) return;
-    const pos = video.currentTime || 0;
+    const temExt = (typeof posExt === 'number' && typeof durExt === 'number' && durExt > 0);
+    if (!_currentPlayFolder) return;
+    if (!temExt && (!video || !video.duration || video.duration === 0)) return;
+    const pos = temExt ? posExt : (video.currentTime || 0);
     if (pos < 5) return;
-    const dur = video.duration;
+    const dur = temExt ? durExt : video.duration;
     const pct = (pos / dur) * 100;
     if (pct > 95) {
       _clearProgress(_currentPlayFolder);
@@ -1123,6 +1272,7 @@
       case cast.framework.SessionState.SESSION_ENDED:
         _castSession = null;
         if (btn) { btn.innerHTML = '<svg class="icon-svg"><use href="#i-tv"></use></svg>'; btn.classList.remove('active'); }
+        _showCastingPanel(false);
         console.log('[Cast] Session ended');
         break;
       case cast.framework.SessionState.SESSION_START_FAILED:
@@ -1135,6 +1285,98 @@
 
   function _isCasting() {
     return _castSession !== null;
+  }
+
+  // ===== CONTROLE REMOTO =====
+  // Enquanto transmite, o <video> local fica pausado: os controles precisam
+  // falar com a sessao do Chromecast, senao mexem num player que ninguem ve.
+  function _castMedia() {
+    if (!_isCasting()) return null;
+    try {
+      var s = cast.framework.CastContext.getInstance().getCurrentSession();
+      var m = s ? s.getMediaSession() : null;
+      // Sem midia carregada ainda (ou ja terminou) nao ha o que comandar.
+      return (m && m.playerState !== chrome.cast.media.PlayerState.IDLE) ? m : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _castDuration() {
+    var m = _castMedia();
+    return (m && m.media && m.media.duration) ? m.media.duration : 0;
+  }
+
+  function _castSeekTo(segundos) {
+    var m = _castMedia();
+    if (!m) return false;
+    var dur = _castDuration();
+    var req = new chrome.cast.media.SeekRequest();
+    req.currentTime = Math.max(0, dur ? Math.min(dur, segundos) : segundos);
+    m.seek(req, function() {}, function(e) { console.warn('[Cast] seek falhou:', e); });
+    return true;
+  }
+
+  // Enquanto transmite, o tempo vem do receiver — o <video> local esta parado.
+  let _castTicker = null;
+  let _castUltimoSave = 0;
+
+  function _startCastTicker() {
+    if (_castTicker) clearInterval(_castTicker);
+    _castTicker = setInterval(function() {
+      var m = _castMedia();
+      if (!m) return;
+      var pos = m.getEstimatedTime();
+      var dur = _castDuration();
+      var seek = document.getElementById('seekBar');
+      var time = document.getElementById('timeDisplay');
+      if (seek && dur) seek.value = (pos / dur) * 100;
+      if (time) time.textContent = formatTime(pos) + ' / ' + formatTime(dur);
+      var btn = document.getElementById('playBtn');
+      var tocando = (m.playerState === chrome.cast.media.PlayerState.PLAYING
+                     || m.playerState === chrome.cast.media.PlayerState.BUFFERING);
+      if (btn) {
+        btn.innerHTML = tocando
+          ? '<svg class="icon-svg"><use href="#i-pause"></use></svg>'
+          : '<svg class="icon-svg"><use href="#i-play"></use></svg>';
+      }
+      // "Continuar assistindo" precisa do tempo da TV, nao do player parado.
+      if (tocando && dur && (Date.now() - _castUltimoSave) > 30000) {
+        _castUltimoSave = Date.now();
+        _saveProgress(pos, dur);
+      }
+    }, 1000);
+  }
+
+  function _stopCastTicker() {
+    if (_castTicker) { clearInterval(_castTicker); _castTicker = null; }
+  }
+
+  function _showCastingPanel(mostrar) {
+    var painel = document.getElementById('castingPanel');
+    if (!painel) return;
+    painel.classList.toggle('active', !!mostrar);
+    if (!mostrar) { _stopCastTicker(); return; }
+    var nome = '';
+    try { nome = _castSession.getCastDevice().friendlyName || ''; } catch (e) {}
+    var dev = document.getElementById('castingDevice');
+    if (dev) dev.textContent = nome ? ('para ' + nome) : '';
+    var tit = document.getElementById('castingTitle');
+    var nomeFilme = document.getElementById('playerMovieName');
+    if (tit) tit.textContent = nomeFilme ? nomeFilme.textContent : 'Transmitindo';
+    var img = document.getElementById('castingPoster');
+    if (img) {
+      // Poster quebrado deixaria um buraco com o icone de imagem falha.
+      img.onerror = function() { this.style.display = 'none'; };
+      if (_castArt.poster) {
+        img.style.display = '';
+        img.src = streamUrl(_castArt.poster);
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+    }
+    _startCastTicker();
   }
 
   function toggleCast() {
@@ -1239,7 +1481,11 @@
       var tkRes = await fetch('/api/cast-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: mediaPath, subtitle: currentSubtitlePath || '' })
+        body: JSON.stringify({
+          path: mediaPath,
+          subtitle: currentSubtitlePath || '',
+          images: [_castArt.poster, _castArt.fanart].filter(Boolean)
+        })
       });
       if (tkRes.ok) castTokens = await tkRes.json();
     } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
@@ -1254,9 +1500,30 @@
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
     mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
-    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+
+    // MovieMediaMetadata no lugar do generico: e o que faz a TV desenhar a
+    // ficha do filme (arte, ano, estudio) em vez de uma tela vazia com o titulo.
+    var meta = new chrome.cast.media.MovieMediaMetadata();
     var titleEl = document.getElementById('playerMovieName');
-    mediaInfo.metadata.title = titleEl ? titleEl.textContent : 'TicianoFlix';
+    meta.title = titleEl ? titleEl.textContent : 'TicianoFlix';
+    if (_castArt.year) meta.releaseDate = String(_castArt.year) + '-01-01';
+    if (_castArt.studio) meta.studio = _castArt.studio;
+    if (_castArt.plot) meta.subtitle = _castArt.plot;
+    else if (_castArt.year) meta.subtitle = String(_castArt.year);
+
+    // As imagens tambem saem por /api/stream: sem o token assinado a TV recebe
+    // 401 e fica sem arte.
+    var imgs = castTokens.imgs || {};
+    var arte = [];
+    [_castArt.fanart, _castArt.poster].forEach(function(caminho) {
+      if (!caminho || !imgs[caminho]) return;
+      arte.push(new chrome.cast.Image(
+        baseUrl + '/api/stream?path=' + encodeURIComponent(caminho)
+        + '&t=' + encodeURIComponent(imgs[caminho])));
+    });
+    if (arte.length) meta.images = arte;
+    mediaInfo.metadata = meta;
+    if (video.duration) mediaInfo.duration = video.duration;
 
     // Add subtitle track if available
     var currentSubPath = currentSubtitlePath;
@@ -1271,13 +1538,40 @@
       track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      mediaInfo.activeTrackIds = [1];
+      // Legenda no espirito da Apple TV: texto branco sobre caixa escura, sem
+      // contorno nas letras (contorno e o visual "Classic"). O canto
+      // arredondado nao da pra reproduzir — veja o comentario do backgroundColor.
+      var estilo = new chrome.cast.media.TextTrackStyle();
+      estilo.foregroundColor = '#FFFFFFFF';
+      estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
+      estilo.fontStyle = chrome.cast.media.TextTrackFontStyle.NORMAL;
+      // 0.8 do tamanho padrao do receiver: a legenda do Cast sai grande demais
+      // numa TV vista da distancia normal de sofa.
+      estilo.fontScale = 0.8;
+      // A caixa vem do backgroundColor, nao da "window": o receiver padrao do
+      // Google ignora windowType/windowColor, e apostar neles deixava a legenda
+      // sem fundo nenhum na TV — branco puro, ilegivel em cena clara.
+      // O preco e perder o canto arredondado: o backgroundColor pinta um
+      // retangulo colado no texto. Fundo visivel vale mais que canto bonito.
+      estilo.backgroundColor = '#000000D9';   // preto a ~85%
+      estilo.windowType = chrome.cast.media.TextTrackWindowType.NONE;
+      // Sombra como seguro: se ate o backgroundColor for ignorado, o texto
+      // ainda se separa do fundo. Onde a caixa aparece, ela some contra o preto.
+      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.DROP_SHADOW;
+      estilo.edgeColor = '#000000FF';
+      mediaInfo.textTrackStyle = estilo;
       console.log('[Cast] Subtitle URL:', subUrl);
     } else {
       console.log('[Cast] No subtitle track available (currentSubtitlePath is null)');
     }
 
     var request = new chrome.cast.media.LoadRequest(mediaInfo);
+    // activeTrackIds vive no LoadRequest, nao no MediaInfo — estava no lugar
+    // errado, e por isso a legenda dependia inteiramente do editTracksInfo
+    // depois do load.
+    if (currentSubPath) {
+      request.activeTrackIds = [1];
+    }
     // Start from current position if the video has played
     if (video.currentTime > 0) {
       request.currentTime = video.currentTime;
@@ -1289,6 +1583,7 @@
         showToast('📡 Transmitindo para Chromecast', 'info');
         // Pause local video while casting
         video.pause();
+        _showCastingPanel(true);
         // Force enable subtitle track after load (some receivers ignore activeTrackIds).
         // Retry a cada 2s até ~30s: o receiver só associa o track depois que o vídeo
         // carregou/bufferizou (stream via rclone→Drive demora a começar).
@@ -1380,14 +1675,25 @@
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
 
-    // Start background download immediately (doesn't depend on video playback)
-    _startBgDownload(filePath);
+    // Download de fundo só faz sentido pro Drive: ele existe para forçar o
+    // cache VFS do rclone. Num arquivo local isso leria o filme inteiro do
+    // disco à toa, disputando com a própria reprodução.
+    const _local = isLocalPath(filePath);
+    if (!_local) _startBgDownload(filePath);
+
+    // A arte guardada e da ficha aberta. Se o video vier de outro caminho
+    // (lista de pasta, busca), ela nao corresponde — melhor nao mandar nada.
+    if (_castArt.folder !== filePath.substring(0, filePath.lastIndexOf('/'))) {
+      _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
+    }
 
     // Show loading state
     video.style.display = 'none';
     loading.style.display = 'flex';
     document.getElementById('playerError').style.display = 'none';
-    loading.querySelector('span').textContent = 'Preparando vídeo do Google Drive...';
+    loading.querySelector('span').textContent = _local
+      ? 'Abrindo o vídeo...'
+      : 'Preparando vídeo do Google Drive...';
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1518,13 +1824,16 @@
 
     // Inicia loading — stream começa assim que oncanplay disparar
     loading.querySelector('span').textContent = 'Carregando...';
-    setStreamStatus('cached', 'Cache: 0%');
+    // Arquivo local não passa por cache nenhum — mostrar "Cache: 0%" seria mentira.
+    setStreamStatus('cached', _local ? 'Local' : 'Cache: 0%');
 
     // Timeout: se readyState=0 após 25s, é erro de conexão
     setTimeout(function() {
       if (video.readyState === 0) {
         clearBufferTimer();
-        showPlayerError('O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
+        showPlayerError(_local
+          ? 'O servidor demorou a responder. A fonte deste filme ainda está conectada?'
+          : 'O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
       }
     }, 25000);
 
@@ -1572,10 +1881,22 @@
     video.onvolumechange = updateMuteBtn;
 
     document.getElementById('seekBar').oninput = function() {
+      const dur = _castDuration();
+      if (dur) { _castSeekTo((this.value / 100) * dur); return; }
       const v = document.getElementById('videoPlayer');
       if (v && v.duration) v.currentTime = (this.value / 100) * v.duration;
     };
     document.getElementById('volumeSlider').oninput = function() {
+      if (_isCasting() && _castSession) {
+        try {
+          _castSession.setVolume(parseFloat(this.value)).catch(function(e) {
+            console.warn('[Cast] setVolume falhou:', e);
+          });
+          return;
+        } catch (e) {
+          console.warn('[Cast] volume indisponivel:', e);
+        }
+      }
       const v = document.getElementById('videoPlayer');
       if (v) { v.volume = parseFloat(this.value); v.muted = false; }
       updateMuteBtn();
@@ -1607,6 +1928,15 @@
   function toggleSubtitles() {
     const track = document.getElementById('subtitleTrack');
     const btn = document.getElementById('subtitleToggleBtn');
+    const m = _castMedia();
+    if (m) {
+      // Na TV a faixa e ligada/desligada pelo receiver, nao pelo <track> local.
+      const ativa = (m.activeTrackIds || []).indexOf(1) !== -1;
+      m.editTracksInfo(new chrome.cast.media.EditTracksInfoRequest(ativa ? [] : [1]),
+        function() { btn.classList.toggle('active', !ativa); },
+        function(e) { console.warn('[Cast] editTracksInfo falhou:', e); });
+      return;
+    }
     if (track && track.track) {
       if (track.track.mode === 'showing') {
         track.track.mode = 'disabled';
@@ -1651,6 +1981,7 @@
   }
 
   function _doClosePlayer() {
+    _showCastingPanel(false);
     const video = document.getElementById('videoPlayer');
     // Não fecha durante seek
     if (video && video._seeking) {
@@ -1786,6 +2117,15 @@
   }
 
   function togglePlay() {
+    const m = _castMedia();
+    if (m) {
+      const tocando = (m.playerState === chrome.cast.media.PlayerState.PLAYING
+                       || m.playerState === chrome.cast.media.PlayerState.BUFFERING);
+      const falhou = function(e) { console.warn('[Cast] play/pause falhou:', e); };
+      if (tocando) m.pause(null, function() {}, falhou);
+      else m.play(null, function() {}, falhou);
+      return;   // o ticker atualiza o botao com o estado real do receiver
+    }
     const v = document.getElementById('videoPlayer');
     if (!v) return;
     if (v.paused) v.play().catch(function() {});
@@ -1794,6 +2134,8 @@
   }
 
   function skip(sec) {
+    const m = _castMedia();
+    if (m) { _castSeekTo(m.getEstimatedTime() + sec); return; }
     const v = document.getElementById('videoPlayer');
     if (!v || !v.duration) return;
     v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + sec));
@@ -1801,6 +2143,25 @@
 
   let _volumeBeforeMute = 1;
   function toggleMute() {
+    if (_isCasting() && _castSession) {
+      // Volume da TV, nao do computador. Em try: se a sessao cair entre o
+      // clique e a chamada, o erro nao pode travar o controle.
+      try {
+        const mudo = !_castSession.isMute();
+        _castSession.setMute(mudo).catch(function(e) {
+          console.warn('[Cast] setMute falhou:', e);
+        });
+        const btn = document.getElementById('muteBtn');
+        if (btn) {
+          btn.innerHTML = mudo
+            ? '<svg class="icon-svg"><use href="#i-volume-mute"></use></svg>'
+            : '<svg class="icon-svg"><use href="#i-volume"></use></svg>';
+        }
+        return;
+      } catch (e) {
+        console.warn('[Cast] mudo indisponivel:', e);
+      }
+    }
     const v = document.getElementById('videoPlayer');
     if (!v) return;
     if (v.volume === 0) {
@@ -1909,6 +2270,222 @@
     applySubtitleSize();
   });
 
+  // ==================== AJUSTES (hub) ====================
+  // Os painéis de manutenção eram sete botões no rodapé da sidebar, cada um
+  // usado uma vez a cada muito tempo. Agora moram atrás de um item só; o que
+  // fica visível é o que se usa toda hora (Atualizar e Sair).
+  function openSettingsModal() {
+    document.getElementById('settingsModal').classList.add('active');
+  }
+
+  function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('active');
+  }
+
+  // Sai do hub e abre o painel escolhido — dois modais abertos ao mesmo tempo
+  // deixariam o fundo escurecido duas vezes.
+  function fromSettings(abrir) {
+    closeSettingsModal();
+    abrir();
+  }
+
+  document.getElementById('settingsModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSettingsModal();
+  });
+
+  // ==================== FONTES ====================
+  // Prefixo logico das fontes locais (espelha LOCAL_ROOT no servidor).
+  const LOCAL_ROOT = '/Local';
+
+  function isLocalPath(path) {
+    const p = '/' + String(path || '').replace(/^\/+/, '');
+    return p === LOCAL_ROOT || p.indexOf(LOCAL_ROOT + '/') === 0;
+  }
+
+  function openSourcesModal() {
+    document.getElementById('sourcesModal').classList.add('active');
+    _loadSources();
+  }
+
+  function closeSourcesModal() {
+    document.getElementById('sourcesModal').classList.remove('active');
+  }
+
+  document.getElementById('sourcesModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSourcesModal();
+  });
+
+  function _srcMsg(text, kind) {
+    const el = document.getElementById('sourcesMsg');
+    if (el) { el.textContent = text; el.className = 'user-msg ' + kind; }
+  }
+
+  async function _loadSources() {
+    const box = document.getElementById('sourcesBox');
+    if (!box) return;
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando fontes...</span></div>';
+    try {
+      const [srcData, detData] = await Promise.all([
+        fetch('/api/sources').then(r => r.json()),
+        fetch('/api/sources/detect').then(r => r.json()).catch(() => ({ candidates: [] }))
+      ]);
+      _renderSources(srcData.sources || [], (detData && detData.candidates) || []);
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Não foi possível carregar as fontes.</div>';
+    }
+  }
+
+  function _renderSources(sources, candidates) {
+    let html = '<div class="user-section-title">No acervo</div>';
+
+    sources.forEach(src => {
+      const isDrive = src.kind === 'drive';
+      const offline = src.online === false;
+      html += '<div class="user-row src-row">'
+        + '<div class="src-main">'
+        + '<div class="user-name">' + sourceIcon(src.kind) + ' ' + escHtml(src.name)
+        + '<span class="user-tag ' + (isDrive ? 'drive' : 'local') + '">' + (isDrive ? 'nuvem' : 'local') + '</span>'
+        + (offline ? '<span class="user-tag offline">desconectada</span>' : '')
+        + '</div>'
+        + (src.root ? '<div class="src-path">' + escHtml(src.root) + '</div>' : '')
+        + '<div class="src-counts">' + src.genres + (src.genres === 1 ? ' gênero · ' : ' gêneros · ')
+        + src.movies + (src.movies === 1 ? ' filme' : ' filmes') + '</div>'
+        + '</div>'
+        + '<button class="user-btn" title="Escanear só esta fonte" onclick="scanSource(decodeURIComponent(\'' + enc(src.id) + '\'))">'
+        + '<svg class="icon-svg"><use href="#i-refresh"></use></svg></button>'
+        + (isDrive ? '' :
+            '<button class="user-btn danger" id="srcDel-' + enc(src.id) + '" '
+            + 'title="Tirar do acervo (os arquivos no disco não são apagados)" '
+            + 'onclick="removeSource(decodeURIComponent(\'' + enc(src.id) + '\'), decodeURIComponent(\'' + enc(src.name) + '\'))">'
+            + '<svg class="icon-svg"><use href="#i-trash"></use></svg></button>')
+        + '</div>';
+    });
+
+    if (candidates.length > 0) {
+      html += '<div class="user-section-title">Detectadas neste computador</div>'
+        + '<div class="src-hint">As marcadas com <svg class="icon-svg"><use href="#i-check"></use></svg> '
+        + 'já têm uma pasta <b>TicianoFlix</b> dentro e entram na hora.</div>'
+        + '<div class="src-detected">';
+      candidates.forEach(c => {
+        const icon = c.kind === 'volume' ? '#i-hard-drive' : '#i-folder';
+        // Sem a pasta TicianoFlix dentro, o cadastro seria recusado — melhor
+        // deixar isso visivel antes do clique.
+        const dica = c.pronto ? c.path : c.path + ' — sem uma pasta TicianoFlix dentro';
+        html += '<button class="src-detected-btn' + (c.pronto ? ' pronto' : '') + '" '
+          + 'title="' + escHtml(dica) + '" '
+          + 'onclick="addSource(decodeURIComponent(\'' + enc(c.name) + '\'), decodeURIComponent(\'' + enc(c.path) + '\'))">'
+          + '<svg class="icon-svg"><use href="' + icon + '"></use></svg> ' + escHtml(c.name)
+          + (c.pronto
+              ? ' <svg class="icon-svg"><use href="#i-check"></use></svg>'
+              : ' <svg class="icon-svg"><use href="#i-plus"></use></svg>')
+          + '</button>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="user-section-title">Adicionar uma pasta</div>'
+      + '<div class="src-hint">A pasta precisa ter uma pasta <b>TicianoFlix</b> dentro '
+      + '(ou até dois níveis abaixo), organizada como no Drive:<br>'
+      + '<code>TicianoFlix / Gênero / Filme (ano) / filme.mkv</code> — com o '
+      + '<code>.nfo</code> e o <code>poster.jpg</code> junto do vídeo.</div>'
+      + '<div class="user-form">'
+      + '<input type="text" id="srcName" placeholder="Nome (ex.: HD Externo)" autocomplete="off">'
+      + '<input type="text" id="srcPath" placeholder="Caminho (ex.: /Volumes/MeuHD/Filmes)" autocomplete="off">'
+      + '<button class="user-btn" onclick="addSourceFromForm()">'
+      + '<svg class="icon-svg"><use href="#i-plus"></use></svg> Adicionar</button>'
+      + '</div>'
+      + '<div id="sourcesMsg"></div>';
+
+    document.getElementById('sourcesBox').innerHTML = html;
+    const input = document.getElementById('srcPath');
+    if (input) {
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') addSourceFromForm(); });
+    }
+  }
+
+  async function _srcPost(url, body) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.status !== 'ok') {
+        _srcMsg(data.error || 'Falhou.', 'err');
+        return null;
+      }
+      return data;
+    } catch (e) {
+      _srcMsg('Erro de rede.', 'err');
+      return null;
+    }
+  }
+
+  async function addSource(name, path) {
+    const data = await _srcPost('/api/sources/add', { name: name, path: path });
+    if (!data) return;
+    _invalidateCatalog();
+    await _loadSources();
+    _srcMsg(data.message || 'Fonte adicionada.', 'ok');
+    showToast('💽 ' + name + ' adicionada ao acervo', '');
+  }
+
+  function addSourceFromForm() {
+    const pathEl = document.getElementById('srcPath');
+    const nameEl = document.getElementById('srcName');
+    const path = pathEl ? pathEl.value.trim() : '';
+    if (!path) { _srcMsg('Informe o caminho da pasta.', 'err'); return; }
+    addSource(nameEl && nameEl.value.trim() ? nameEl.value.trim() : path.split('/').pop(), path);
+  }
+
+  // Remocao em duas etapas: o primeiro clique so arma o botao. Tirar uma fonte
+  // apaga o catalogo dela (os arquivos no disco ficam), entao vale confirmar.
+  let _srcPendingRemove = null;
+  async function removeSource(id, name) {
+    if (_srcPendingRemove !== id) {
+      _srcPendingRemove = id;
+      const btn = document.getElementById('srcDel-' + id);
+      if (btn) btn.innerHTML = 'Confirmar?';
+      _srcMsg('Clique de novo para tirar "' + name + '" do acervo. Os arquivos no disco não são apagados.', 'err');
+      setTimeout(() => {
+        if (_srcPendingRemove === id) { _srcPendingRemove = null; _loadSources(); }
+      }, 6000);
+      return;
+    }
+    _srcPendingRemove = null;
+    const data = await _srcPost('/api/sources/remove', { id: id });
+    if (!data) return;
+    _invalidateCatalog();
+    await _loadSources();
+    _srcMsg('"' + name + '" saiu do acervo. Os arquivos continuam no disco.', 'ok');
+  }
+
+  async function scanSource(id) {
+    // /api/refresh responde "scanning" | "already_scanning", nao "ok".
+    try {
+      const res = await fetch('/api/refresh?source=' + encodeURIComponent(id),
+                              { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'already_scanning') {
+        _srcMsg('Já existe um scan em andamento.', 'err');
+        return;
+      }
+      _srcMsg('Escaneando... o catálogo se atualiza sozinho ao terminar.', 'ok');
+      _watchScanProgress();
+    } catch (e) {
+      _srcMsg('Erro de rede.', 'err');
+    }
+  }
+
+  // O catalogo mudou: derruba o cache do frontend e redesenha home e sidebar.
+  function _invalidateCatalog() {
+    _frontCache = {};
+    _sidebarGenresLoaded = false;
+    loadSidebarGenres(true);
+    if (isHomePage(currentPath)) loadPath(currentPath || '', true);
+  }
+
   // ==================== CONTAS ====================
   let _me = null;
 
@@ -1921,8 +2498,10 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          const btn = document.getElementById('usersBtn');
-          if (btn) btn.style.display = '';
+          ['settingsUsers', 'settingsSources'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = '';
+          });
         }
       }
     } catch (e) {}
@@ -2088,11 +2667,18 @@
   }
 
   // ==================== OFFLINE CACHE TRACKER ====================
-  const _cachedSet = new Set(JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]'));
+  // Só filmes do Drive baixados pro cache VFS. Filme em fonte local está no
+  // disco por natureza — não foi "baixado", e misturar os dois esvaziava o
+  // sentido da seção. O filter limpa o que versões anteriores gravaram.
+  const _cachedSet = new Set(
+    JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]')
+      .filter(p => !isLocalPath(p))
+  );
   function _isCached(folderPath) {
     return _cachedSet.has(folderPath);
   }
   function _markCached(folderPath) {
+    if (isLocalPath(folderPath)) return;
     if (!_cachedSet.has(folderPath)) {
       _cachedSet.add(folderPath);
       localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
@@ -2106,6 +2692,9 @@
       if (!movies) return;
       let changed = false;
       movies.forEach(m => {
+        // O servidor reporta cached=true para filme local (ele está no disco);
+        // aqui a pergunta é outra: foi baixado do Drive?
+        if (isLocalPath(m.path)) return;
         if (m.cached && !_cachedSet.has(m.path)) {
           _cachedSet.add(m.path);
           changed = true;
@@ -2128,6 +2717,13 @@
       if (d.status === 'ok') {
         showToast('🧹 Cache limpo com sucesso!', 'success');
         document.getElementById('cacheUsageSize').textContent = '0B';
+        // O botao agora fica dentro do gerenciador: se ele estiver aberto,
+        // a lista precisa refletir que nada esta mais baixado.
+        if (document.getElementById('cacheManagerModal').classList.contains('active')) {
+          _cmMovies.forEach(m => { if (!isLocalPath(m.path)) m.cached = false; });
+          _renderCacheList(_cmMovies);
+          _updateCacheStats();
+        }
         loadPath(currentPath || '');
       } else {
         showToast('Erro ao limpar cache: ' + (d.error || 'desconhecido'), 'error');
@@ -2237,17 +2833,20 @@
 
       const allMovies = [];
       for (const genre of genresData.folders) {
-        const listRes = await fetch('/api/list?path=' + encodeURIComponent('/TicianoFlix/' + genre.Name));
+        // O path completo do genero vem do servidor — ele pode estar em
+        // qualquer fonte, nao so no Drive.
+        const genrePath = '/' + genre.Path;
+        const listRes = await fetch('/api/list?path=' + encodeURIComponent(genrePath));
         const listData = await listRes.json();
         if (listData && listData.folders) {
           listData.folders.forEach(f => {
-            allMovies.push('/TicianoFlix/' + genre.Name + '/' + f.Name);
+            allMovies.push(genrePath + '/' + f.Name);
           });
         }
       }
 
       for (const moviePath of allMovies) {
-        if (_cachedSet.has(moviePath)) continue;
+        if (isLocalPath(moviePath) || _cachedSet.has(moviePath)) continue;
         const detail = await apiFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath));
         if (!detail || !detail.video) continue;
         const video = detail.video;
@@ -2269,7 +2868,7 @@
     const grid = document.getElementById('offlineGrid');
     if (!section || !grid) return;
 
-    const paths = [..._cachedSet];
+    const paths = [..._cachedSet].filter(p => !isLocalPath(p));
     if (paths.length === 0) {
       section.style.display = 'none';
       grid.innerHTML = '';
@@ -2344,7 +2943,7 @@
       const res = await fetch('/api/cache-manager');
       const movies = await res.json();
       if (!movies || movies.length === 0) {
-        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3><p>Escaneie o Google Drive primeiro.</p></div>';
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div><h3>Nenhum filme encontrado</h3><p>Escaneie suas fontes primeiro.</p></div>';
         return;
       }
       _cmMovies = movies;
@@ -2395,10 +2994,13 @@
     filtered.forEach((m, idx) => {
       const title = (m.title || m.name || '').replace(/[._]/g, ' ');
       const nameClean = title.replace(/\.[^.]+$/, '');
+      const isLocal = isLocalPath(m.path);
       const isCached = m.cached;
-      const isDownloading = _cmDownloading.has(m.path);
-      const statusClass = isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached');
-      let statusLabel = isDownloading ? '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%' : (isCached ? '<svg class="icon-svg"><use href="#i-download"></use></svg> Offline' : '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Online');
+      const isDownloading = !isLocal && _cmDownloading.has(m.path);
+      const statusClass = isLocal ? 'cached' : (isDownloading ? 'downloading' : (isCached ? 'cached' : 'uncached'));
+      let statusLabel = isLocal
+        ? '<svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local'
+        : (isDownloading ? '<svg class="icon-svg"><use href="#i-download"></use></svg> 0%' : (isCached ? '<svg class="icon-svg"><use href="#i-download"></use></svg> Offline' : '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Online'));
       // Reuse cached progress from download tracker if available
       if (isDownloading && _cmPcts && _cmPcts[m.path] !== undefined) {
         statusLabel = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + _cmPcts[m.path] + '%';
@@ -2416,7 +3018,11 @@
       html += '<div class="cache-item-title" title="' + escHtml(nameClean) + '">' + escHtml(nameClean) + '</div>';
       html += '<span class="cache-item-status ' + statusClass + '" id="cmStatus-' + idx + '">' + statusLabel + '</span>';
 
-      if (isDownloading) {
+      if (isLocal) {
+        // Ja esta no disco do usuario: nao ha o que baixar, e apagar aqui
+        // significaria mexer no arquivo dele.
+        html += '<button class="cache-item-btn" disabled style="opacity:0.4" title="Filme numa fonte local — sempre disponivel"><svg class="icon-svg"><use href="#i-check"></use></svg></button>';
+      } else if (isDownloading) {
         html += '<button class="cache-item-btn" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-clock"></use></svg></button>';
       } else if (isCached) {
         html += '<button class="cache-item-btn delete" onclick="_cmDeleteCache(\'' + enc(m.path) + '\', ' + idx + ')"><svg class="icon-svg"><use href="#i-trash"></use></svg> Apagar</button>';
@@ -2493,9 +3099,7 @@
             // Update local data
             const local = _cmMovies.find(m => m.path === folderPath);
             if (local) local.cached = true;
-            // Also update _cachedSet in localStorage
-            _cachedSet.add(folderPath);
-            localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+            _markCached(folderPath);
             _renderCacheList(_cmMovies);
             // Refresh offline section on home and cache usage
             _renderOfflineGrid();
@@ -2912,6 +3516,119 @@
   let _refreshFallbackTimer = null;
   let _scanProgressTimer = null;
 
+  // Acompanha o scan em andamento: barra de progresso, limpeza dos timers e
+  // recarga do catalogo no fim. Usado pelo botao Atualizar e pelo scan de uma
+  // fonte so, no modal de Fontes.
+  function _watchScanProgress() {
+    const btn = document.getElementById('refreshBtn');
+    const icon = btn ? btn.querySelector('.icon') : null;
+    // Show progress bar
+    const pbar = document.getElementById('scanProgressBar');
+    const pfill = document.getElementById('scanProgressFill');
+    const ptext = document.getElementById('scanProgressText');
+    pbar.style.display = 'block';
+    pfill.style.width = '0%';
+    ptext.textContent = 'Preparando...';
+
+    // Visual feedback: spin icon, highlight text
+    if (btn) btn.classList.add('loading');
+    if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+
+    // Start polling scan-progress
+    if (_scanProgressTimer) clearInterval(_scanProgressTimer);
+    _scanProgressTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/scan-progress');
+        const s = await r.json();
+        pfill.style.width = s.percent + '%';
+        // Com mais de uma fonte, dizer qual esta sendo escaneada agora.
+        const srcPrefix = (s.source_total > 1 && s.source_current)
+          ? s.source_current + ' — ' : '';
+        if (s.phase === 'genres') {
+          if (s.movie_index > 0) {
+            ptext.textContent = `${srcPrefix}${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
+          } else {
+            ptext.textContent = `${srcPrefix}Gênero ${s.genre_index}/${s.genre_total}`;
+          }
+        } else if (s.phase === 'listing_root') {
+          ptext.textContent = s.source_current ? ('Listando ' + s.source_current + '...') : 'Listando raiz...';
+        } else if (s.phase === 'done') {
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
+          clearTimeout(_refreshFallbackTimer);
+          _refreshFallbackTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          _frontCache = {};
+          _sidebarGenresLoaded = false;
+          loadSidebarGenres(true);
+          showToast('Escaneamento concluído!', 'success');
+          loadPath(currentPath || '');
+        } else if (s.phase === 'error') {
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          showToast('Erro ao escanear. Confira o Drive e as fontes locais.', 'error');
+          loadPath(currentPath || '');
+        }
+      } catch (_) {}
+    }, 800);
+
+    // Also poll cache-status as fallback (backward compat)
+    let attempts = 0;
+    _refreshPollTimer = setInterval(async () => {
+      attempts++;
+      try {
+        const r = await fetch('/api/cache-status');
+        const s = await r.json();
+        if (s.cached) {
+          clearInterval(_refreshPollTimer);
+          _refreshPollTimer = null;
+          clearInterval(_scanProgressTimer);
+          _scanProgressTimer = null;
+          clearTimeout(_refreshFallbackTimer);
+          _refreshFallbackTimer = null;
+          if (btn) btn.classList.remove('loading');
+          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+          pbar.style.display = 'none';
+          _frontCache = {};
+          _sidebarGenresLoaded = false;
+          loadSidebarGenres(true);
+          showToast('Escaneamento concluído!', 'success');
+          loadPath(currentPath || '');
+        }
+      } catch (_) {}
+      if (attempts > 120) {
+        clearInterval(_refreshPollTimer);
+        _refreshPollTimer = null;
+        clearInterval(_scanProgressTimer);
+        _scanProgressTimer = null;
+        if (btn) btn.classList.remove('loading');
+        if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+        pbar.style.display = 'none';
+        loadPath(currentPath || '');
+      }
+    }, 1500);
+
+    _refreshFallbackTimer = setTimeout(() => {
+      clearInterval(_refreshPollTimer);
+      _refreshPollTimer = null;
+      clearInterval(_scanProgressTimer);
+      _scanProgressTimer = null;
+      btn.classList.remove('loading');
+      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
+      pbar.style.display = 'none';
+      _frontCache = {};
+      loadPath(currentPath || '');
+    }, 240000);
+
+  }
+
   async function refreshCache() {
     const btn = document.getElementById('refreshBtn');
     const icon = btn.querySelector('.icon');
@@ -2925,103 +3642,7 @@
         return;
       }
 
-      // Show progress bar
-      const pbar = document.getElementById('scanProgressBar');
-      const pfill = document.getElementById('scanProgressFill');
-      const ptext = document.getElementById('scanProgressText');
-      pbar.style.display = 'block';
-      pfill.style.width = '0%';
-      ptext.textContent = 'Preparando...';
-
-      // Visual feedback: spin icon, highlight text
-      btn.classList.add('loading');
-      if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-
-      // Start polling scan-progress
-      if (_scanProgressTimer) clearInterval(_scanProgressTimer);
-      _scanProgressTimer = setInterval(async () => {
-        try {
-          const r = await fetch('/api/scan-progress');
-          const s = await r.json();
-          pfill.style.width = s.percent + '%';
-          if (s.phase === 'genres') {
-            if (s.movie_index > 0) {
-              ptext.textContent = `${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
-            } else {
-              ptext.textContent = `Gênero ${s.genre_index}/${s.genre_total}`;
-            }
-          } else if (s.phase === 'listing_root') {
-            ptext.textContent = 'Listando raiz...';
-          } else if (s.phase === 'done') {
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            clearInterval(_refreshPollTimer);
-            _refreshPollTimer = null;
-            clearTimeout(_refreshFallbackTimer);
-            _refreshFallbackTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            _frontCache = {};
-            showToast('Escaneamento concluído!', 'success');
-            loadPath(currentPath || '');
-          } else if (s.phase === 'error') {
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            showToast('Erro ao escanear Google Drive', 'error');
-            loadPath(currentPath || '');
-          }
-        } catch (_) {}
-      }, 800);
-
-      // Also poll cache-status as fallback (backward compat)
-      let attempts = 0;
-      _refreshPollTimer = setInterval(async () => {
-        attempts++;
-        try {
-          const r = await fetch('/api/cache-status');
-          const s = await r.json();
-          if (s.cached) {
-            clearInterval(_refreshPollTimer);
-            _refreshPollTimer = null;
-            clearInterval(_scanProgressTimer);
-            _scanProgressTimer = null;
-            clearTimeout(_refreshFallbackTimer);
-            _refreshFallbackTimer = null;
-            btn.classList.remove('loading');
-            if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-            pbar.style.display = 'none';
-            _frontCache = {};
-            showToast('Escaneamento concluído!', 'success');
-            loadPath(currentPath || '');
-          }
-        } catch (_) {}
-        if (attempts > 120) {
-          clearInterval(_refreshPollTimer);
-          _refreshPollTimer = null;
-          clearInterval(_scanProgressTimer);
-          _scanProgressTimer = null;
-          btn.classList.remove('loading');
-          if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-          pbar.style.display = 'none';
-          loadPath(currentPath || '');
-        }
-      }, 1500);
-
-      _refreshFallbackTimer = setTimeout(() => {
-        clearInterval(_refreshPollTimer);
-        _refreshPollTimer = null;
-        clearInterval(_scanProgressTimer);
-        _scanProgressTimer = null;
-        btn.classList.remove('loading');
-        if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
-        pbar.style.display = 'none';
-        _frontCache = {};
-        loadPath(currentPath || '');
-      }, 240000);
+      _watchScanProgress();
 
     } catch(e) {
       btn.classList.remove('loading');
