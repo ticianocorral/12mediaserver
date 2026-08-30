@@ -14,14 +14,13 @@ static void forward(int sig) {
 }
 
 int main(void) {
-    const char *home = getenv("HOME");
-    if (!home) home = "/Users/ticiano";
-    char script[4096];
-    snprintf(script, sizeof(script), "%s/TicianoFlix/server.py", home);
-
+    // server.py e resolvido relativo ao cwd do processo — o WorkingDirectory
+    // que o launchd/plist ja configura — e nao a um caminho fixo de HOME. Um
+    // caminho fixo aqui exigia recompilar o wrapper toda vez que a pasta do
+    // projeto mudasse de lugar; assim, so o plist precisa saber onde ela esta.
     child = fork();
     if (child == 0) {
-        char *const args[] = {"/usr/bin/python3", script, NULL};
+        char *const args[] = {"/usr/bin/python3", "server.py", NULL};
         execv(args[0], args);
         perror("execv");
         _exit(127);
