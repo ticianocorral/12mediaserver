@@ -3274,6 +3274,19 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.10.0',
+      title: 'responsividade real no celular',
+      changes: [
+        'Barra lateral vira gaveta abaixo de 768px, com barra superior fixa (menu, logo, busca)',
+        'Ordem de empilhamento (z-index) organizada numa escala única e documentada',
+        'Controles do player reorganizados em duas faixas, com os secundários (volume, velocidade, legenda) num menu "⋯"',
+        'Barra de progresso e controle de volume utilizáveis com o dedo',
+        'Título do filme sempre visível nos cartazes (antes só aparecia no hover)',
+        'Cabeçalho do gênero compacto (de 200px fixos para altura pelo conteúdo)',
+        'Toque revela os controles do player (antes dependia de hover/mousemove)',
+      ],
+    },
+    {
       version: '1.9.0',
       title: 'fontes locais — HD externo, pendrive e pastas do computador',
       changes: [
