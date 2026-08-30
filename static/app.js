@@ -1501,42 +1501,110 @@
       });
   }
 
+  // Chromecast e AirPlay compartilham o mesmo problema: o aparelho que vai
+  // tocar o filme busca a midia sozinho, direto do servidor, sem o cookie de
+  // sessao do navegador. As duas rotas pedem aqui uma URL assinada, valida so
+  // para o arquivo em questao (e a legenda/imagens, se informadas).
+  async function _fetchMediaToken(video, extraImages) {
+    if (!video || !video.src) return null;
+    var baseUrl = window.__HTTP_BASE__ || _getBaseUrl();
+    var urlObj = new URL(video.src, _getBaseUrl());
+    var mediaPath = urlObj.searchParams.get('path') || '';
+    if (!mediaPath) return null;
+    var body = { path: mediaPath, subtitle: currentSubtitlePath || '' };
+    if (extraImages && extraImages.length) body.images = extraImages;
+    var tokens = null;
+    try {
+      var res = await fetch('/api/cast-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) tokens = await res.json();
+    } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
+    if (!tokens || !tokens.t) return null;
+    return { baseUrl: baseUrl, streamPath: urlObj.pathname + urlObj.search, tokens: tokens };
+  }
+
+  // ===== AIRPLAY (iOS/Safari) =====
+  // O Chromecast nao tem como funcionar em navegador de iPhone: a Apple nao
+  // expoe a API que o SDK do Google usa, nem no Safari nem no Chrome-iOS, que
+  // roda sobre o mesmo motor da Apple. AirPlay e o caminho nativo da Apple —
+  // so aparece quando ha um receptor real na rede (Apple TV, TV com AirPlay 2
+  // embutido, ou um Roku, que suporta AirPlay 2 mesmo sem ser da Apple).
+  function _airplaySupported(video) {
+    return !!(video && typeof video.webkitShowPlaybackTargetPicker === 'function');
+  }
+
+  function _setupAirplay(video) {
+    var btn = document.getElementById('airplayBtn');
+    if (!btn) return;
+    if (!_airplaySupported(video)) { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+
+    // O evento existe pra afinar a visibilidade quando o Safari sabe que nao
+    // ha receptor por perto — mas nem toda versao dispara ele de forma
+    // confiavel, entao o botao comeca visivel (o pior caso e abrir o seletor
+    // nativo vazio, que o proprio iOS ja trata) e so esconde se o evento
+    // afirmar que nao ha nada.
+    video.addEventListener('webkitplaybacktargetavailabilitychanged', function(e) {
+      btn.style.display = (e.availability === 'not-available') ? 'none' : '';
+    });
+
+    // Enquanto transmite via AirPlay, o proprio <video> continua sendo o
+    // controle — o WebKit repassa play/pause/seek pro receptor por baixo dos
+    // panos, sem precisar de um ticker separado como o Cast usa. So refletimos
+    // o estado no botao.
+    video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', function() {
+      btn.classList.toggle('active', video.webkitCurrentPlaybackTargetIsWireless);
+    });
+  }
+
+  async function toggleAirplay() {
+    var video = document.getElementById('videoPlayer');
+    if (!_airplaySupported(video)) return;
+
+    // Troca o src pra versao assinada antes de abrir o seletor: se o usuario
+    // escolher o Roku, ele vai buscar essa URL sozinho, sem cookie. Trocar o
+    // src reinicia o buffer, entao guardamos e restauramos a posicao.
+    var pos = video.currentTime;
+    var tocando = !video.paused;
+    var info = await _fetchMediaToken(video, []);
+    if (info) {
+      video.addEventListener('loadedmetadata', function retomar() {
+        video.removeEventListener('loadedmetadata', retomar);
+        video.currentTime = pos;
+        if (tocando) video.play().catch(function() {});
+      });
+      video.src = info.baseUrl + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
+      if (currentSubtitlePath && info.tokens.sub) {
+        var track = document.getElementById('subtitleTrack');
+        if (track) {
+          track.src = info.baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
+                    + '&t=' + encodeURIComponent(info.tokens.sub);
+        }
+      }
+    }
+    // O seletor nativo do iOS precisa ser chamado enquanto o toque do usuario
+    // ainda "conta" como gesto ativo — por isso roda logo em seguida, sem mais
+    // nenhuma espera depois do fetch acima.
+    video.webkitShowPlaybackTargetPicker();
+  }
+
   async function _sendMediaToCast() {
     if (!_castSession) return;
     var video = document.getElementById('videoPlayer');
     if (!video || !video.src) return;
 
-    // Chromecast must fetch media over HTTP (doesn't trust self-signed certs)
-    // Use __HTTP_BASE__ if available (set by server), fallback to page origin
-    var baseUrl = window.__HTTP_BASE__ || _getBaseUrl();
-
-    // Get the current video stream URL path (relative)
-    var urlObj = new URL(video.src, _getBaseUrl());
-    var streamPath = urlObj.pathname + urlObj.search;
-
-    // O Chromecast busca a midia sozinho e nao manda o cookie de sessao.
-    // Pedimos ao servidor uma URL assinada, valida so para este arquivo.
-    var mediaPath = urlObj.searchParams.get('path') || '';
-    var castTokens = {};
-    try {
-      var tkRes = await fetch('/api/cast-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: mediaPath,
-          subtitle: currentSubtitlePath || '',
-          images: [_castArt.poster, _castArt.fanart].filter(Boolean)
-        })
-      });
-      if (tkRes.ok) castTokens = await tkRes.json();
-    } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
-    if (!castTokens.t) {
+    var info = await _fetchMediaToken(video, [_castArt.poster, _castArt.fanart].filter(Boolean));
+    if (!info) {
       showToast('❌ Não foi possível autorizar o envio para a TV', 'error');
       return;
     }
+    var baseUrl = info.baseUrl, castTokens = info.tokens;
 
     // Construct absolute URL for Chromecast (over HTTP)
-    var contentUrl = baseUrl + streamPath + '&t=' + encodeURIComponent(castTokens.t);
+    var contentUrl = baseUrl + info.streamPath + '&t=' + encodeURIComponent(castTokens.t);
 
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
@@ -1712,6 +1780,8 @@
 
     // Proactively load Cast SDK (non-blocking)
     _loadCastSdk();
+    // AirPlay nao precisa de SDK — e nativo do <video> em navegadores WebKit.
+    _setupAirplay(video);
 
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
