@@ -3274,6 +3274,14 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.10.2',
+      title: 'icone de play do logo quebrava pra linha de baixo no desktop',
+      changes: [
+        '`.logo-text` ganha `white-space: nowrap` + `flex-shrink: 0`: ícone e nome nunca mais quebram entre si',
+        '`.sidebar-header` ganha `flex-wrap: wrap`: quando o selo de versão não cabe do lado, ele desce para uma segunda linha em vez de espremer o logo',
+      ],
+    },
+    {
       version: '1.10.1',
       title: 'wrapper nativo do macOS para de depender de $HOME/TicianoFlix fixo',
       changes: [

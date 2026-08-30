@@ -604,6 +604,13 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.10.2 — icone de play do logo quebrava pra linha de baixo no desktop
+
+- `.logo-text` ganha `white-space: nowrap` + `flex-shrink: 0`: ícone e nome nunca mais quebram entre si
+
+- `.sidebar-header` ganha `flex-wrap: wrap`: quando o selo de versão não cabe do lado, ele desce para uma segunda linha em vez de espremer o logo
+
+
 ### v1.10.1 — wrapper nativo do macOS para de depender de $HOME/TicianoFlix fixo
 
 - `ticianoflix-server.c` resolve `server.py` como caminho relativo ao `cwd`, em vez de montar `$HOME/TicianoFlix/server.py`
