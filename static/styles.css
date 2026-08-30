@@ -139,6 +139,7 @@
   .sidebar-backdrop {
     display: none;
     position: fixed; inset: 0;
+    height: 100dvh;   /* ver nota de dvh em .sidebar */
     background: rgba(0,0,0,0.6);
     z-index: 100;
   }
@@ -166,6 +167,13 @@
     left: 0;
     width: 220px;
     height: 100vh;
+    /* dvh por cima do vh: no Safari/iOS a barra de endereco soma e some com o
+       scroll, e 100vh e calculado contra a viewport "cheia" (barra escondida),
+       nao contra o que esta visivel de verdade — sobrava altura demais e o
+       rodape da gaveta (Ajustes/Sair) ficava atras da barra do navegador.
+       dvh acompanha a altura visivel real; vh continua como fallback pros
+       navegadores que ainda nao suportam. */
+    height: 100dvh;
     z-index: 200;    /* barra lateral */
     background: var(--bg2);
     border-right: 1px solid rgba(255,255,255,0.06);
@@ -571,6 +579,7 @@
   .cache-manager-search input::placeholder { color: var(--text3); }
   .cache-manager-list {
     max-height: 50vh;
+    max-height: 50dvh;   /* ver nota de dvh em .sidebar */
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -687,6 +696,7 @@
     display: none;
     position: fixed;
     inset: 0;
+    height: 100dvh;   /* ver nota de dvh em .sidebar */
     z-index: 500;    /* modais */
     background: rgba(0,0,0,0.75);
     backdrop-filter: blur(6px);
@@ -702,6 +712,7 @@
     width: 480px;
     max-width: 92vw;
     max-height: 80vh;
+    max-height: 80dvh;   /* ver nota de dvh em .sidebar */
     box-shadow: 0 20px 60px rgba(0,0,0,0.6);
     animation: scaleIn 0.25s ease;
     overflow: hidden;
@@ -999,6 +1010,7 @@
     display: none;
     position: fixed;
     inset: 0;
+    height: 100dvh;   /* ver nota de dvh em .sidebar */
     z-index: 400;    /* player */
     background: rgba(0,0,0,0.92);
     backdrop-filter: blur(4px);
@@ -1012,6 +1024,7 @@
     width: 90vw;
     max-width: 1200px;
     height: 85vh;
+    height: 85dvh;   /* ver nota de dvh em .sidebar */
     background: #000;
     border-radius: var(--radius-lg);
     overflow: hidden;
@@ -1024,6 +1037,7 @@
   .player-container:-webkit-full-screen {
     width: 100vw;
     height: 100vh;
+    height: 100dvh;   /* ver nota de dvh em .sidebar */
     max-width: none;
     border-radius: 0;
     box-shadow: none;
@@ -1340,6 +1354,7 @@
     display: none;
     position: fixed;
     inset: 0;
+    height: 100dvh;   /* ver nota de dvh em .sidebar */
     z-index: 300;    /* ficha do filme */
     background: rgba(0,0,0,0.95);
     backdrop-filter: blur(8px);
