@@ -176,6 +176,12 @@
   .sidebar-header {
     display: flex;
     align-items: center;
+    /* O numero da versao cresce com cada bump automatico ("v1.8" -> "v1.10.1"):
+       sem quebra ele acabava espremendo o icone+texto do logo pra fora da
+       linha. flex-wrap deixa a versao cair pra uma segunda linha quando nao
+       cabe, em vez de quebrar o logo. */
+    flex-wrap: wrap;
+    row-gap: 2px;
     padding: 20px 20px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
@@ -184,6 +190,10 @@
     font-weight: 900;
     color: var(--primary);
     letter-spacing: -1px;
+    /* Nunca quebra o icone de play da palavra "TicianoFlix" — e o que
+       "quebrava" visualmente quando a versao ficou mais longa. */
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .sidebar-header .logo-version {
     font-size: 10px;
