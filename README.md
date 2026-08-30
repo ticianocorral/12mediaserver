@@ -604,6 +604,25 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.9 — fontes locais — HD externo, pendrive e pastas do computador
+
+- Fontes locais: HD externo, pendrive e pastas do computador no mesmo catálogo do Drive
+
+- Cadastro por detecção de volumes conectados ou caminho digitado, restrito a administradores
+
+- A fonte precisa conter uma pasta `TicianoFlix` (na raiz escolhida ou até dois níveis abaixo), com os gêneros dentro dela
+
+- Streaming direto do disco com suporte a Range, para o player conseguir pular no meio do filme
+
+- HD desconectado no scan preserva o catálogo daquela fonte em vez de apagá-lo
+
+- Menu lateral enxuto: os painéis de manutenção passam a viver num item "Ajustes"
+
+- Home com três seções (Últimos Adicionados, Continuar Assistindo, Baixados do Drive) e estatísticas de acervo, fontes conectadas e último scan
+
+- Chromecast: legenda corrigida, ficha do filme na TV (pôster, ano, sinopse) e controles do app comandando a transmissão
+
+
 ### v1.8 — feat(ui): troca os emojis por ícones SVG em contorno
 
 - feat(ui): troca os emojis por ícones SVG em contorno
