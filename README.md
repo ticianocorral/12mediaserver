@@ -629,6 +629,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.13 — app de Android TV, com a interface da web navegável por controle
+
+- Modo TV na web com `?tv=1`: navegação por setas, foco visível e overscan — nada carrega sem a query
+
+- Ponte `TicianoFlixTV` no `playMovie()`, desviando o filme para o player nativo quando o app de TV está presente
+
+- App de Android TV em Kotlin em `tv/`: WebView + ExoPlayer + descoberta do servidor na rede
+
+- Login e `pushState` deixam de descartar a query string da URL
+
+- `tv.js` e `tv.css` entram no cache-busting por mtime
+
+
 ### v1.12 — coleções de filmes (Star Wars 1-6 e afins)
 
 - Item **Coleções** na barra lateral, listando as coleções do acervo

@@ -3570,6 +3570,17 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.13.0',
+      title: 'app de Android TV, com a interface da web navegável por controle',
+      changes: [
+        'Modo TV na web com `?tv=1`: navegação por setas, foco visível e overscan — nada carrega sem a query',
+        'Ponte `TicianoFlixTV` no `playMovie()`, desviando o filme para o player nativo quando o app de TV está presente',
+        'App de Android TV em Kotlin em `tv/`: WebView + ExoPlayer + descoberta do servidor na rede',
+        'Login e `pushState` deixam de descartar a query string da URL',
+        '`tv.js` e `tv.css` entram no cache-busting por mtime',
+      ],
+    },
+    {
       version: '1.12.0',
       title: 'coleções de filmes (Star Wars 1-6 e afins)',
       changes: [
