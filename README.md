@@ -249,6 +249,25 @@ que os bytes saem direto do disco, sem passar pelo rclone.
 > computador inteiro na rede local. Todo acesso a arquivo é confinado à raiz da
 > fonte: `..` e symlink apontando pra fora recebem **403**.
 
+### Na TV (Android TV)
+
+O app em `tv/` abre o TicianoFlix na TV com o controle remoto. A interface é a
+**própria web**, carregada numa WebView com `?tv=1` — o modo que torna tudo
+navegável pelas setas. Assim a TV herda cada novidade da web sem uma segunda
+interface para manter.
+
+A exceção é a reprodução: o Chromium da WebView do Android não é confiável com
+MKV e faixas AC3/DTS, então quem toca é o **ExoPlayer** nativo, com decodificação
+por hardware. A URL vai assinada pelo mesmo token do Chromecast
+(`/api/cast-token`), então o player busca os bytes sozinho e o app nunca lida
+com sessão nem senha.
+
+O `?tv=1` também funciona no computador: abra
+`http://localhost:9187/?tv=1` e o site inteiro passa a ser navegável só com as
+setas e Enter.
+
+Para compilar e instalar, veja [`tv/README.md`](tv/README.md).
+
 ### Metadados NFO
 
 O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
@@ -442,7 +461,11 @@ TicianoFlix/
 ├── index.html             # Estrutura da página + sprites SVG
 ├── static/
 │   ├── styles.css         #   estilos
-│   └── app.js             #   lógica do frontend
+│   ├── app.js             #   lógica do frontend
+│   ├── tv.js              #   navegação por controle remoto (só com ?tv=1)
+│   ├── tv.css             #   foco visível e margem de overscan na TV
+│   └── vendor/            #   polyfill de spatial navigation do W3C (MIT)
+├── tv/                    # App de Android TV (Kotlin) — veja tv/README.md
 ├── tools/check_names.py   # Detecta nomes usados mas não definidos
 ├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
 ├── install.sh             # Instalador do serviço systemd (Linux)

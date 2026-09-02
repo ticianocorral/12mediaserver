@@ -109,3 +109,10 @@ pytest_cache/
 # 🫥 OS
 Desktop.ini
 ehthumbs.db
+
+# App de Android TV
+tv/.gradle/
+tv/build/
+tv/app/build/
+tv/local.properties
+tv/.idea/
