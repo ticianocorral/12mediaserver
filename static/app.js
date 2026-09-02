@@ -403,6 +403,7 @@
     const container = document.getElementById('content');
     const hero = document.getElementById('hero');
     hero.style.display = 'block';
+    _heroCapa(null, null);
 
     const isHome = isHomePage(data.path);
 
@@ -649,6 +650,53 @@
   const COLECAO_PREFIXO = 'colecao:';
   const LISTA_COLECOES = 'colecoes';
 
+  // url() de CSS com aspas. Sem elas o parser rejeita a regra inteira quando o
+  // caminho tem parenteses — e "Filme (1980)" e justamente a convencao de
+  // nomes do acervo, entao o fundo simplesmente nao aparecia.
+  function cssUrl(u) {
+    return 'url("' + String(u).replace(/["\\\n]/g, function(c) {
+      return '\\' + (c === '\n' ? 'A ' : c);
+    }) + '")';
+  }
+
+  // Capa grande no cabecalho. Centralizado num helper porque o hero e
+  // compartilhado por todas as telas: sem um ponto unico de limpeza, a capa
+  // de uma colecao ficaria pendurada ao navegar pra um genero.
+  function _heroCapa(poster, fanart) {
+    const img = document.getElementById('heroCapa');
+    const hero = document.getElementById('hero');
+    const bg = document.getElementById('heroBg');
+    if (!img || !hero) return;
+    // As telas ligam hero.style.display='block' inline, e estilo inline ganha
+    // da classe: por isso o display de linha tambem sai daqui, senao a capa
+    // fica empilhada em cima do titulo em vez de ao lado.
+    if (poster) {
+      img.src = streamUrl(poster);
+      img.style.display = '';
+      img.onerror = function() {
+        this.style.display = 'none';
+        hero.classList.remove('com-capa');
+        hero.style.display = 'block';
+      };
+      hero.classList.add('com-capa');
+      hero.style.display = 'flex';
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      hero.classList.remove('com-capa');
+      hero.style.display = 'block';
+    }
+    if (bg) {
+      if (fanart) {
+        bg.style.backgroundImage = cssUrl(streamUrl(fanart));
+        bg.classList.add('ativo');
+      } else {
+        bg.style.backgroundImage = 'none';
+        bg.classList.remove('ativo');
+      }
+    }
+  }
+
   function abrirColecao(nome) { loadPath(COLECAO_PREFIXO + nome); }
   function loadCollections() { loadPath(LISTA_COLECOES); }
 
@@ -656,6 +704,7 @@
     const container = document.getElementById('content');
     const hero = document.getElementById('hero');
     hero.style.display = 'block';
+    _heroCapa(null, null);
     document.getElementById('breadcrumb').innerHTML = '';
     document.getElementById('heroTitle').innerHTML =
       '<svg class="icon-svg"><use href="#i-layers"></use></svg> Coleções';
@@ -710,19 +759,9 @@
           + '<h3>Coleção não encontrada</h3></div>';
         return;
       }
-      // Fanart própria da coleção vira o fundo do cabeçalho, como na ficha
-      // do filme. Sem ela, o degradê de sempre.
-      const bg = document.getElementById('heroBg');
-      if (col.fanart) {
-        bg.style.backgroundImage = 'url(' + streamUrl(col.fanart) + ')';
-      } else {
-        bg.style.backgroundImage = 'none';
-      }
+      _heroCapa(col.poster, col.fanart);
       document.getElementById('heroTitle').innerHTML =
-        (col.poster
-          ? '<img class="colecao-capa-hero" src="' + streamUrl(col.poster) + '" alt="" '
-            + 'onerror="this.remove()">'
-          : '<svg class="icon-svg"><use href="#i-layers"></use></svg> ')
+        (col.poster ? '' : '<svg class="icon-svg"><use href="#i-layers"></use></svg> ')
         + escHtml(col.name);
       document.getElementById('heroDesc').innerHTML =
         '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + col.movies.length
@@ -1050,9 +1089,9 @@
 
       // Background fanart
       if (fanart) {
-        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, fanart.Name) + ')';
+        bg.style.backgroundImage = cssUrl(posterUrl(folderPath, fanart.Name));
       } else if (poster) {
-        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, poster.Name) + ')';
+        bg.style.backgroundImage = cssUrl(posterUrl(folderPath, poster.Name));
       }
 
       // Poster image
