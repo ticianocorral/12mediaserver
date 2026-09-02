@@ -29,6 +29,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
+- **🎬 Coleções** — Star Wars 1-6 e afins agrupados numa tela só, ordenados por ano. Vem da tag `<set>` do NFO (o tinyMediaManager grava sozinho): nenhuma pasta muda de lugar, os filmes continuam cada um no seu gênero. Capa própria opcional via `movieset-poster.jpg`; sem ela, usa o cartaz do filme mais antigo
 - **🔍 Busca** por título com debounce
 - **📱 Responsivo de verdade** — no celular a barra lateral vira gaveta, os controles do player se reorganizam em duas faixas (nada de botão fora da tela) e tudo responde a toque
 - **🔄 Serviço systemd** — inicia automaticamente no login
@@ -627,6 +628,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 ---
 
 ## 📋 Changelog
+
+### v1.12 — coleções de filmes (Star Wars 1-6 e afins)
+
+- Item **Coleções** na barra lateral, listando as coleções do acervo
+
+- Tela da coleção com os filmes ordenados por ano
+
+- Chip na ficha do filme levando para a saga inteira
+
+- Rotas `/api/collections` e `/api/collection?name=`
+
+- Tabelas `collections` e `movie_collections` — nada alterado nas existentes
+
 
 ### v1.11 — AirPlay como alternativa ao Chromecast no iPhone
 

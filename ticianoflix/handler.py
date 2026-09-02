@@ -91,6 +91,7 @@ from .nfo import _fetch_nfo_from_db
 from .queries import (
     cached_list_directory, cached_movie_detail, cached_get_file_info,
     cached_search_files, cached_all_movies, cached_source_counts,
+    cached_all_collections, cached_collection_movies,
     _find_poster_cached,
 )
 
@@ -1926,6 +1927,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # No auto-scan — user must click refresh manually
             # If cache is empty, just show whatever we have (will be empty)
 
+            self._send_json(data)
+            return
+
+        # API: Colecoes (Star Wars 1-6 e afins)
+        if path == "/api/collections":
+            self._send_json(cached_all_collections())
+            return
+
+        if path == "/api/collection":
+            nome = params.get("name", [""])[0]
+            if not nome:
+                self._send_error("Missing 'name' parameter", 400)
+                return
+            data = cached_collection_movies(nome)
+            if data is None:
+                self._send_error("Colecao nao encontrada", 404)
+                return
             self._send_json(data)
             return
 

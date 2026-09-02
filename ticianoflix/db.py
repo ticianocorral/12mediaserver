@@ -68,6 +68,24 @@ SCHEMA = """
         duration_seconds REAL NOT NULL DEFAULT 0,
         updated_at REAL NOT NULL DEFAULT 0
     );
+
+    -- Colecoes (Star Wars 1-6, trilogias, franquias). Vem da tag <set> do NFO,
+    -- que o tinyMediaManager grava sozinho ao agrupar um conjunto — nenhuma
+    -- pasta muda de lugar, os filmes continuam cada um no seu genero.
+    CREATE TABLE IF NOT EXISTS collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        overview TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS movie_collections (
+        folder_path TEXT NOT NULL,
+        collection_id INTEGER NOT NULL,
+        PRIMARY KEY (folder_path, collection_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_movie_collections_col
+        ON movie_collections(collection_id);
 """
 
 
