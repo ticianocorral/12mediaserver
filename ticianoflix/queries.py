@@ -142,6 +142,11 @@ def cached_movie_detail(folder_path):
             result["year"] = nfo["year"]
         result["nfo"] = nfo
 
+    # Colecao a que este filme pertence, se houver — vira um atalho na ficha.
+    colecao = cached_collection_of(folder_path)
+    if colecao:
+        result["collection"] = colecao
+
     return result
 
 
@@ -237,6 +242,81 @@ def cached_all_movies():
             "poster": poster,
         })
     return results
+
+
+def cached_collection_movies(name):
+    """Os filmes de uma colecao, na ordem da saga.
+
+    Ordena por ano — e o que resolve "Star Wars 1 2 3 4 5 6" sem exigir um
+    campo de ordem manual, ja que o <set> do Kodi nao carrega ordem. Filme sem
+    ano cai pro fim, com o nome da pasta como desempate.
+    """
+    conn = get_db()
+    try:
+        col = conn.execute(
+            "SELECT id, name, overview FROM collections WHERE name=?",
+            (name,)).fetchone()
+        if not col:
+            return None
+        rows = conn.execute(
+            """SELECT f.path, f.name, m.title, m.year
+               FROM movie_collections mc
+               JOIN folders f ON f.path = mc.folder_path
+               LEFT JOIN movie_meta m ON m.folder_path = f.path
+               WHERE mc.collection_id = ?
+               ORDER BY CASE WHEN m.year IS NULL OR m.year = '' THEN 1 ELSE 0 END,
+                        CAST(m.year AS INTEGER) ASC,
+                        f.name COLLATE NOCASE ASC""",
+            (col["id"],)).fetchall()
+    finally:
+        conn.close()
+
+    filmes = []
+    for row in rows:
+        filmes.append({
+            "path": row["path"],
+            "name": row["name"],
+            "title": row["title"] or row["name"],
+            "year": row["year"],
+            "poster": _find_poster_cached(row["path"]),
+        })
+    return {"name": col["name"], "overview": col["overview"], "movies": filmes}
+
+
+def cached_collection_of(folder_path):
+    """A colecao a que um filme pertence, ou None. So o cabecalho — sem a
+    lista de filmes, que a ficha do filme nao precisa carregar."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """SELECT c.name, c.overview, COUNT(mc2.folder_path) AS total
+               FROM movie_collections mc
+               JOIN collections c ON c.id = mc.collection_id
+               JOIN movie_collections mc2 ON mc2.collection_id = c.id
+               WHERE mc.folder_path = ?
+               GROUP BY c.id""",
+            (folder_path,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {"name": row["name"], "overview": row["overview"], "total": row["total"]}
+
+
+def cached_all_collections():
+    """Todas as colecoes do acervo, com quantos filmes cada uma tem."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT c.name, c.overview, COUNT(mc.folder_path) AS total
+               FROM collections c
+               JOIN movie_collections mc ON mc.collection_id = c.id
+               GROUP BY c.id
+               ORDER BY c.name COLLATE NOCASE ASC""").fetchall()
+    finally:
+        conn.close()
+    return [{"name": r["name"], "overview": r["overview"], "total": r["total"]}
+            for r in rows]
 
 
 def cached_source_counts(mount):

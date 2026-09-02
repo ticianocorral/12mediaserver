@@ -341,6 +341,49 @@
   }
   .casting-stop:hover { background: rgba(229,9,20,0.22); border-color: rgba(229,9,20,0.5); }
 
+  /* ====== COLECOES ====== */
+  .btn-colecao {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06); color: var(--text);
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: all var(--transition);
+  }
+  .btn-colecao:hover {
+    background: rgba(255,255,255,0.13);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .btn-colecao-conta {
+    font-size: 11px; font-weight: 700;
+    background: rgba(255,255,255,0.14);
+    padding: 2px 7px; border-radius: 999px;
+  }
+  .colecao-sinopse {
+    font-size: 13px; color: var(--text2);
+    margin-top: 8px; max-width: 70ch; line-height: 1.5;
+  }
+  .colecao-lista {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .colecao-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: var(--text); cursor: pointer; text-align: left;
+    font-family: inherit; transition: all var(--transition);
+  }
+  .colecao-item:hover {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.16);
+    transform: translateY(-2px);
+  }
+  .colecao-icone { font-size: 20px; color: var(--text3); flex: 0 0 auto; }
+  .colecao-nome { flex: 1 1 auto; font-size: 15px; font-weight: 600; }
+  .colecao-conta { font-size: 12px; color: var(--text3); white-space: nowrap; }
+
   /* ====== ESTATISTICAS DA HOME ====== */
   .home-stats {
     display: grid;

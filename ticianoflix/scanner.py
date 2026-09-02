@@ -19,7 +19,10 @@ from .config import (
 )
 from .db import get_db, like_prefix as _like_prefix, log_notification, set_cache_time
 from .paths import rc_remote as _rc_remote
-from .nfo import _fetch_nfo_raw, _parse_nfo, _save_nfo_to_db
+from .nfo import (
+    _fetch_nfo_raw, _parse_nfo, _prune_empty_collections, _save_collection_to_db,
+    _save_nfo_to_db,
+)
 from .rclone import run_rclone_cmd
 from . import localfs as _localfs
 from . import sources as _sources
@@ -55,6 +58,9 @@ def _remove_folder_tree(conn, path):
         (path, like))
     conn.execute(
         "DELETE FROM movie_meta WHERE folder_path=? OR folder_path LIKE ? ESCAPE '\\'",
+        (path, like))
+    conn.execute(
+        "DELETE FROM movie_collections WHERE folder_path=? OR folder_path LIKE ? ESCAPE '\\'",
         (path, like))
 
 
@@ -228,12 +234,20 @@ def _index_tree(conn, root_path, root_name, entries,
 
                 # NFO only for new/changed movies AND only if the folder really
                 # has one (avoids a slow fetch on a missing file)
+                nfo_data = None
                 if any(n.lower().endswith(".nfo") for n in live_movie_files):
                     nfo_raw = _fetch_nfo_raw(movie_path)
                     if nfo_raw:
                         nfo_data = _parse_nfo(nfo_raw)
                         if nfo_data:
                             _save_nfo_to_db(conn, movie_path, nfo_data)
+
+                # A colecao sai do mesmo NFO que acabou de ser lido — nao custa
+                # varredura nenhuma a mais. Fica FORA do if do NFO de proposito:
+                # com nfo_data None a funcao desfaz o vinculo, que e o correto
+                # quando o .nfo foi apagado do filme. Dentro do if, o vinculo
+                # antigo ficaria orfao.
+                _save_collection_to_db(conn, movie_path, nfo_data)
 
             if new:
                 stats["added"] += 1
@@ -255,6 +269,7 @@ def _index_tree(conn, root_path, root_name, entries,
                 (genre_path,)
             )
 
+    _prune_empty_collections(conn)
     return stats
 
 
