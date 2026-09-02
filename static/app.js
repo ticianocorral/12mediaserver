@@ -291,9 +291,11 @@
     const s = history.state;
     if (path !== (s && s.path)) {
       if (replace) {
-        history.replaceState({ path: path }, '', window.location.pathname);
+        // Mantem a query na URL: e por ?tv=1 que o modo de controle remoto
+        // sobrevive a um recarregamento dentro do app da TV.
+        history.replaceState({ path: path }, '', window.location.pathname + window.location.search);
       } else {
-        history.pushState({ path: path }, '', window.location.pathname);
+        history.pushState({ path: path }, '', window.location.pathname + window.location.search);
       }
     }
     loadPathInternal(path);
@@ -856,7 +858,7 @@
 
     // Push history state for movie detail
     if (folderPath !== (history.state && history.state.path)) {
-      history.pushState({ path: folderPath }, '', window.location.pathname);
+      history.pushState({ path: folderPath }, '', window.location.pathname + window.location.search);
     }
 
     const overlay = document.getElementById('movieInfoOverlay');

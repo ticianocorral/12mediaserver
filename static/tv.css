@@ -1,0 +1,47 @@
+/* Modo TV — so carrega com ?tv=1.
+ *
+ * A ampliacao geral nao esta aqui: ela vem do viewport fixo em 1280 que o
+ * tv.js aplica, que a propria TV escala para 1920. O que sobra para o CSS e o
+ * que a web nao precisa: anel de foco visivel a tres metros e margem de
+ * overscan, porque muita TV corta as bordas da imagem.
+ */
+
+/* Foco visivel. Na web o anel e discreto e so aparece com teclado; na TV ele e
+   a unica pista de onde voce esta, entao e grosso e sempre visivel. */
+.modo-tv :focus {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Cartao focado cresce um pouco, como nos apps de TV — a moldura sozinha se
+   perde no meio de uma grade de cartazes. */
+.modo-tv .movie-card:focus {
+  transform: scale(1.06);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  z-index: 3;
+  position: relative;
+}
+
+/* O titulo do cartao so aparece no hover, e na TV nao existe hover. */
+.modo-tv .movie-card:focus .movie-card-overlay {
+  opacity: 1;
+}
+
+/* Overscan: varias TVs cortam ate 5% de cada borda. Sem isto a primeira coluna
+   de cartazes e a barra lateral encostam no limite da tela. */
+.modo-tv .main {
+  padding-left: 64px;
+  padding-right: 64px;
+  padding-bottom: 96px;
+}
+.modo-tv .sidebar {
+  padding-left: 12px;
+}
+
+/* Rolagem suave: quem faz o scroll e o scrollIntoView do tv.js, e sem isto o
+   conteudo salta de cartao em cartao. */
+.modo-tv,
+.modo-tv .main {
+  scroll-behavior: smooth;
+}
