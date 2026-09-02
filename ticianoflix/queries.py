@@ -244,6 +244,14 @@ def cached_all_movies():
     return results
 
 
+# Quantos filmes uma colecao precisa ter para aparecer. O TMDB marca o filme
+# como parte de uma saga mesmo quando voce so tem uma parte dela — mostrar
+# "colecao de 1 filme" so polui a lista e nao leva a lugar nenhum. Os vinculos
+# continuam gravados: assim que o segundo filme entra no acervo, a colecao
+# aparece sozinha, sem precisar reescanear nada.
+MIN_FILMES_COLECAO = 2
+
+
 def _collection_art(conn, collection_id, tipo):
     """Arte propria da colecao (set_poster/set_fanart), se algum filme dela
     carregar o arquivo. Devolve o caminho servivel por /api/stream, ou None."""
@@ -345,8 +353,9 @@ def cached_collection_of(folder_path):
                JOIN collections c ON c.id = mc.collection_id
                JOIN movie_collections mc2 ON mc2.collection_id = c.id
                WHERE mc.folder_path = ?
-               GROUP BY c.id""",
-            (folder_path,)).fetchone()
+               GROUP BY c.id
+               HAVING COUNT(mc2.folder_path) >= ?""",
+            (folder_path, MIN_FILMES_COLECAO)).fetchone()
     finally:
         conn.close()
     if not row:
@@ -363,7 +372,9 @@ def cached_all_collections():
                FROM collections c
                JOIN movie_collections mc ON mc.collection_id = c.id
                GROUP BY c.id
-               ORDER BY c.name COLLATE NOCASE ASC""").fetchall()
+               HAVING COUNT(mc.folder_path) >= ?
+               ORDER BY c.name COLLATE NOCASE ASC""",
+            (MIN_FILMES_COLECAO,)).fetchall()
         saida = []
         for r in rows:
             capa, _ = _collection_capa(conn, r["id"])
