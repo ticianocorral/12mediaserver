@@ -244,6 +244,48 @@ def cached_all_movies():
     return results
 
 
+def _collection_art(conn, collection_id, tipo):
+    """Arte propria da colecao (set_poster/set_fanart), se algum filme dela
+    carregar o arquivo. Devolve o caminho servivel por /api/stream, ou None."""
+    row = conn.execute(
+        """SELECT fi.folder_path, fi.name
+           FROM movie_collections mc
+           JOIN files fi ON fi.folder_path = mc.folder_path
+           WHERE mc.collection_id = ? AND fi.file_type = ?
+           LIMIT 1""",
+        (collection_id, tipo)).fetchone()
+    if not row:
+        return None
+    return f"{row['folder_path']}/{row['name']}"
+
+
+def _collection_capa(conn, collection_id):
+    """Capa da colecao: a arte propria quando existe, senao o cartaz do filme
+    mais antigo do conjunto.
+
+    O fallback importa: acervo nenhum comeca com arte de colecao, e sem ele
+    toda colecao ficaria com um icone generico ate alguem criar os arquivos
+    a mao.
+    """
+    propria = _collection_art(conn, collection_id, "set_poster")
+    if propria:
+        return propria, True
+    row = conn.execute(
+        """SELECT fi.folder_path, fi.name
+           FROM movie_collections mc
+           JOIN folders f ON f.path = mc.folder_path
+           LEFT JOIN movie_meta m ON m.folder_path = f.path
+           JOIN files fi ON fi.folder_path = f.path AND fi.file_type = 'poster'
+           WHERE mc.collection_id = ?
+           ORDER BY CASE WHEN m.year IS NULL OR m.year = '' THEN 1 ELSE 0 END,
+                    CAST(m.year AS INTEGER) ASC, f.name COLLATE NOCASE ASC
+           LIMIT 1""",
+        (collection_id,)).fetchone()
+    if not row:
+        return None, False
+    return f"{row['folder_path']}/{row['name']}", False
+
+
 def cached_collection_movies(name):
     """Os filmes de uma colecao, na ordem da saga.
 
@@ -272,6 +314,13 @@ def cached_collection_movies(name):
     finally:
         conn.close()
 
+    conn = get_db()
+    try:
+        capa, capa_propria = _collection_capa(conn, col["id"])
+        fanart = _collection_art(conn, col["id"], "set_fanart")
+    finally:
+        conn.close()
+
     filmes = []
     for row in rows:
         filmes.append({
@@ -281,7 +330,8 @@ def cached_collection_movies(name):
             "year": row["year"],
             "poster": _find_poster_cached(row["path"]),
         })
-    return {"name": col["name"], "overview": col["overview"], "movies": filmes}
+    return {"name": col["name"], "overview": col["overview"], "movies": filmes,
+            "poster": capa, "poster_propria": capa_propria, "fanart": fanart}
 
 
 def cached_collection_of(folder_path):
@@ -309,15 +359,19 @@ def cached_all_collections():
     conn = get_db()
     try:
         rows = conn.execute(
-            """SELECT c.name, c.overview, COUNT(mc.folder_path) AS total
+            """SELECT c.id, c.name, c.overview, COUNT(mc.folder_path) AS total
                FROM collections c
                JOIN movie_collections mc ON mc.collection_id = c.id
                GROUP BY c.id
                ORDER BY c.name COLLATE NOCASE ASC""").fetchall()
+        saida = []
+        for r in rows:
+            capa, _ = _collection_capa(conn, r["id"])
+            saida.append({"name": r["name"], "overview": r["overview"],
+                          "total": r["total"], "poster": capa})
     finally:
         conn.close()
-    return [{"name": r["name"], "overview": r["overview"], "total": r["total"]}
-            for r in rows]
+    return saida
 
 
 def cached_source_counts(mount):

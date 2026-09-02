@@ -381,6 +381,17 @@
     transform: translateY(-2px);
   }
   .colecao-icone { font-size: 20px; color: var(--text3); flex: 0 0 auto; }
+  .colecao-capa {
+    flex: 0 0 auto; width: 34px; height: 50px;
+    object-fit: cover; border-radius: 4px;
+    background: rgba(255,255,255,0.05);
+  }
+  .colecao-capa-hero {
+    height: 54px; width: auto; max-width: 40px;
+    object-fit: cover; border-radius: 4px;
+    vertical-align: middle; margin-right: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  }
   .colecao-nome { flex: 1 1 auto; font-size: 15px; font-weight: 600; }
   .colecao-conta { font-size: 12px; color: var(--text3); white-space: nowrap; }
 

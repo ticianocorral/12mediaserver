@@ -679,7 +679,10 @@
       cols.forEach(c => {
         html += '<button class="colecao-item" onclick="abrirColecao(decodeURIComponent(\''
           + enc(c.name) + '\'))">'
-          + '<span class="colecao-icone"><svg class="icon-svg"><use href="#i-layers"></use></svg></span>'
+          + (c.poster
+              ? '<img class="colecao-capa" src="' + streamUrl(c.poster) + '" alt="" '
+                + 'loading="lazy" onerror="this.remove()">'
+              : '<span class="colecao-icone"><svg class="icon-svg"><use href="#i-layers"></use></svg></span>')
           + '<span class="colecao-nome">' + escHtml(c.name) + '</span>'
           + '<span class="colecao-conta">' + c.total
           + (c.total === 1 ? ' filme' : ' filmes') + '</span></button>';
@@ -707,8 +710,20 @@
           + '<h3>Coleção não encontrada</h3></div>';
         return;
       }
+      // Fanart própria da coleção vira o fundo do cabeçalho, como na ficha
+      // do filme. Sem ela, o degradê de sempre.
+      const bg = document.getElementById('heroBg');
+      if (col.fanart) {
+        bg.style.backgroundImage = 'url(' + streamUrl(col.fanart) + ')';
+      } else {
+        bg.style.backgroundImage = 'none';
+      }
       document.getElementById('heroTitle').innerHTML =
-        '<svg class="icon-svg"><use href="#i-layers"></use></svg> ' + escHtml(col.name);
+        (col.poster
+          ? '<img class="colecao-capa-hero" src="' + streamUrl(col.poster) + '" alt="" '
+            + 'onerror="this.remove()">'
+          : '<svg class="icon-svg"><use href="#i-layers"></use></svg> ')
+        + escHtml(col.name);
       document.getElementById('heroDesc').innerHTML =
         '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + col.movies.length
         + (col.movies.length === 1 ? ' filme' : ' filmes')

@@ -420,7 +420,16 @@ def _index_file(conn, folder_path, item):
         file_type = "subtitle"
     elif ext in IMAGE_EXTENSIONS:
         stem = Path(name).stem.lower()
-        if stem in ("poster", "capa", "cover", "folder"):
+        # Arte da colecao. Convencao do tinyMediaManager quando ele guarda a
+        # arte do conjunto junto do filme. Classificada a parte de proposito:
+        # sem isso ela cairia em "image", e cached_movie_detail usa a primeira
+        # imagem solta como capa quando o filme nao tem poster — o cartaz da
+        # saga acabaria virando o cartaz de um filme dela.
+        if stem in ("movieset-poster", "movieset", "collection-poster"):
+            file_type = "set_poster"
+        elif stem in ("movieset-fanart", "collection-fanart"):
+            file_type = "set_fanart"
+        elif stem in ("poster", "capa", "cover", "folder"):
             file_type = "poster"
         elif stem in ("fanart", "background", "backdrop", "banner"):
             file_type = "fanart"
