@@ -291,9 +291,11 @@
     const s = history.state;
     if (path !== (s && s.path)) {
       if (replace) {
-        history.replaceState({ path: path }, '', window.location.pathname);
+        // Mantem a query na URL: e por ?tv=1 que o modo de controle remoto
+        // sobrevive a um recarregamento dentro do app da TV.
+        history.replaceState({ path: path }, '', window.location.pathname + window.location.search);
       } else {
-        history.pushState({ path: path }, '', window.location.pathname);
+        history.pushState({ path: path }, '', window.location.pathname + window.location.search);
       }
     }
     loadPathInternal(path);
@@ -1019,7 +1021,7 @@
 
     // Push history state for movie detail
     if (folderPath !== (history.state && history.state.path)) {
-      history.pushState({ path: folderPath }, '', window.location.pathname);
+      history.pushState({ path: folderPath }, '', window.location.pathname + window.location.search);
     }
 
     const overlay = document.getElementById('movieInfoOverlay');
@@ -1935,6 +1937,51 @@
     updateSubtitleButton(subtitlePath);
   }
 
+  // ── Ponte para o player nativo da TV ─────────────────────────
+  // O app de Android TV injeta window.TicianoFlixTV. Quando ele existe, quem
+  // toca o filme e o ExoPlayer nativo e nao o <video> desta pagina: a WebView
+  // do Android nao e confiavel com MKV e faixas AC3/DTS, que e o grosso do
+  // acervo, e o ExoPlayer decodifica por hardware.
+  //
+  // A URL vai assinada pelo mesmo /api/cast-token do Chromecast, entao o player
+  // nativo busca os bytes sozinho, sem depender do cookie de sessao da pagina.
+  function _tvNativoDisponivel() {
+    return !!(window.TicianoFlixTV && typeof window.TicianoFlixTV.play === 'function');
+  }
+
+  async function _tvTocarNativo(filePath, movieName, subtitlePath, resumePosition) {
+    let tokens = null;
+    try {
+      const res = await fetch('/api/cast-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, subtitle: subtitlePath || '' })
+      });
+      if (res.ok) tokens = await res.json();
+    } catch (e) { /* tratado logo abaixo */ }
+    if (!tokens || !tokens.t) {
+      showToast('Nao foi possivel preparar o video para a TV', 'error');
+      return;
+    }
+    const base = window.location.origin;
+    const assinada = (rota, caminho, token) => base + rota
+      + '?path=' + encodeURIComponent(caminho) + '&t=' + encodeURIComponent(token);
+    window.TicianoFlixTV.play(JSON.stringify({
+      url: assinada('/api/stream', filePath, tokens.t),
+      legenda: (subtitlePath && tokens.sub)
+        ? assinada('/api/subtitle', subtitlePath, tokens.sub) : '',
+      titulo: (movieName || '').replace(/\.[^.]+$/, '').replace(/[._]/g, ' '),
+      posicao: Math.round(resumePosition || 0)
+    }));
+  }
+
+  // Chamado pelo app nativo ao sair do filme. Reusa o mesmo _saveProgress do
+  // player da web, que ja sabe ignorar os primeiros segundos e limpar o
+  // progresso quando o filme acabou.
+  window.tvPlaybackEnded = function (posicao, duracao) {
+    _saveProgress(Number(posicao) || 0, Number(duracao) || 0);
+  };
+
   function playMovie(filePath, movieName, subtitlePath, resumePosition) {
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
@@ -1945,6 +1992,15 @@
     currentSubtitlePath = subtitlePath || null;
     // Derive folder path from video file path
     _currentPlayFolder = filePath.substring(0, filePath.lastIndexOf('/'));
+
+    // Na TV quem toca e o player nativo. Fica depois de _currentPlayFolder de
+    // proposito: e dele que _saveProgress depende quando o app devolve a
+    // posicao no fim do filme.
+    if (_tvNativoDisponivel()) {
+      _tvTocarNativo(filePath, movieName, subtitlePath, resumePosition);
+      return;
+    }
+
     movieTitle.textContent = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     document.getElementById('playerFileSize').textContent = '';
 

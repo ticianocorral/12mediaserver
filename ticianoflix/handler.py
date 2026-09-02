@@ -111,7 +111,8 @@ def _bust_asset_cache(html):
     mtime, e nao a versao do app, para quebrar o cache sempre que o conteudo
     muda de fato, inclusive entre releases.
     """
-    for asset in ("/static/app.js", "/static/styles.css"):
+    for asset in ("/static/app.js", "/static/styles.css",
+                  "/static/tv.js", "/static/tv.css"):
         try:
             stamp = int((PROJECT_ROOT / asset.lstrip("/")).stat().st_mtime)
         except OSError:

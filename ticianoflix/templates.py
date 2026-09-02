@@ -131,7 +131,9 @@ def _login_page(setup=False):
       var data = await res.json().catch(function () { return {}; });
       if (res.ok && data.status === 'ok') {
         show('Tudo certo, entrando...', 'ok');
-        window.location.replace('/');
+        // Preserva a query: o app de TV entra por /?tv=1 e sem isto o
+        // login o devolveria em modo normal, sem navegacao por controle.
+        window.location.replace('/' + window.location.search);
         return;
       }
       show(data.error || 'Nao foi possivel entrar.', 'err');

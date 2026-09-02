@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  O TicianoFlix da casa fala HTTP puro na rede local, entao o cleartext precisa
+  estar liberado. O ideal seria liberar so as faixas privadas, mas o formato do
+  Android aceita dominios e IPs literais, nao faixas CIDR — e o IP do servidor
+  nao e conhecido antes de o usuario escolher. O risco fica contido pelo fato de
+  o app so falar com o endereco que o proprio dono apontou, na rede dele.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

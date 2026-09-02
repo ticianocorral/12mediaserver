@@ -10,6 +10,25 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
+<!-- Modo TV: navegacao pelo controle remoto. Carregado so com ?tv=1, para que
+     nada disso pese ou mude comportamento no computador e no celular. -->
+<script>
+  if (new URLSearchParams(location.search).get('tv') === '1') {
+    var _tvCss = document.createElement('link');
+    _tvCss.rel = 'stylesheet';
+    _tvCss.href = "/static/tv.css";
+    document.head.appendChild(_tvCss);
+    // async=false mantem a ordem entre scripts inseridos: o polyfill precisa
+    // estar de pe antes do tv.js.
+    ["/static/vendor/spatial-navigation-polyfill.js", "/static/tv.js"]
+      .forEach(function (src) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = false;
+        document.head.appendChild(s);
+      });
+  }
+</script>
 
   <!-- SVG Icon Sprites -->
   <svg style="display:none">

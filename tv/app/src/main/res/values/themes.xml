@@ -1,0 +1,6 @@
+<resources>
+    <style name="Tema" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#0b0b0f</item>
+        <item name="android:textColor">#f2f2f2</item>
+    </style>
+</resources>
