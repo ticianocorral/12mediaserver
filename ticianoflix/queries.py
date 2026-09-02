@@ -253,8 +253,9 @@ def cached_collection_movies(name):
     """
     conn = get_db()
     try:
+        # NOCASE aqui tambem: o link pode vir com outra grafia.
         col = conn.execute(
-            "SELECT id, name, overview FROM collections WHERE name=?",
+            "SELECT id, name, overview FROM collections WHERE name = ? COLLATE NOCASE",
             (name,)).fetchone()
         if not col:
             return None

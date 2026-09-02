@@ -208,11 +208,20 @@ def _save_collection_to_db(conn, folder_path, nfo_data):
     if not nome:
         return
     resumo = nfo_data.get("set_overview")
-    conn.execute(
-        "INSERT INTO collections (name, overview) VALUES (?, ?) "
-        "ON CONFLICT(name) DO UPDATE SET overview=COALESCE(excluded.overview, overview)",
-        (nome, resumo))
-    row = conn.execute("SELECT id FROM collections WHERE name=?", (nome,)).fetchone()
+    # Casa o nome ignorando maiusculas: NFO editado a mao com "star wars
+    # collection" tem que cair na mesma colecao que "Star Wars Collection",
+    # e nao virar uma segunda coleção de um filme só. O primeiro a chegar
+    # define a grafia exibida.
+    row = conn.execute(
+        "SELECT id FROM collections WHERE name = ? COLLATE NOCASE", (nome,)).fetchone()
+    if row:
+        if resumo:
+            conn.execute("UPDATE collections SET overview=? WHERE id=?",
+                         (resumo, row["id"]))
+    else:
+        conn.execute("INSERT INTO collections (name, overview) VALUES (?, ?)",
+                     (nome, resumo))
+        row = conn.execute("SELECT id FROM collections WHERE name=?", (nome,)).fetchone()
     if row:
         conn.execute(
             "INSERT OR IGNORE INTO movie_collections (folder_path, collection_id) "
