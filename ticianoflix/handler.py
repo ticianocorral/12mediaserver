@@ -103,6 +103,11 @@ _download_progress = {}
 _download_progress_lock = threading.Lock()
 
 
+# O mimetypes do Python nao conhece .webmanifest, e sem o tipo certo o
+# navegador ignora o manifesto e nao oferece instalar o app.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
 def _bust_asset_cache(html):
     """Carimba os estaticos com o mtime do arquivo: /static/app.js?v=1787778.
 
@@ -112,7 +117,8 @@ def _bust_asset_cache(html):
     muda de fato, inclusive entre releases.
     """
     for asset in ("/static/app.js", "/static/styles.css",
-                  "/static/tv.js", "/static/tv.css"):
+                  "/static/tv.js", "/static/tv.css",
+                  "/static/manifest.webmanifest"):
         try:
             stamp = int((PROJECT_ROOT / asset.lstrip("/")).stat().st_mtime)
         except OSError:
