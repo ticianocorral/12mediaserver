@@ -309,6 +309,18 @@
     // Close any open info overlay
     closeMovieInfo();
 
+    // Coleção não é uma pasta, mas entra pelo mesmo caminho de navegação
+    // (pushState/popstate) — assim o botão Voltar do navegador funciona nela
+    // igual funciona num gênero, sem um segundo mecanismo de histórico.
+    if (path && path.indexOf(COLECAO_PREFIXO) === 0) {
+      renderCollectionView(path.slice(COLECAO_PREFIXO.length));
+      return;
+    }
+    if (path === LISTA_COLECOES) {
+      renderCollectionsList();
+      return;
+    }
+
     const isHome = isHomePage(path);
     const url = isHome ? '/api/genres' : ('/api/list?path=' + encodeURIComponent(path));
 
@@ -391,6 +403,7 @@
     const container = document.getElementById('content');
     const hero = document.getElementById('hero');
     hero.style.display = 'block';
+    _heroCapa(null, null);
 
     const isHome = isHomePage(data.path);
 
@@ -629,6 +642,156 @@
   function openSourcesOrSettings() {
     if (_me && _me.role === 'admin') openSourcesModal();
     else openSettingsModal();
+  }
+
+  // ==================== COLEÇÕES ====================
+  // Star Wars 1-6 e afins. Vem da tag <set> do NFO — os filmes continuam
+  // cada um na sua pasta e no seu gênero; a coleção é só um agrupamento.
+  const COLECAO_PREFIXO = 'colecao:';
+  const LISTA_COLECOES = 'colecoes';
+
+  // url() de CSS com aspas. Sem elas o parser rejeita a regra inteira quando o
+  // caminho tem parenteses — e "Filme (1980)" e justamente a convencao de
+  // nomes do acervo, entao o fundo simplesmente nao aparecia.
+  function cssUrl(u) {
+    return 'url("' + String(u).replace(/["\\\n]/g, function(c) {
+      return '\\' + (c === '\n' ? 'A ' : c);
+    }) + '")';
+  }
+
+  // Capa grande no cabecalho. Centralizado num helper porque o hero e
+  // compartilhado por todas as telas: sem um ponto unico de limpeza, a capa
+  // de uma colecao ficaria pendurada ao navegar pra um genero.
+  function _heroCapa(poster, fanart) {
+    const img = document.getElementById('heroCapa');
+    const hero = document.getElementById('hero');
+    const bg = document.getElementById('heroBg');
+    if (!img || !hero) return;
+    // As telas ligam hero.style.display='block' inline, e estilo inline ganha
+    // da classe: por isso o display de linha tambem sai daqui, senao a capa
+    // fica empilhada em cima do titulo em vez de ao lado.
+    if (poster) {
+      img.src = streamUrl(poster);
+      img.style.display = '';
+      img.onerror = function() {
+        this.style.display = 'none';
+        hero.classList.remove('com-capa');
+        hero.style.display = 'block';
+      };
+      hero.classList.add('com-capa');
+      hero.style.display = 'flex';
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      hero.classList.remove('com-capa');
+      hero.style.display = 'block';
+    }
+    if (bg) {
+      if (fanart) {
+        bg.style.backgroundImage = cssUrl(streamUrl(fanart));
+        bg.classList.add('ativo');
+      } else {
+        bg.style.backgroundImage = 'none';
+        bg.classList.remove('ativo');
+      }
+    }
+  }
+
+  function abrirColecao(nome) { loadPath(COLECAO_PREFIXO + nome); }
+  function loadCollections() { loadPath(LISTA_COLECOES); }
+
+  function renderCollectionsList() {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    _heroCapa(null, null);
+    document.getElementById('breadcrumb').innerHTML = '';
+    document.getElementById('heroTitle').innerHTML =
+      '<svg class="icon-svg"><use href="#i-layers"></use></svg> Coleções';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
+
+    cachedFetch('/api/collections').then(cols => {
+      if (!cols || cols.length === 0) {
+        document.getElementById('heroDesc').textContent = '';
+        container.innerHTML = '<div class="empty-state">'
+          + '<div class="empty-icon"><svg class="icon-svg"><use href="#i-layers"></use></svg></div>'
+          + '<h3>Nenhuma coleção no acervo</h3>'
+          + '<p>Coleções vêm da tag <code>&lt;set&gt;</code> do NFO — o tinyMediaManager '
+          + 'grava sozinho quando você agrupa um conjunto de filmes lá.</p></div>';
+        return;
+      }
+      document.getElementById('heroDesc').innerHTML =
+        '<svg class="icon-svg"><use href="#i-layers"></use></svg> ' + cols.length
+        + (cols.length === 1 ? ' coleção' : ' coleções');
+      let html = '<div class="genre-section"><div class="colecao-lista">';
+      cols.forEach(c => {
+        html += '<button class="colecao-item" onclick="abrirColecao(decodeURIComponent(\''
+          + enc(c.name) + '\'))">'
+          + (c.poster
+              ? '<img class="colecao-capa" src="' + streamUrl(c.poster) + '" alt="" '
+                + 'loading="lazy" onerror="this.remove()">'
+              : '<span class="colecao-icone"><svg class="icon-svg"><use href="#i-layers"></use></svg></span>')
+          + '<span class="colecao-nome">' + escHtml(c.name) + '</span>'
+          + '<span class="colecao-conta">' + c.total
+          + (c.total === 1 ? ' filme' : ' filmes') + '</span></button>';
+      });
+      container.innerHTML = html + '</div></div>';
+    });
+  }
+
+  function renderCollectionView(nome) {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
+
+    document.getElementById('breadcrumb').innerHTML =
+      '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>'
+      + ' <span class="sep">›</span> <a onclick="loadCollections()">Coleções</a>'
+      + ' <span class="sep">›</span> <span>' + escHtml(nome) + '</span>';
+
+    cachedFetch('/api/collection?name=' + encodeURIComponent(nome)).then(col => {
+      if (!col || !col.movies) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-error"></use></svg></div>'
+          + '<h3>Coleção não encontrada</h3></div>';
+        return;
+      }
+      _heroCapa(col.poster, col.fanart);
+      document.getElementById('heroTitle').innerHTML =
+        (col.poster ? '' : '<svg class="icon-svg"><use href="#i-layers"></use></svg> ')
+        + escHtml(col.name);
+      document.getElementById('heroDesc').innerHTML =
+        '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + col.movies.length
+        + (col.movies.length === 1 ? ' filme' : ' filmes')
+        + (col.overview ? '<div class="colecao-sinopse">' + escHtml(col.overview) + '</div>' : '');
+
+      // Ordenados por ano no servidor — é o que põe a saga na ordem certa.
+      let html = '<div class="genre-section"><div class="movie-grid">';
+      col.movies.forEach(m => {
+        // Cartão próprio em vez de renderMovieCardHtml: aqui o item é uma
+        // PASTA de filme (clique abre a ficha), não um arquivo de vídeo. E o
+        // pôster e o ano já vêm prontos da API, sem regex no nome da pasta.
+        const titulo = escHtml((m.title || m.name).replace(/[._]/g, ' '));
+        const poster = m.poster ? posterUrl(m.path, m.poster) : null;
+        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\''
+          + enc(m.path) + '\'), event)" title="' + titulo + '">'
+          + (poster
+              ? '<img class="movie-card-poster" src="' + poster + '" alt="' + titulo
+                + '" loading="lazy" onerror="this.style.display=\'none\';'
+                + 'this.nextElementSibling.style.display=\'flex\'">'
+                + '<div class="movie-card-poster-placeholder" style="display:none">'
+                + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>'
+              : '<div class="movie-card-poster-placeholder">'
+                + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>')
+          + '<div class="movie-card-overlay"><div class="movie-card-title">' + titulo + '</div>'
+          + '<div class="movie-card-subtitle">' + (m.year ? escHtml(m.year) : 'Filme') + '</div>'
+          + '</div></div>';
+      });
+      container.innerHTML = html + '</div></div>';
+    });
   }
 
   function genreIcon(name) {
@@ -926,9 +1089,9 @@
 
       // Background fanart
       if (fanart) {
-        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, fanart.Name) + ')';
+        bg.style.backgroundImage = cssUrl(posterUrl(folderPath, fanart.Name));
       } else if (poster) {
-        bg.style.backgroundImage = 'url(' + posterUrl(folderPath, poster.Name) + ')';
+        bg.style.backgroundImage = cssUrl(posterUrl(folderPath, poster.Name));
       }
 
       // Poster image
@@ -1044,6 +1207,13 @@
                 ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
                 : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
             ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))"><svg class="icon-svg"><use href="#i-check"></use></svg> Já assisti</button>'}
+            ${detail.collection
+                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao(decodeURIComponent(\''
+                  + enc(detail.collection.name) + '\'))" title="Ver a coleção inteira">'
+                  + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
+                  + escHtml(detail.collection.name)
+                  + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
+                : ''}
           </div>
           </div>
         </div>`;

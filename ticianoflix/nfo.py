@@ -71,7 +71,24 @@ def _parse_nfo(xml_text):
         for child in a:
             audio_info[child.tag] = child.text.strip() if child.text else ""
 
+    # Colecao (movie set). O tinyMediaManager grava assim ao agrupar um
+    # conjunto; o Kodi tambem le esse formato. Aceita as duas formas que
+    # aparecem na pratica: <set><name>X</name></set> e o antigo <set>X</set>.
+    set_name = None
+    set_overview = None
+    set_el = root.find("set")
+    if set_el is not None:
+        nome = set_el.findtext("name")
+        if nome and nome.strip():
+            set_name = nome.strip()
+            resumo = set_el.findtext("overview")
+            set_overview = resumo.strip() if resumo and resumo.strip() else None
+        elif set_el.text and set_el.text.strip():
+            set_name = set_el.text.strip()
+
     return {
+        "set_name": set_name,
+        "set_overview": set_overview,
         "title": text("title"),
         "originaltitle": text("originaltitle"),
         "year": text("year"),
@@ -176,6 +193,50 @@ def _save_nfo_to_db(conn, folder_path, nfo_data):
         json.dumps(nfo_data.get("audio_info", {}), ensure_ascii=False),
         time.time(),
     ))
+
+
+def _save_collection_to_db(conn, folder_path, nfo_data):
+    """Grava (ou desfaz) a participacao de um filme numa colecao.
+
+    Um filme pertence a no maximo um conjunto, que e como o Kodi e o
+    tinyMediaManager modelam <set>. Por isso qualquer vinculo anterior deste
+    filme sai antes: se voce tirou a tag <set> do NFO, ou trocou o filme de
+    conjunto, o scan seguinte reflete isso em vez de acumular vinculo velho.
+    """
+    conn.execute("DELETE FROM movie_collections WHERE folder_path=?", (folder_path,))
+    nome = (nfo_data or {}).get("set_name")
+    if not nome:
+        return
+    resumo = nfo_data.get("set_overview")
+    # Casa o nome ignorando maiusculas: NFO editado a mao com "star wars
+    # collection" tem que cair na mesma colecao que "Star Wars Collection",
+    # e nao virar uma segunda coleção de um filme só. O primeiro a chegar
+    # define a grafia exibida.
+    row = conn.execute(
+        "SELECT id FROM collections WHERE name = ? COLLATE NOCASE", (nome,)).fetchone()
+    if row:
+        if resumo:
+            conn.execute("UPDATE collections SET overview=? WHERE id=?",
+                         (resumo, row["id"]))
+    else:
+        conn.execute("INSERT INTO collections (name, overview) VALUES (?, ?)",
+                     (nome, resumo))
+        row = conn.execute("SELECT id FROM collections WHERE name=?", (nome,)).fetchone()
+    if row:
+        conn.execute(
+            "INSERT OR IGNORE INTO movie_collections (folder_path, collection_id) "
+            "VALUES (?, ?)", (folder_path, row["id"]))
+
+
+def _prune_empty_collections(conn):
+    """Remove colecoes que ficaram sem nenhum filme.
+
+    Acontece quando o ultimo filme do conjunto sai do acervo, ou quando a tag
+    <set> e removida do NFO — sem isso a colecao vazia continuaria aparecendo.
+    """
+    conn.execute(
+        "DELETE FROM collections WHERE id NOT IN "
+        "(SELECT collection_id FROM movie_collections)")
 
 
 def _fetch_nfo_from_db(folder_path):
