@@ -3514,6 +3514,17 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.12.0',
+      title: 'coleções de filmes (Star Wars 1-6 e afins)',
+      changes: [
+        'Item **Coleções** na barra lateral, listando as coleções do acervo',
+        'Tela da coleção com os filmes ordenados por ano',
+        'Chip na ficha do filme levando para a saga inteira',
+        'Rotas `/api/collections` e `/api/collection?name=`',
+        'Tabelas `collections` e `movie_collections` — nada alterado nas existentes',
+      ],
+    },
+    {
       version: '1.11.0',
       title: 'AirPlay como alternativa ao Chromecast no iPhone',
       changes: [

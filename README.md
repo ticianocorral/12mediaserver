@@ -606,6 +606,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.12 — coleções de filmes (Star Wars 1-6 e afins)
+
+- Item **Coleções** na barra lateral, listando as coleções do acervo
+
+- Tela da coleção com os filmes ordenados por ano
+
+- Chip na ficha do filme levando para a saga inteira
+
+- Rotas `/api/collections` e `/api/collection?name=`
+
+- Tabelas `collections` e `movie_collections` — nada alterado nas existentes
+
+
 ### v1.11 — AirPlay como alternativa ao Chromecast no iPhone
 
 - Botão de AirPlay ao lado do de Chromecast, visível só quando o próprio `<video>` confirma suporte (feature detection via `webkitShowPlaybackTargetPicker`, não user-agent sniffing)
