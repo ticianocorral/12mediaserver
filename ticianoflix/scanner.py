@@ -371,9 +371,72 @@ def prune_orphan_sources():
         conn.close()
 
 
+# Versao dos metadados derivados do NFO. Quando um recurso novo passa a
+# extrair algo que ja estava nos NFOs, sobe este numero: o proximo scan rele os
+# NFOs uma vez, inclusive dos filmes inalterados.
+META_VERSION = 1
+
+
+def _backfill_meta_if_needed():
+    """Rele os NFOs uma vez quando um recurso novo passa a extrair algo deles.
+
+    O scan e incremental: filme inalterado nunca tem o NFO relido. Quando as
+    colecoes passaram a existir, todo filme que JA tinha <set> no NFO ficou
+    invisivel — o vinculo so nascia se o arquivo fosse tocado depois. Sem este
+    passo, um acervo inteiro ja etiquetado no tinyMediaManager apareceria vazio
+    de colecoes, e o usuario nao teria como saber por que.
+    """
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM cache_meta WHERE key='meta_version'").fetchone()
+        atual = int(row["value"]) if row and str(row["value"]).isdigit() else 0
+        if atual >= META_VERSION:
+            return 0
+
+        pastas = [r["folder_path"] for r in conn.execute(
+            """SELECT DISTINCT folder_path FROM files
+               WHERE LOWER(name) LIKE '%.nfo' ORDER BY folder_path""")]
+        if pastas:
+            print(f"[TicianoFlix] Relendo {len(pastas)} NFOs uma vez "
+                  f"(colecoes de acervo ja etiquetado)...", flush=True)
+
+        lidos = 0
+        for i, pasta in enumerate(pastas):
+            _set_progress(phase="genres", genre_current="lendo coleções",
+                          genre_index=i + 1, genre_total=len(pastas),
+                          percent=int((i / len(pastas)) * 100) if pastas else 0)
+            try:
+                raw = _fetch_nfo_raw(pasta)
+                dados = _parse_nfo(raw) if raw else None
+            except Exception as e:
+                print(f"[TicianoFlix] NFO ilegivel em {pasta}: {e}", flush=True)
+                continue
+            if dados:
+                _save_collection_to_db(conn, pasta, dados)
+                lidos += 1
+
+        _prune_empty_collections(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('meta_version', ?)",
+            (str(META_VERSION),))
+        conn.commit()
+        if lidos:
+            print(f"[TicianoFlix] {lidos} NFOs relidos.", flush=True)
+        return lidos
+    finally:
+        conn.close()
+
+
 def scan_all(source_id=None):
     """Escaneia o Drive e as fontes locais. `source_id` limita a uma delas."""
     prune_orphan_sources()
+    # Antes das fontes: fecha a lacuna de metadados que o scan incremental
+    # deixaria (veja _backfill_meta_if_needed). Roda uma vez so.
+    try:
+        _backfill_meta_if_needed()
+    except Exception as e:
+        print(f"[TicianoFlix] Releitura de NFOs falhou: {e}", flush=True)
 
     targets = _sources.list_sources()
     if source_id:
