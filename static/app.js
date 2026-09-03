@@ -3588,6 +3588,18 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.16.0',
+      title: 'instalar o TicianoFlix como app na tela inicial do celular',
+      changes: [
+        '`static/manifest.webmanifest` — `display: standalone`, `start_url: /`, cor do tema',
+        '`static/icons/` — 192, 512, maskable 512 e apple-touch 180',
+        '`tools/gerar-icones.py` — gera os ícones a partir do `favicon.svg`',
+        'Metatags `apple-*` e `mobile-web-app-capable` no `index.html`',
+        'Manifest e ícones passam a responder sem sessão',
+        '`mimetypes.add_type` para `.webmanifest`',
+      ],
+    },
+    {
       version: '1.15.0',
       title: 'instalador único (curl | bash), sem exigir git nem log',
       changes: [

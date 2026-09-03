@@ -643,6 +643,21 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.16 — instalar o TicianoFlix como app na tela inicial do celular
+
+- `static/manifest.webmanifest` — `display: standalone`, `start_url: /`, cor do tema
+
+- `static/icons/` — 192, 512, maskable 512 e apple-touch 180
+
+- `tools/gerar-icones.py` — gera os ícones a partir do `favicon.svg`
+
+- Metatags `apple-*` e `mobile-web-app-capable` no `index.html`
+
+- Manifest e ícones passam a responder sem sessão
+
+- `mimetypes.add_type` para `.webmanifest`
+
+
 ### v1.15 — instalador único (curl | bash), sem exigir git nem log
 
 - `install.sh` único, cobrindo Linux e macOS — substitui `install.sh` (Linux) e `install-macos.sh`, que sai do repositório
