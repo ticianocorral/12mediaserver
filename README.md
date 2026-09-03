@@ -669,6 +669,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.19.1 — rclone em modo raiz volta a usar o nome real da pasta no Drive
+
+- rclone em modo raiz volta a usar o nome real da pasta no Drive
+
+
 ### v1.19 — pasta do acervo deixa de exigir o nome TicianoFlix
 
 - `LOGICAL_ROOT`: `/TicianoFlix` → `/Mediaflix` — a pasta exigida no Google Drive

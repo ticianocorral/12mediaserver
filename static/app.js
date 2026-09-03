@@ -3847,6 +3847,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.19.1',
+      title: 'rclone em modo raiz volta a usar o nome real da pasta no Drive',
+      changes: [
+        'rclone em modo raiz volta a usar o nome real da pasta no Drive',
+      ],
+    },
+    {
       version: '1.19.0',
       title: 'pasta do acervo deixa de exigir o nome TicianoFlix',
       changes: [
