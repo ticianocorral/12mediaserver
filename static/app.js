@@ -3847,6 +3847,16 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.18.0',
+      title: 'metadados via TMDB — editor que substitui o tinyMediaManager',
+      changes: [
+        '`ticianoflix/scraper.py` — cliente TMDB mínimo (`urllib`, sem dependência nova)',
+        'Chave gratuita da própria pessoa (**Ajustes › Metadados**), nunca embutida no projeto',
+        'Rotas `/api/scrape/status`, `/pendentes`, `/search`, `/apply`, `/key/set` — todas admin',
+        '**Ajustes › Metadados**: formulário de chave, lista de filmes sem metadado, busca com resultados, "Usar este" aplica',
+      ],
+    },
+    {
       version: '1.17.0',
       title: 'marca configurável (nome, cor e ícone por instalação)',
       changes: [

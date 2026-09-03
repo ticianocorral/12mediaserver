@@ -668,6 +668,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.18 — metadados via TMDB — editor que substitui o tinyMediaManager
+
+- `ticianoflix/scraper.py` — cliente TMDB mínimo (`urllib`, sem dependência nova)
+
+- Chave gratuita da própria pessoa (**Ajustes › Metadados**), nunca embutida no projeto
+
+- Rotas `/api/scrape/status`, `/pendentes`, `/search`, `/apply`, `/key/set` — todas admin
+
+- **Ajustes › Metadados**: formulário de chave, lista de filmes sem metadado, busca com resultados, "Usar este" aplica
+
+
 ### v1.17 — marca configurável (nome, cor e ícone por instalação)
 
 - `ticianoflix/branding.py` — `get()`/`set()` com validação, persistido em `CACHE_DIR/branding.json`
