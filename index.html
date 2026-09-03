@@ -13,17 +13,22 @@
      e como o servidor roda na rede de casa. No Android o Chrome so oferece
      instalar em contexto seguro (HTTPS), entao la o atalho continua abrindo no
      navegador ate o certificado do servidor ser confiavel no aparelho. -->
-<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#141414">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TicianoFlix">
-<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/icone-apple-touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
+<!-- Cor da marca: carregado depois de styles.css de proposito, para a
+     mesma especificidade em :root vencer a cascata. Gerado na hora por
+     branding.py — sem branding.json configurado, e so o vermelho de
+     sempre outra vez, e o link nem pesa (poucos bytes). -->
+<link rel="stylesheet" href="/branding.css">
 <!-- Modo TV: navegacao pelo controle remoto. Carregado so com ?tv=1, para que
      nada disso pese ou mude comportamento no computador e no celular. -->
 <script>
@@ -337,6 +342,13 @@
             <div class="backup-option-desc">Status da conexão com o Google Drive e nível de acesso</div>
           </div>
         </div>
+        <div class="backup-option" id="settingsBranding" style="display:none" onclick="fromSettings(openBrandingModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Aparência</div>
+            <div class="backup-option-desc">Nome e cor do app — cada instalação com a sua marca</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -365,6 +377,21 @@
       <div class="modal-body">
         <div id="usersBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== APARENCIA (nome e cor da marca) ====== -->
+  <div class="modal-overlay" id="brandingModal">
+    <div class="modal" style="width:480px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-gear"></use></svg> Aparência</span>
+        <button class="modal-close" onclick="closeBrandingModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="brandingBox">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
     </div>

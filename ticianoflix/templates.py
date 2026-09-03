@@ -1,16 +1,21 @@
 """HTML servido pelo proprio Python (nao vem do index.html)."""
 
 from .config import MIN_PASSWORD_LEN
+from . import branding as _branding
 
 
 def _login_page(setup=False):
     """Tela de entrada. Em modo setup cria o primeiro administrador, e exige o
     codigo impresso no log do servidor — assim quem esta na rede mas nao tem
     acesso ao computador nao consegue tomar a conta inicial."""
+    marca = _branding.get()
+    cor = marca["cor"]
+    cor_hover = _branding._clarear(cor)
+    cor_rgb = "%d,%d,%d" % (int(cor[1:3], 16), int(cor[3:5], 16), int(cor[5:7], 16))
     if setup:
         heading = "Criar o administrador"
         sub = ("Primeiro acesso. O codigo de 6 digitos aparece no terminal onde "
-               "o TicianoFlix esta rodando.")
+               "o %s esta rodando." % marca["nome"])
         action = "/api/auth/setup"
         button = "Criar conta e entrar"
         extra_top = (
@@ -42,7 +47,7 @@ def _login_page(setup=False):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>TicianoFlix</title>
+<title>__MARCA__</title>
 <link rel="icon" href="/favicon.svg">
 <style>
   :root { color-scheme: dark; }
@@ -59,7 +64,7 @@ def _login_page(setup=False):
     border: 1px solid #2a2a30; border-radius: 14px; padding: 34px 30px 30px;
     box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
   }
-  .brand { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; color: #e50914; }
+  .brand { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; color: __COR__; }
   h1 { font-size: 19px; font-weight: 600; margin: 18px 0 6px; }
   p.sub { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #a0a0aa; }
   label {
@@ -72,12 +77,12 @@ def _login_page(setup=False):
     border-radius: 8px; font-family: inherit;
   }
   #code { letter-spacing: .5em; font-family: ui-monospace, Menlo, monospace; text-align: center; }
-  input:focus { outline: none; border-color: #e50914; box-shadow: 0 0 0 3px rgba(229,9,20,.18); }
+  input:focus { outline: none; border-color: __COR__; box-shadow: 0 0 0 3px rgba(__COR_RGB__,.18); }
   button {
     width: 100%; padding: 12px; font-size: 15px; font-weight: 600; color: #fff;
-    background: #e50914; border: 0; border-radius: 8px; cursor: pointer; font-family: inherit;
+    background: __COR__; border: 0; border-radius: 8px; cursor: pointer; font-family: inherit;
   }
-  button:hover { background: #f6121d; }
+  button:hover { background: __COR_HOVER__; }
   button:disabled { opacity: .6; cursor: default; }
   .msg { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; display: none; }
   .msg.err { display: block; background: #2c1214; color: #f5a19b; border: 1px solid #55211f; }
@@ -87,7 +92,7 @@ def _login_page(setup=False):
 </style>
 </head><body>
   <form class="card" id="form" autocomplete="on">
-    <div class="brand">TicianoFlix</div>
+    <div class="brand">__MARCA__</div>
     <h1>__HEADING__</h1>
     <p class="sub">__SUB__</p>
     __EXTRA_TOP__
@@ -149,6 +154,8 @@ def _login_page(setup=False):
         ("__BUTTON__", button), ("__EXTRA_TOP__", extra_top),
         ("__EXTRA_BOTTOM__", extra_bottom), ("__HINT__", hint),
         ("__AC__", autocomplete), ("__MIN__", str(MIN_PASSWORD_LEN)),
+        ("__MARCA__", marca["nome"]), ("__COR__", cor),
+        ("__COR_HOVER__", cor_hover), ("__COR_RGB__", cor_rgb),
     ):
         page = page.replace(token, value)
     return page
