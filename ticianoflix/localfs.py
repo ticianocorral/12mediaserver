@@ -107,8 +107,17 @@ def list_tree(root):
 
 # Nome fixo da pasta que marca a raiz de um acervo, igual ao do Drive. Exigir
 # esse nome torna o cadastro previsivel: nao ha adivinhacao de estrutura nem
-# desempate entre pastas parecidas.
-CATALOG_DIR_NAME = "ticianoflix"
+# desempate entre pastas parecidas. Neutro de proposito — e a pasta que fica
+# gravada dentro do HD/pendrive de qualquer pessoa que instalar o app.
+CATALOG_DIR_NAME = "mediaflix"
+# Nome antigo, aceito so pra quem ja tinha criado a pasta antes da troca de
+# marca — ninguem deveria ter que renomear uma pasta no HD por causa disto.
+CATALOG_DIR_NAME_LEGADO = "ticianoflix"
+
+
+def _casa_nome_catalogo(nome):
+    n = nome.lower()
+    return n == CATALOG_DIR_NAME or n == CATALOG_DIR_NAME_LEGADO
 
 # Quantas subpastas olhar por nivel ao procurar a pasta do acervo. Um HD com
 # centenas de pastas soltas nao pode transformar o cadastro numa varredura longa.
@@ -149,7 +158,7 @@ def find_catalog_dir(root, max_descend=MAX_PROBE_DEPTH):
     A comparacao ignora maiusculas: o usuario nao deve tropecar em "Ticianoflix".
     """
     root = Path(root)
-    if root.name.lower() == CATALOG_DIR_NAME:
+    if _casa_nome_catalogo(root.name):
         return root
 
     level = [root]
@@ -157,7 +166,7 @@ def find_catalog_dir(root, max_descend=MAX_PROBE_DEPTH):
         proximo = []
         for parent in level:
             for sub in _subdirs(parent):
-                if sub.name.lower() == CATALOG_DIR_NAME:
+                if _casa_nome_catalogo(sub.name):
                     return sub
                 proximo.append(sub)
         if not proximo:

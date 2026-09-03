@@ -1349,7 +1349,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # (Chromecast doesn't trust self-signed certs, so media must use HTTP)
             html_content = html_content.replace(
                 "</head>",
-                f"<script>window.__HTTP_BASE__='http://{_get_local_ip()}:{PORT}';</script></head>",
+                f"<script>window.__HTTP_BASE__='http://{_get_local_ip()}:{PORT}';"
+                f"window.__LOGICAL_ROOT__={json.dumps(LOGICAL_ROOT)};</script></head>",
                 1
             )
             html_content = _bust_asset_cache(html_content)
@@ -1909,9 +1910,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/list":
             dir_path = params.get("path", [""])[0]
 
-            # On root, auto-redirect to TicianoFlix
+            # Raiz -> raiz do Drive, sem depender do nome fixo em texto.
             if dir_path == "" or dir_path == "/":
-                dir_path = "/TicianoFlix"
+                dir_path = LOGICAL_ROOT
 
             data = cached_list_directory(dir_path)
             if data is None:

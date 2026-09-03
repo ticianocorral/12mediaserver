@@ -34,7 +34,14 @@ RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
 
 # Pasta logica que o DB e o frontend usam. Quando o remote esta escopado via
 # root_folder_id, esse prefixo nao existe do lado do rclone — veja paths._rc().
-LOGICAL_ROOT = "/TicianoFlix"
+#
+# O nome e neutro de proposito: e a pasta que a pessoa precisa criar no
+# proprio Google Drive, entao carregar a marca aqui vazaria "TicianoFlix" pro
+# Drive de qualquer um que instalasse com outro nome. LOGICAL_ROOT_LEGADO e so
+# para a migracao de quem ja tinha o app antigo — db.py reescreve o prefixo
+# gravado uma unica vez (ver _migrar_prefixo_marca).
+LOGICAL_ROOT = "/Mediaflix"
+LOGICAL_ROOT_LEGADO = "/TicianoFlix"
 
 # ── Fontes locais ────────────────────────────────────────────
 # O Drive deixou de ser a unica fonte: HD externo, pendrive e pastas do proprio

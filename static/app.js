@@ -398,7 +398,7 @@
   }
 
   function isHomePage(path) {
-    return path === '' || path === '/' || path === '/TicianoFlix';
+    return path === '' || path === '/' || path === (window.__LOGICAL_ROOT__ || '/TicianoFlix');
   }
 
   function renderDirectory(data) {
@@ -1036,10 +1036,10 @@
     const bcEl = document.getElementById('movieInfoBreadcrumb');
     const path = folderPath || '';
     const parts = path.split('/').filter(Boolean);
-    let cur = '/TicianoFlix';
+    let cur = window.__LOGICAL_ROOT__ || '/TicianoFlix';
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
     parts.forEach((p, i) => {
-      if (i === 0) return; // skip TicianoFlix root
+      if (i === 0) return; // pula a raiz do Drive (LOGICAL_ROOT, ex.: "/Mediaflix")
       cur += '/' + p;
       const name = p.replace(/[._]/g, ' ');
       if (i === parts.length - 1) {
@@ -1301,7 +1301,7 @@
     const parts = path ? path.split('/').filter(Boolean) : [];
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
 
-    // A raiz da fonte ocupa 1 segmento no Drive ("/TicianoFlix") e 2 nas fontes
+    // A raiz da fonte ocupa 1 segmento no Drive (LOGICAL_ROOT) e 2 nas fontes
     // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
     // path — remontar com um prefixo fixo gerava link quebrado fora do Drive.
     const rootLen = isLocalPath(path) ? 2 : 1;
@@ -2754,9 +2754,9 @@
     }
 
     html += '<div class="user-section-title">Adicionar uma pasta</div>'
-      + '<div class="src-hint">A pasta precisa ter uma pasta <b>TicianoFlix</b> dentro '
+      + '<div class="src-hint">A pasta precisa ter uma pasta <b>Mediaflix</b> dentro '
       + '(ou até dois níveis abaixo), organizada como no Drive:<br>'
-      + '<code>TicianoFlix / Gênero / Filme (ano) / filme.mkv</code> — com o '
+      + '<code>Mediaflix / Gênero / Filme (ano) / filme.mkv</code> — com o '
       + '<code>.nfo</code> e o <code>poster.jpg</code> junto do vídeo.</div>'
       + '<div class="user-form">'
       + '<input type="text" id="srcName" placeholder="Nome (ex.: HD Externo)" autocomplete="off">'
@@ -3773,10 +3773,10 @@
     html += '<div class="rclone-warn rclone-warn-' + a.nivel + '">'
       + '<div class="rclone-warn-head"><svg class="icon-svg"><use href="#i-alert"></use></svg> '
       + escHtml(a.resumo) + '</div>'
-      + '<p>O TicianoFlix só precisa <b>ler</b> a pasta <b>TicianoFlix</b>. '
+      + '<p>O TicianoFlix só precisa <b>ler</b> a pasta <b>Mediaflix</b>. '
       + 'Um script reduz o acesso a exatamente isso — seus outros arquivos do Drive '
       + 'ficam fora de alcance.</p>'
-      + '<p class="rclone-warn-cmd">No terminal, dentro da pasta do TicianoFlix:'
+      + '<p class="rclone-warn-cmd">No terminal, dentro da pasta do Mediaflix:'
       + '<code>' + escHtml(a.comando) + '</code></p>'
       + '<p class="rclone-warn-foot">Ele abre o navegador para você reautorizar — '
       + 'é o Google que aplica o limite, não dá para fazer isso daqui. '
