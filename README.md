@@ -669,6 +669,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.19 — pasta do acervo deixa de exigir o nome TicianoFlix
+
+- `LOGICAL_ROOT`: `/TicianoFlix` → `/Mediaflix` — a pasta exigida no Google Drive
+
+- `CATALOG_DIR_NAME`: `ticianoflix` → `mediaflix` — a pasta exigida no HD/pendrive, com **compatibilidade retroativa**: quem já tinha criado `TicianoFlix` continua funcionando
+
+- Migração de banco automática, uma única vez, na próxima subida do servidor
+
+- Textos ajustados para bater com a pasta de verdade (modal de Fontes, painel de rclone, `setup-rclone-seguro.sh`, README)
+
+
 ### v1.18 — metadados via TMDB — editor que substitui o tinyMediaManager
 
 - `ticianoflix/scraper.py` — cliente TMDB mínimo (`urllib`, sem dependência nova)

@@ -3847,6 +3847,16 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.19.0',
+      title: 'pasta do acervo deixa de exigir o nome TicianoFlix',
+      changes: [
+        '`LOGICAL_ROOT`: `/TicianoFlix` → `/Mediaflix` — a pasta exigida no Google Drive',
+        '`CATALOG_DIR_NAME`: `ticianoflix` → `mediaflix` — a pasta exigida no HD/pendrive, com **compatibilidade retroativa**: quem já tinha criado `TicianoFlix` continua funcionando',
+        'Migração de banco automática, uma única vez, na próxima subida do servidor',
+        'Textos ajustados para bater com a pasta de verdade (modal de Fontes, painel de rclone, `setup-rclone-seguro.sh`, README)',
+      ],
+    },
+    {
       version: '1.18.0',
       title: 'metadados via TMDB — editor que substitui o tinyMediaManager',
       changes: [
