@@ -2886,7 +2886,7 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          ['settingsUsers', 'settingsSources'].forEach(id => {
+          ['settingsUsers', 'settingsSources', 'settingsBranding'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
@@ -3583,6 +3583,91 @@
   document.getElementById('rcloneModal').addEventListener('click', function(e) {
     if (e.target === this) closeRcloneModal();
   });
+
+  // ==================== APARENCIA (marca) ====================
+  // Nome de exibicao e cor sao a unica coisa que muda por instalacao — onde
+  // os dados moram (cache, banco, nome do servico) nunca depende disto. Ver
+  // ticianoflix/branding.py.
+  function openBrandingModal() {
+    document.getElementById('brandingModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _loadBranding();
+  }
+  function closeBrandingModal() {
+    document.getElementById('brandingModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('brandingModal').addEventListener('click', function(e) {
+    if (e.target === this) closeBrandingModal();
+  });
+
+  async function _loadBranding() {
+    const box = document.getElementById('brandingBox');
+    try {
+      const res = await fetch('/api/branding');
+      const marca = await res.json();
+      box.innerHTML =
+        '<div class="user-form" style="flex-direction:column;align-items:stretch">'
+        + '<label style="font-size:12px;color:var(--text3)">Nome</label>'
+        + '<input type="text" id="brandNome" maxlength="40" value="' + escHtml(marca.nome) + '" '
+        + 'placeholder="Ex.: Família Corral">'
+        + '<label style="font-size:12px;color:var(--text3);margin-top:4px">Cor</label>'
+        + '<div style="display:flex;gap:8px;align-items:center">'
+        + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
+        + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
+        + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
+        + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
+        + 'style="flex:1" placeholder="#e50914">'
+        + '</div>'
+        + '</div>'
+        + '<div class="rclone-help">O nome e a cor aparecem na tela de login, no menu, no '
+        + 'ícone do app instalado no celular e no manifesto — sem mexer em onde o acervo, '
+        + 'as contas e o progresso ficam guardados.</div>'
+        + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
+        + 'onclick="saveBranding()">Salvar</button>'
+        + '<div id="brandingMsg" class="user-msg"></div>';
+
+      const picker = document.getElementById('brandCorPicker');
+      const texto = document.getElementById('brandCorTexto');
+      // Os dois campos de cor ficam sincronizados nos dois sentidos: o seletor
+      // visual e o texto hexadecimal, pra quem preferir digitar direto.
+      picker.addEventListener('input', () => { texto.value = picker.value; });
+      texto.addEventListener('input', () => {
+        if (/^#[0-9a-fA-F]{6}$/.test(texto.value)) picker.value = texto.value;
+      });
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
+    }
+  }
+
+  async function saveBranding() {
+    const nome = (document.getElementById('brandNome').value || '').trim();
+    const cor = (document.getElementById('brandCorTexto').value || '').trim();
+    const msg = document.getElementById('brandingMsg');
+    const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
+    if (!nome) { mostrar('Escolha um nome.', 'err'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e50914.', 'err'); return; }
+    try {
+      const res = await fetch('/api/branding/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, cor })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') {
+        mostrar('Salvo! Atualizando...', 'ok');
+        // Recarrega em vez de repintar na hora: o nome novo tem que sair do
+        // proprio HTML que o servidor gera (titulo, topbar, sidebar, login),
+        // e nao so do CSS — mais simples e mais confiavel que sincronizar
+        // cada um desses pontos manualmente por aqui.
+        setTimeout(() => location.reload(), 600);
+      } else {
+        mostrar(data.error || 'Não foi possível salvar.', 'err');
+      }
+    } catch (e) {
+      mostrar('Falha de conexão com o servidor.', 'err');
+    }
+  }
 
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
