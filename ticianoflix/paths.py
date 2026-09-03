@@ -1,11 +1,17 @@
 """Fronteira de caminhos entre o app e o rclone.
 
-O DB e o frontend sempre falam em paths logicos ("/TicianoFlix/Acao/Filme").
-O rclone pode estar em dois modos:
+O DB e o frontend sempre falam em paths logicos ("/Mediaflix/Acao/Filme") —
+LOGICAL_ROOT e so um rotulo interno, nao o nome real de nada no Drive de
+ninguem. O rclone pode estar em dois modos:
 
-  escopado  root_folder_id aponta pra pasta TicianoFlix, entao "gdrive:" JA e a
-            pasta e o prefixo /TicianoFlix nao existe do lado dele
-  raiz      modo antigo, "gdrive:" e a raiz do Drive e o prefixo e real
+  escopado  root_folder_id aponta direto pra pasta do acervo, entao "gdrive:"
+            JA e a pasta e o prefixo logico nao existe do lado dele —
+            LOGICAL_ROOT pode mudar de nome livremente, sem afetar nada aqui
+  raiz      modo antigo (anterior a LOGICAL_ROOT virar rotulo neutro),
+            "gdrive:" e a raiz do Drive e o prefixo tem que ser o nome real
+            da pasta, que e sempre LOGICAL_ROOT_LEGADO — quem esta neste modo
+            configurou o rclone antes desta mudanca, entao a pasta real no
+            Drive dele nunca foi renomeada
 
 O modo e detectado lendo o rclone.conf uma vez, para que o mesmo codigo
 funcione antes e depois de o usuario escopar o remote.
@@ -15,7 +21,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from .config import LOGICAL_ROOT, RCLONE_REMOTE
+from .config import LOGICAL_ROOT, LOGICAL_ROOT_LEGADO, RCLONE_REMOTE
 
 _remote_scoped = None
 _remote_scoped_lock = threading.Lock()
@@ -114,12 +120,21 @@ def _strip_logical_root(logical_path):
 def rc(logical_path):
     """Path logico -> path relativo ao remote, sem barra inicial.
 
-    "/TicianoFlix/Acao/Filme/x.mkv" -> "Acao/Filme/x.mkv"   (remote escopado)
-                                    -> "TicianoFlix/Acao/Filme/x.mkv" (raiz)
+    "/Mediaflix/Acao/Filme/x.mkv" -> "Acao/Filme/x.mkv"             (remote escopado)
+                                   -> "TicianoFlix/Acao/Filme/x.mkv" (raiz, legado)
+
+    O modo raiz e sempre de quem configurou o rclone antes de LOGICAL_ROOT
+    virar um rotulo neutro — a pasta real no Google Drive dele continua com
+    o nome antigo, entao e LOGICAL_ROOT_LEGADO que tem que ir pro remote, nao
+    o rotulo novo (senao o rclone procura uma pasta "Mediaflix" que nunca
+    existiu no Drive de ninguem). O instalador atual so cria remote escopado
+    (setup-rclone-seguro.sh), entao ninguem novo cai neste ramo.
     """
     if remote_is_scoped():
         return _strip_logical_root(logical_path)
-    return ("/" + str(logical_path).strip("/")).strip("/")
+    resto = _strip_logical_root(logical_path)
+    raiz_real = LOGICAL_ROOT_LEGADO.strip("/")
+    return raiz_real + ("/" + resto if resto else "")
 
 
 def rc_remote(logical_path):
