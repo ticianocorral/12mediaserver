@@ -2,7 +2,7 @@
   <h1>🎬 TicianoFlix</h1>
   <p><strong>Netflix-style movie player for Google Drive, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
+    <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
     <img src="https://img.shields.io/badge/version-1.6-red" alt="v1.6">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
@@ -44,11 +44,18 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 
 ### Pré-requisitos
 
-- **Python 3.10+**
-- **rclone** (com remote `gdrive:` configurado)
+- **Python 3.9+**
 - Linux (systemd) · macOS (LaunchAgent) · Windows — veja abaixo
 
-### 1. Configurar o Google Drive no rclone
+É só isso. O TicianoFlix funciona com filmes que já estão no seu computador, num
+HD externo ou num pendrive — veja [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador).
+
+O **Google Drive é opcional** e entra depois, quando você quiser: precisa do
+rclone e de uma autorização no Google, e dá pra fazer tudo pelo próprio
+TicianoFlix, em **⚙️ Ajustes › ☁️ rclone**. Sem ele nada deixa de funcionar —
+o servidor sobe igual e nem tenta contato com o Drive.
+
+### 1. (Opcional) Configurar o Google Drive no rclone
 
 ```bash
 rclone config

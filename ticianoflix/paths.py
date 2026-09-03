@@ -35,6 +35,28 @@ def rclone_conf_path():
     return Path.home() / ".config" / "rclone" / "rclone.conf"
 
 
+def remote_configurado():
+    """True quando o remote principal existe no rclone.conf.
+
+    Le o arquivo em vez de chamar "rclone listremotes" porque isto roda na
+    subida do servidor: um subprocesso a mais atrasaria o boot de todo mundo,
+    inclusive de quem nunca vai usar o Drive.
+
+    Na duvida devolve True. Se o rclone.conf existir mas nao der para ler —
+    cifrado, por exemplo — e melhor tentar subir o serve e falhar do que negar
+    o Drive a quem tem um configurado.
+    """
+    caminho = rclone_conf_path()
+    if not caminho.exists():
+        return False
+    try:
+        texto = caminho.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    secao = "[" + RCLONE_REMOTE.rstrip(":") + "]"
+    return any(linha.strip() == secao for linha in texto.splitlines())
+
+
 def remote_is_scoped():
     """True quando o remote principal ja aponta direto pra pasta TicianoFlix."""
     global _remote_scoped

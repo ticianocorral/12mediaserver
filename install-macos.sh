@@ -30,7 +30,7 @@ if [ ! -f "$DIR/server.py" ]; then
 fi
 ok "Diretório do projeto: $DIR"
 
-# ─── 2. Python 3.10+ ────────────────────────────────────
+# ─── 2. Python 3.9+ ─────────────────────────────────────
 info "Verificando Python..."
 PYTHON=""
 for cand in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
@@ -50,7 +50,7 @@ if [ -z "$PYTHON" ]; then
         PYTHON="/opt/homebrew/bin/python3"
         [ -x "$PYTHON" ] || PYTHON="/usr/local/bin/python3"
     else
-        erro "Instale o Python 3.10+ e rode o instalador de novo."
+        erro "Instale o Python 3.9+ e rode o instalador de novo."
         echo "    - Homebrew:  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         echo "    - Site:      https://www.python.org/downloads/macos/"
         echo "    - Xcode:     xcode-select --install (inclui /usr/bin/python3)"
