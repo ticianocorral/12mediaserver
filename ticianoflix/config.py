@@ -60,6 +60,10 @@ AUTH_PATH = CACHE_DIR / "auth.json"
 # que restaurar um backup feito em outra maquina nao importe caminhos que nao
 # existem aqui.
 SOURCES_PATH = CACHE_DIR / "sources.json"
+# A chave do TMDB e da pessoa que instalou, nunca do projeto: uma chave
+# embutida no codigo publico ficaria exposta e todo mundo dividiria o mesmo
+# limite de uso. Fica fora do SQLite pelo mesmo motivo do sources.json.
+TMDB_KEY_PATH = CACHE_DIR / "tmdb.json"
 SECRET_PATH = CACHE_DIR / "secret.key"
 
 for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR):
@@ -82,6 +86,7 @@ WRITE_ROUTES = frozenset({
     "/api/refresh", "/api/clear-cache", "/api/uncache",
     "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
     "/api/sources/add", "/api/sources/remove",
+    "/api/scrape/apply", "/api/scrape/key/set",
 })
 
 # Rotas alcancaveis sem sessao.
@@ -99,6 +104,8 @@ TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
 ADMIN_PATHS = frozenset({
     "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
     "/api/sources/add", "/api/sources/remove", "/api/sources/detect",
+    "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
+    "/api/scrape/apply", "/api/scrape/key/set",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

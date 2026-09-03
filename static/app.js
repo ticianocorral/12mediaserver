@@ -2868,7 +2868,7 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          ['settingsUsers', 'settingsSources'].forEach(id => {
+          ['settingsUsers', 'settingsSources', 'settingsScrape'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
@@ -3565,6 +3565,180 @@
   document.getElementById('rcloneModal').addEventListener('click', function(e) {
     if (e.target === this) closeRcloneModal();
   });
+
+  // ==================== METADADOS (TMDB) ====================
+  // Editor que substitui o tinyMediaManager: busca no TMDB, mostra os
+  // candidatos, e so grava quando uma pessoa escolhe qual e o filme certo —
+  // nunca aplica o primeiro resultado sozinho. Ver ticianoflix/scraper.py.
+  function openScrapeModal() {
+    document.getElementById('scrapeModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _loadScrapeStatus();
+  }
+  function closeScrapeModal() {
+    document.getElementById('scrapeModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('scrapeModal').addEventListener('click', function(e) {
+    if (e.target === this) closeScrapeModal();
+  });
+
+  async function _loadScrapeStatus() {
+    const box = document.getElementById('scrapeBox');
+    try {
+      const res = await fetch('/api/scrape/status');
+      const st = await res.json();
+      if (!st.configurado) {
+        _renderScrapeKeyForm();
+      } else {
+        _loadScrapePendentes();
+      }
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
+    }
+  }
+
+  function _renderScrapeKeyForm(msgTexto, msgTipo) {
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML =
+      '<div class="rclone-help">Sinopse, elenco, nota e pôster vêm do TMDB — a mesma '
+      + 'base que Kodi, Jellyfin e o tinyMediaManager usam. Crie uma conta gratuita em '
+      + 'themoviedb.org e gere uma "API Key (v3 auth)" em Configurações › API. Sem chave, '
+      + 'o app segue igual, só com o nome da pasta.</div>'
+      + '<div class="user-form" style="flex-direction:column;align-items:stretch">'
+      + '<input type="password" id="scrapeKeyInput" placeholder="Cole a API Key aqui" autocomplete="off">'
+      + '<button class="rclone-action-btn primary" onclick="_scrapeSalvarChave()">Salvar chave</button>'
+      + '</div>'
+      + '<div id="scrapeMsg" class="user-msg' + (msgTipo ? ' ' + msgTipo : '') + '">' + (msgTexto || '') + '</div>';
+  }
+
+  async function _scrapeSalvarChave() {
+    const chave = (document.getElementById('scrapeKeyInput').value || '').trim();
+    if (!chave) return;
+    try {
+      const res = await fetch('/api/scrape/key/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: chave })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') {
+        _loadScrapePendentes();
+      } else {
+        _renderScrapeKeyForm(data.error || 'Não foi possível salvar.', 'err');
+      }
+    } catch (e) {
+      _renderScrapeKeyForm('Falha de conexão com o servidor.', 'err');
+    }
+  }
+
+  async function _loadScrapePendentes() {
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>';
+    try {
+      const res = await fetch('/api/scrape/pendentes');
+      const data = await res.json();
+      _renderScrapePendentes(data.pendentes || [], data.total || 0);
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
+    }
+  }
+
+  function _renderScrapePendentes(lista, total) {
+    const box = document.getElementById('scrapeBox');
+    if (lista.length === 0) {
+      box.innerHTML =
+        '<div class="rclone-help">Nenhum filme sem metadado — tudo já tem NFO ou já foi '
+        + 'preenchido pelo TMDB.</div>'
+        + '<button class="user-btn" onclick="_renderScrapeKeyForm()">Trocar chave do TMDB</button>';
+      return;
+    }
+    let html = '<div class="rclone-help">' + total + (total === 1 ? ' filme sem metadado.' : ' filmes sem metadado.')
+      + (total > lista.length ? ' Mostrando os primeiros ' + lista.length + '.' : '') + '</div>';
+    for (const item of lista) {
+      html += '<div class="user-row">'
+        + '<span class="user-name">' + escHtml(item.name) + '</span>'
+        + '<button class="user-btn" onclick="_scrapeAbrirBusca(\'' + enc(item.path) + '\', \'' + enc(item.name) + '\')">Buscar</button>'
+        + '</div>';
+    }
+    box.innerHTML = html;
+  }
+
+  // Tira o "(2020)" do fim do nome da pasta pro campo de busca vir limpo —
+  // mesma convencao que scraper.py usa do lado do servidor.
+  function _scrapeTituloLimpo(nome) {
+    return nome.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+  }
+
+  function _scrapeAbrirBusca(pathEnc, nomeEnc) {
+    const path = decodeURIComponent(pathEnc);
+    const nome = decodeURIComponent(nomeEnc);
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML =
+      '<button class="user-btn" onclick="_loadScrapePendentes()">← Voltar</button>'
+      + '<div class="user-form" style="margin-top:10px">'
+      + '<input type="text" id="scrapeQuery" value="' + escHtml(_scrapeTituloLimpo(nome)) + '" style="flex:1 1 auto">'
+      + '<button class="rclone-action-btn primary" onclick="_scrapeBuscar(\'' + pathEnc + '\')">Buscar</button>'
+      + '</div>'
+      + '<div id="scrapeResultados" style="margin-top:12px"></div>';
+    _scrapeBuscar(pathEnc);
+  }
+
+  async function _scrapeBuscar(pathEnc) {
+    const path = decodeURIComponent(pathEnc);
+    const q = (document.getElementById('scrapeQuery').value || '').trim();
+    const area = document.getElementById('scrapeResultados');
+    area.innerHTML = '<div class="loading" style="min-height:80px"><div class="spinner"></div><span>Buscando no TMDB...</span></div>';
+    try {
+      const url = '/api/scrape/search?path=' + encodeURIComponent(path) + (q ? '&q=' + encodeURIComponent(q) : '');
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.erro) {
+        area.innerHTML = '<div class="user-msg err">' + escHtml(data.erro) + '</div>';
+        return;
+      }
+      const candidatos = data.candidatos || [];
+      if (candidatos.length === 0) {
+        area.innerHTML = '<div class="user-msg">Nenhum resultado. Tente ajustar o texto da busca.</div>';
+        return;
+      }
+      area.innerHTML = candidatos.map(c =>
+        '<div class="user-row" style="align-items:flex-start">'
+        + (c.poster
+            ? '<img src="' + c.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;'
+              + 'border-radius:4px;flex:0 0 auto" onerror="this.remove()">'
+            : '')
+        + '<div class="src-main">'
+        + '<div class="user-name">' + escHtml(c.titulo) + (c.ano ? ' <span style="color:var(--text3);font-weight:400">(' + c.ano + ')</span>' : '') + '</div>'
+        + '<div class="src-hint" style="margin:2px 0 0">' + escHtml((c.sinopse || '').slice(0, 140)) + (c.sinopse && c.sinopse.length > 140 ? '…' : '') + '</div>'
+        + '</div>'
+        + '<button class="user-btn" style="flex:0 0 auto" onclick="_scrapeAplicar(\'' + pathEnc + '\', ' + c.id + ')">Usar este</button>'
+        + '</div>'
+      ).join('');
+    } catch (e) {
+      area.innerHTML = '<div class="user-msg err">Falha de conexão com o servidor.</div>';
+    }
+  }
+
+  async function _scrapeAplicar(pathEnc, tmdbId) {
+    const path = decodeURIComponent(pathEnc);
+    try {
+      const res = await fetch('/api/scrape/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path, tmdb_id: tmdbId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') {
+        showToast('Metadados aplicados.', 'success');
+        _loadScrapePendentes();
+      } else {
+        showToast(data.error || 'Não foi possível aplicar.', 'error');
+      }
+    } catch (e) {
+      showToast('Falha de conexão com o servidor.', 'error');
+    }
+  }
 
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
