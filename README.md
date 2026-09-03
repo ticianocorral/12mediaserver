@@ -29,6 +29,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
 - **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
+- **🎞️ Metadados via TMDB** — editor embutido que substitui o tinyMediaManager: busca candidatos, uma pessoa escolhe o certo, grava no banco e (fonte local, sem sobrescrever nada) como `.nfo` + pôster
 - **🎬 Coleções** — Star Wars 1-6 e afins agrupados numa tela só, ordenados por ano. Vem da tag `<set>` do NFO (o tinyMediaManager grava sozinho): nenhuma pasta muda de lugar, os filmes continuam cada um no seu gênero. Capa própria opcional via `movieset-poster.jpg`; sem ela, usa o cartaz do filme mais antigo
 - **🔍 Busca** por título com debounce
 - **📱 Responsivo de verdade** — no celular a barra lateral vira gaveta, os controles do player se reorganizam em duas faixas (nada de botão fora da tela) e tudo responde a toque
@@ -306,6 +307,29 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
   </actor>
 </movie>
 ```
+
+### Metadados automáticos (TMDB) — sem tinyMediaManager
+
+Quem não quiser organizar `.nfo` na mão pode preencher pelo próprio
+TicianoFlix, em **⚙️ Ajustes › 🏷️ Metadados**:
+
+1. Crie uma conta gratuita em [themoviedb.org](https://www.themoviedb.org/) e
+   gere uma **API Key (v3 auth)** em Configurações › API — cole no modal.
+2. O modal lista os filmes sem metadado. Clique em **Buscar**, escolha o
+   candidato certo entre os resultados do TMDB e clique em **Usar este**.
+
+O casamento **nunca é automático**: o TMDB só devolve candidatos, e uma
+pessoa escolhe qual é o filme certo — evita o erro clássico de scraper
+silencioso (o *Alien* de 1979 vs. o remake, vs. a franquia inteira).
+
+Os dados sempre vão pro banco (funciona com Drive e fonte local igual). Numa
+**fonte local**, se a pasta ainda não tiver `.nfo` nem pôster, o TicianoFlix
+também escreve `<pasta>.nfo` + `poster.jpg`/`fanart.jpg` ali — pra interoperar
+com Kodi/Plex depois. Isso **nunca sobrescreve** um `.nfo` ou pôster que já
+exista: pode ser curadoria manual de quem organizou o acervo antes.
+
+A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
+— nunca embutida no projeto nem enviada a lugar nenhum além do próprio TMDB.
 
 ---
 

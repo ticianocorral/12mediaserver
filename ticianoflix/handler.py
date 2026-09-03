@@ -87,6 +87,7 @@ from .rclone import (
 )
 from . import scanner as _scanner
 from . import sources as _sources
+from . import scraper as _scraper
 from . import branding as _branding
 from .branding import NOME_PADRAO
 from .nfo import _fetch_nfo_from_db
@@ -1164,6 +1165,29 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             conn.close()
         self._send_json({"status": "ok"})
 
+    def _handle_scrape_apply(self):
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        tmdb_id = body.get("tmdb_id")
+        if not folder_path or not tmdb_id:
+            self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
+            return
+        try:
+            tmdb_id = int(tmdb_id)
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "tmdb_id invalido"}, 400)
+            return
+        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 502)
+            return
+        self._send_json({"status": "ok"})
+
+    def _handle_scrape_key_set(self):
+        body = self._read_json_body() or {}
+        _scraper.set_api_key(str(body.get("api_key", "")))
+        self._send_json({"status": "ok", "configurado": _scraper.configurado()})
+
     def _handle_branding_set(self):
         body = self._read_json_body() or {}
         ok, err = _branding.set(body.get("nome", ""), body.get("cor", ""))
@@ -1451,6 +1475,36 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/sources/remove":
             self._handle_source_remove()
+            return
+
+        # API: Metadados via TMDB (editor que substitui o tinyMediaManager)
+        if path == "/api/scrape/status":
+            pendentes, total = _scraper.listar_pendentes(limite=1)
+            self._send_json({"configurado": _scraper.configurado(), "pendentes": total})
+            return
+
+        if path == "/api/scrape/pendentes":
+            pendentes, total = _scraper.listar_pendentes()
+            self._send_json({"pendentes": pendentes, "total": total})
+            return
+
+        if path == "/api/scrape/search":
+            folder_path = params.get("path", [""])[0]
+            query = params.get("q", [""])[0].strip() or None
+            if not folder_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
+            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/scrape/apply":
+            self._handle_scrape_apply()
+            return
+
+        if path == "/api/scrape/key/set":
+            self._handle_scrape_key_set()
             return
 
         # API: Scan progress

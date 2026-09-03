@@ -342,6 +342,13 @@
             <div class="backup-option-desc">Status da conexão com o Google Drive e nível de acesso</div>
           </div>
         </div>
+        <div class="backup-option" id="settingsScrape" style="display:none" onclick="fromSettings(openScrapeModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-clipboard"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Metadados</div>
+            <div class="backup-option-desc">Sinopse, elenco e pôster via TMDB — sem tinyMediaManager</div>
+          </div>
+        </div>
         <div class="backup-option" id="settingsBranding" style="display:none" onclick="fromSettings(openBrandingModal)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span>
           <div>
@@ -377,6 +384,21 @@
       <div class="modal-body">
         <div id="usersBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== METADADOS (TMDB, editor que substitui o tinyMediaManager) ====== -->
+  <div class="modal-overlay" id="scrapeModal">
+    <div class="modal" style="width:600px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-clipboard"></use></svg> Metadados</span>
+        <button class="modal-close" onclick="closeScrapeModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="scrapeBox">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
     </div>
