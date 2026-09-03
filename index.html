@@ -6,6 +6,20 @@
 <title>TicianoFlix</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="alternate icon" type="image/png" sizes="32x32" href="favicon.ico">
+
+<!-- Instalar como app na tela inicial do celular.
+     No iPhone e o proprio WebKit quem cuida: as metatags apple-* fazem o atalho
+     abrir em tela cheia, sem barra de endereco, e funcionam em HTTP puro — que
+     e como o servidor roda na rede de casa. No Android o Chrome so oferece
+     instalar em contexto seguro (HTTPS), entao la o atalho continua abrindo no
+     navegador ate o certificado do servidor ser confiavel no aparelho. -->
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#141414">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TicianoFlix">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">

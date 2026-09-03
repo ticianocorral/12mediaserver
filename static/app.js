@@ -1415,6 +1415,19 @@
     return window.location.origin;
   }
 
+  // Base para a midia que a PROPRIA PAGINA toca — hoje, o AirPlay, que troca o
+  // src do <video> daqui.
+  //
+  // O __HTTP_BASE__ e sempre http de proposito: o Chromecast busca a midia
+  // sozinho e nao aceita certificado auto-assinado. Mas numa pagina https um
+  // src http e conteudo misto, e o navegador bloqueia — o AirPlay morreria
+  // calado. Ali a unica saida e a propria origem. Servindo em http, que e o
+  // caso normal na rede de casa, nada muda.
+  function _baseMidiaDaPagina() {
+    if (window.location.protocol === 'https:') return _getBaseUrl();
+    return window.__HTTP_BASE__ || _getBaseUrl();
+  }
+
   function _loadCastSdk() {
     if (_castSdkInjected) return;
     _castSdkInjected = true;
@@ -1695,7 +1708,12 @@
       if (res.ok) tokens = await res.json();
     } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
     if (!tokens || !tokens.t) return null;
-    return { baseUrl: baseUrl, streamPath: urlObj.pathname + urlObj.search, tokens: tokens };
+    return {
+      baseUrl: baseUrl,                    // Chromecast: sempre http
+      midiaBase: _baseMidiaDaPagina(),     // AirPlay: acompanha a pagina
+      streamPath: urlObj.pathname + urlObj.search,
+      tokens: tokens,
+    };
   }
 
   // ===== AIRPLAY (iOS/Safari) =====
@@ -1748,11 +1766,11 @@
         video.currentTime = pos;
         if (tocando) video.play().catch(function() {});
       });
-      video.src = info.baseUrl + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
+      video.src = info.midiaBase + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
       if (currentSubtitlePath && info.tokens.sub) {
         var track = document.getElementById('subtitleTrack');
         if (track) {
-          track.src = info.baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
+          track.src = info.midiaBase + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
                     + '&t=' + encodeURIComponent(info.tokens.sub);
         }
       }
