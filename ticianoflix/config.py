@@ -85,9 +85,19 @@ WRITE_ROUTES = frozenset({
 })
 
 # Rotas alcancaveis sem sessao.
+#
+# O manifest e os icones entram aqui porque o navegador os busca fora da
+# navegacao normal, sem mandar o cookie: se respondessem 401 o celular nao
+# ofereceria instalar o app. Sao lista exata, nao prefixo — o resto de /static/
+# continua exigindo sessao.
 PUBLIC_PATHS = frozenset({
     "/login", "/favicon.ico", "/favicon.svg",
     "/api/auth/status", "/api/auth/login", "/api/auth/setup", "/api/auth/logout",
+    "/static/manifest.webmanifest",
+    "/static/icons/icon-192.png",
+    "/static/icons/icon-512.png",
+    "/static/icons/icon-maskable-512.png",
+    "/static/icons/apple-touch-icon.png",
 })
 
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
