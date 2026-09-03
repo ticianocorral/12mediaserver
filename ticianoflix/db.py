@@ -133,8 +133,14 @@ def init_db():
 # Tabelas que guardam path logico, e a coluna onde ele mora em cada uma. Fixo
 # e interno — nunca vem de entrada externa — entao formatar nome de
 # tabela/coluna direto na string e seguro aqui.
+#
+# folders.parent guarda o path logico do pai (mesma natureza de folders.path)
+# — faltou na primeira versao desta migracao, e por isso o gatilho abaixo
+# usa uma chave de cache_meta nova ('v2'): quem ja rodou a v1 tem path
+# migrado mas parent com o prefixo antigo sobrando, e precisa rodar de novo.
 _TABELAS_COM_PATH = (
     ("folders", "path"),
+    ("folders", "parent"),
     ("files", "folder_path"),
     ("movie_meta", "folder_path"),
     ("watch_progress", "folder_path"),
@@ -144,12 +150,18 @@ _TABELAS_COM_PATH = (
 
 def _migrar_prefixo_marca(conn):
     """Reescreve o prefixo logico da marca antiga (LOGICAL_ROOT_LEGADO) para a
-    atual (LOGICAL_ROOT), nas cinco tabelas que guardam folder_path.
+    atual (LOGICAL_ROOT), nas tabelas/colunas que guardam path logico.
 
     Sem isto, um rescan ate reconstroi folders/files sozinho, mas PERDERIA o
     progresso de exibicao e os vinculos de colecao, que sao indexados pelo
     path exato — trocar so o nome de exibicao (branding) nunca bastaria aqui,
     porque o path logico gravado no banco e uma identidade fixa, nao mutavel.
+
+    folders.parent ficando com o prefixo antigo (mesmo com folders.path ja
+    migrado) quebra a contagem de has_video por genero no proximo scan — o
+    "WHERE parent=?" do scanner para de bater, e o genero some da tela mesmo
+    com os filmes intactos no banco. Root_path='' (a raiz) nunca casa com o
+    prefixo antigo, entao fica de fora do UPDATE sem precisar de caso especial.
 
     Gatilho unico via cache_meta, no mesmo idioma que o scanner ja usa pro
     backfill de NFO (meta_version): se o valor gravado ja bate com o
@@ -159,7 +171,7 @@ def _migrar_prefixo_marca(conn):
     if LOGICAL_ROOT == LOGICAL_ROOT_LEGADO:
         return
     row = conn.execute(
-        "SELECT value FROM cache_meta WHERE key='logical_root_migrado'").fetchone()
+        "SELECT value FROM cache_meta WHERE key='logical_root_migrado_v2'").fetchone()
     if row and row["value"] == LOGICAL_ROOT:
         return
     prefixo_like = like_prefix(LOGICAL_ROOT_LEGADO)
@@ -171,7 +183,7 @@ def _migrar_prefixo_marca(conn):
             (LOGICAL_ROOT, tamanho_antigo, LOGICAL_ROOT_LEGADO, prefixo_like),
         )
     conn.execute(
-        "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('logical_root_migrado', ?)",
+        "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('logical_root_migrado_v2', ?)",
         (LOGICAL_ROOT,),
     )
 
