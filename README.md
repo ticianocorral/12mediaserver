@@ -643,6 +643,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.15 — instalador único (curl | bash), sem exigir git nem log
+
+- `install.sh` único, cobrindo Linux e macOS — substitui `install.sh` (Linux) e `install-macos.sh`, que sai do repositório
+
+- Serve por `curl -fsSL <url>
+
+- bash`, sem clonar nada antes
+
+- Não instala nem exige rclone — Drive é 100% opcional
+
+- Ao final, espera o servidor responder, lê o código de instalação do log e mostra na tela — ninguém precisa mais abrir arquivo de log — e abre o navegador sozinho
+
+
 ### v1.14 — Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)
 
 - `paths.remote_configurado()` — o servidor só tenta subir o `rclone serve` se houver remote

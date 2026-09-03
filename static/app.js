@@ -3570,6 +3570,17 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.15.0',
+      title: 'instalador único (curl | bash), sem exigir git nem log',
+      changes: [
+        '`install.sh` único, cobrindo Linux e macOS — substitui `install.sh` (Linux) e `install-macos.sh`, que sai do repositório',
+        'Serve por `curl -fsSL <url>',
+        'bash`, sem clonar nada antes',
+        'Não instala nem exige rclone — Drive é 100% opcional',
+        'Ao final, espera o servidor responder, lê o código de instalação do log e mostra na tela — ninguém precisa mais abrir arquivo de log — e abre o navegador sozinho',
+      ],
+    },
+    {
       version: '1.14.0',
       title: 'Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)',
       changes: [
