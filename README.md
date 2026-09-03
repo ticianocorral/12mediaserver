@@ -76,33 +76,41 @@ Crie um remote chamado `gdrive:` com:
 > remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
 > oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
 
-### 2. Clonar e instalar
+### 2. Instalar
 
-**Linux (systemd):**
-
-```bash
-git clone https://github.com/seu-usuario/ticianoflix.git
-cd ticianoflix
-bash install.sh
-```
-
-O instalador cuida de:
-- Verificar/instalar dependências
-- Criar o serviço systemd
-- Ativar persistência mesmo sem login (`linger`)
-- Iniciar o servidor
-
-**macOS (LaunchAgent):**
+**Linux e macOS**, com um comando só — não precisa clonar nada:
 
 ```bash
-git clone https://github.com/seu-usuario/ticianoflix.git
-cd ticianoflix
-bash install-macos.sh
+curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/install.sh | bash
 ```
 
-O instalador verifica/instala Python e rclone (Homebrew ou script oficial),
-cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair) e
-grava os logs em `~/.cache/ticianoflix/ticianoflix.log`.
+> O repositório está privado no momento, então esse comando só funciona para
+> quem já tem acesso autenticado a ele. Enquanto isso, clone e rode local:
+>
+> ```bash
+> git clone https://github.com/ticianocorral/TicianoFlix.git
+> cd TicianoFlix
+> bash install.sh
+> ```
+>
+> O script detecta os dois casos sozinho — rodando de dentro de um clone ele
+> usa esse clone; rodando via `curl | bash` ele baixa o projeto.
+
+O mesmo `install.sh` cuida de tudo, nos dois sistemas:
+- Verifica o Python (3.9+; instala pelo gerenciador de pacotes se faltar)
+- No Linux, cria o serviço systemd e ativa persistência sem login (`linger`)
+- No macOS, cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair)
+- Sobe o servidor, espera ele responder e **mostra o código de instalação na
+  própria tela** — sem precisar abrir o log
+- Abre o navegador no endereço certo
+
+Não pede nada de Google Drive nem de rclone — isso é totalmente opcional, veja
+a seção [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador)
+e [Google Drive](#1-opcional-configurar-o-google-drive-no-rclone) acima.
+
+**Windows:** baixe o projeto e rode `install-windows.bat` de dentro da pasta.
+
+Logs em `~/.cache/ticianoflix/ticianoflix.log` (macOS/Linux).
 
 Comandos úteis:
 ```bash
@@ -476,8 +484,7 @@ TicianoFlix/
 ├── tv/                    # App de Android TV (Kotlin) — veja tv/README.md
 ├── tools/check_names.py   # Detecta nomes usados mas não definidos
 ├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
-├── install.sh             # Instalador do serviço systemd (Linux)
-├── install-macos.sh       # Instalador do LaunchAgent (macOS)
+├── install.sh             # Instalador único (Linux e macOS) — baixa, instala, sobe
 ├── install-windows.bat    # Instalador (Windows)
 ├── bump-version.sh        # Versionamento SemVer
 ├── .gitignore             # Arquivos ignorados pelo Git
