@@ -2,7 +2,7 @@
   <h1>🎬 TicianoFlix</h1>
   <p><strong>Netflix-style movie player for Google Drive, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
+    <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
     <img src="https://img.shields.io/badge/version-1.6-red" alt="v1.6">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
@@ -38,6 +38,7 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
 - **📺 Chromecast** — envio para a TV com URL assinada e legendas; a TV mostra pôster, ano e sinopse, e os controles do app comandam a transmissão (play, avançar, volume, legenda)
 - **📡 AirPlay** — no iPhone, onde o Chromecast não funciona (limitação da Apple, não do app), o botão de AirPlay aparece no lugar; usa a mesma URL assinada, direto do `<video>`, sem SDK
+- **🎨 Aparência configurável** — cada instalação escolhe seu próprio nome e cor em **⚙️ Ajustes › 🎨 Aparência**, refletido na tela de login, no menu, no ícone instalado no celular e no manifesto — sem afetar onde o acervo, as contas e o progresso ficam guardados
 
 ---
 
@@ -45,11 +46,18 @@ TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive*
 
 ### Pré-requisitos
 
-- **Python 3.10+**
-- **rclone** (com remote `gdrive:` configurado)
+- **Python 3.9+**
 - Linux (systemd) · macOS (LaunchAgent) · Windows — veja abaixo
 
-### 1. Configurar o Google Drive no rclone
+É só isso. O TicianoFlix funciona com filmes que já estão no seu computador, num
+HD externo ou num pendrive — veja [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador).
+
+O **Google Drive é opcional** e entra depois, quando você quiser: precisa do
+rclone e de uma autorização no Google, e dá pra fazer tudo pelo próprio
+TicianoFlix, em **⚙️ Ajustes › ☁️ rclone**. Sem ele nada deixa de funcionar —
+o servidor sobe igual e nem tenta contato com o Drive.
+
+### 1. (Opcional) Configurar o Google Drive no rclone
 
 ```bash
 rclone config
@@ -70,33 +78,41 @@ Crie um remote chamado `gdrive:` com:
 > remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
 > oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
 
-### 2. Clonar e instalar
+### 2. Instalar
 
-**Linux (systemd):**
-
-```bash
-git clone https://github.com/seu-usuario/ticianoflix.git
-cd ticianoflix
-bash install.sh
-```
-
-O instalador cuida de:
-- Verificar/instalar dependências
-- Criar o serviço systemd
-- Ativar persistência mesmo sem login (`linger`)
-- Iniciar o servidor
-
-**macOS (LaunchAgent):**
+**Linux e macOS**, com um comando só — não precisa clonar nada:
 
 ```bash
-git clone https://github.com/seu-usuario/ticianoflix.git
-cd ticianoflix
-bash install-macos.sh
+curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/install.sh | bash
 ```
 
-O instalador verifica/instala Python e rclone (Homebrew ou script oficial),
-cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair) e
-grava os logs em `~/.cache/ticianoflix/ticianoflix.log`.
+> O repositório está privado no momento, então esse comando só funciona para
+> quem já tem acesso autenticado a ele. Enquanto isso, clone e rode local:
+>
+> ```bash
+> git clone https://github.com/ticianocorral/TicianoFlix.git
+> cd TicianoFlix
+> bash install.sh
+> ```
+>
+> O script detecta os dois casos sozinho — rodando de dentro de um clone ele
+> usa esse clone; rodando via `curl | bash` ele baixa o projeto.
+
+O mesmo `install.sh` cuida de tudo, nos dois sistemas:
+- Verifica o Python (3.9+; instala pelo gerenciador de pacotes se faltar)
+- No Linux, cria o serviço systemd e ativa persistência sem login (`linger`)
+- No macOS, cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair)
+- Sobe o servidor, espera ele responder e **mostra o código de instalação na
+  própria tela** — sem precisar abrir o log
+- Abre o navegador no endereço certo
+
+Não pede nada de Google Drive nem de rclone — isso é totalmente opcional, veja
+a seção [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador)
+e [Google Drive](#1-opcional-configurar-o-google-drive-no-rclone) acima.
+
+**Windows:** baixe o projeto e rode `install-windows.bat` de dentro da pasta.
+
+Logs em `~/.cache/ticianoflix/ticianoflix.log` (macOS/Linux).
 
 Comandos úteis:
 ```bash
@@ -493,8 +509,7 @@ TicianoFlix/
 ├── tv/                    # App de Android TV (Kotlin) — veja tv/README.md
 ├── tools/check_names.py   # Detecta nomes usados mas não definidos
 ├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
-├── install.sh             # Instalador do serviço systemd (Linux)
-├── install-macos.sh       # Instalador do LaunchAgent (macOS)
+├── install.sh             # Instalador único (Linux e macOS) — baixa, instala, sobe
 ├── install-windows.bat    # Instalador (Windows)
 ├── bump-version.sh        # Versionamento SemVer
 ├── .gitignore             # Arquivos ignorados pelo Git
@@ -652,6 +667,58 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 ---
 
 ## 📋 Changelog
+
+### v1.17 — marca configurável (nome, cor e ícone por instalação)
+
+- `ticianoflix/branding.py` — `get()`/`set()` com validação, persistido em `CACHE_DIR/branding.json`
+
+- Rotas públicas `/manifest.webmanifest`, `/branding.css`, `/icone-*.png` — geradas em runtime
+
+- `/api/branding` (GET) e `/api/branding/set` (POST) — admin, com `Origin` exigido no POST
+
+- `<title>`, topbar, sidebar e a tela de login passam a refletir o nome e a cor escolhidos
+
+- **Ajustes › Aparência**: nome + seletor de cor, seguindo o padrão visual de Contas/Fontes
+
+
+### v1.16 — instalar o TicianoFlix como app na tela inicial do celular
+
+- `static/manifest.webmanifest` — `display: standalone`, `start_url: /`, cor do tema
+
+- `static/icons/` — 192, 512, maskable 512 e apple-touch 180
+
+- `tools/gerar-icones.py` — gera os ícones a partir do `favicon.svg`
+
+- Metatags `apple-*` e `mobile-web-app-capable` no `index.html`
+
+- Manifest e ícones passam a responder sem sessão
+
+- `mimetypes.add_type` para `.webmanifest`
+
+
+### v1.15 — instalador único (curl | bash), sem exigir git nem log
+
+- `install.sh` único, cobrindo Linux e macOS — substitui `install.sh` (Linux) e `install-macos.sh`, que sai do repositório
+
+- Serve por `curl -fsSL <url>
+
+- bash`, sem clonar nada antes
+
+- Não instala nem exige rclone — Drive é 100% opcional
+
+- Ao final, espera o servidor responder, lê o código de instalação do log e mostra na tela — ninguém precisa mais abrir arquivo de log — e abre o navegador sozinho
+
+
+### v1.14 — Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)
+
+- `paths.remote_configurado()` — o servidor só tenta subir o `rclone serve` se houver remote
+
+- `_porta_responde()` separa "o processo subiu?" de "o Drive respondeu?"
+
+- README: Drive sai dos pré-requisitos e vira seção opcional
+
+- Exigência cai de Python 3.10+ para **3.9+**
+
 
 ### v1.13 — app de Android TV, com a interface da web navegável por controle
 

@@ -1415,6 +1415,19 @@
     return window.location.origin;
   }
 
+  // Base para a midia que a PROPRIA PAGINA toca — hoje, o AirPlay, que troca o
+  // src do <video> daqui.
+  //
+  // O __HTTP_BASE__ e sempre http de proposito: o Chromecast busca a midia
+  // sozinho e nao aceita certificado auto-assinado. Mas numa pagina https um
+  // src http e conteudo misto, e o navegador bloqueia — o AirPlay morreria
+  // calado. Ali a unica saida e a propria origem. Servindo em http, que e o
+  // caso normal na rede de casa, nada muda.
+  function _baseMidiaDaPagina() {
+    if (window.location.protocol === 'https:') return _getBaseUrl();
+    return window.__HTTP_BASE__ || _getBaseUrl();
+  }
+
   function _loadCastSdk() {
     if (_castSdkInjected) return;
     _castSdkInjected = true;
@@ -1695,7 +1708,12 @@
       if (res.ok) tokens = await res.json();
     } catch (e) { console.warn('[Cast] falha ao assinar a URL:', e); }
     if (!tokens || !tokens.t) return null;
-    return { baseUrl: baseUrl, streamPath: urlObj.pathname + urlObj.search, tokens: tokens };
+    return {
+      baseUrl: baseUrl,                    // Chromecast: sempre http
+      midiaBase: _baseMidiaDaPagina(),     // AirPlay: acompanha a pagina
+      streamPath: urlObj.pathname + urlObj.search,
+      tokens: tokens,
+    };
   }
 
   // ===== AIRPLAY (iOS/Safari) =====
@@ -1748,11 +1766,11 @@
         video.currentTime = pos;
         if (tocando) video.play().catch(function() {});
       });
-      video.src = info.baseUrl + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
+      video.src = info.midiaBase + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
       if (currentSubtitlePath && info.tokens.sub) {
         var track = document.getElementById('subtitleTrack');
         if (track) {
-          track.src = info.baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
+          track.src = info.midiaBase + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
                     + '&t=' + encodeURIComponent(info.tokens.sub);
         }
       }
@@ -2868,7 +2886,7 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          ['settingsUsers', 'settingsSources', 'settingsScrape'].forEach(id => {
+          ['settingsUsers', 'settingsSources', 'settingsScrape', 'settingsBranding'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
@@ -3740,9 +3758,138 @@
     }
   }
 
+  // ==================== APARENCIA (marca) ====================
+  // Nome de exibicao e cor sao a unica coisa que muda por instalacao — onde
+  // os dados moram (cache, banco, nome do servico) nunca depende disto. Ver
+  // ticianoflix/branding.py.
+  function openBrandingModal() {
+    document.getElementById('brandingModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _loadBranding();
+  }
+  function closeBrandingModal() {
+    document.getElementById('brandingModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('brandingModal').addEventListener('click', function(e) {
+    if (e.target === this) closeBrandingModal();
+  });
+
+  async function _loadBranding() {
+    const box = document.getElementById('brandingBox');
+    try {
+      const res = await fetch('/api/branding');
+      const marca = await res.json();
+      box.innerHTML =
+        '<div class="user-form" style="flex-direction:column;align-items:stretch">'
+        + '<label style="font-size:12px;color:var(--text3)">Nome</label>'
+        + '<input type="text" id="brandNome" maxlength="40" value="' + escHtml(marca.nome) + '" '
+        + 'placeholder="Ex.: Família Corral">'
+        + '<label style="font-size:12px;color:var(--text3);margin-top:4px">Cor</label>'
+        + '<div style="display:flex;gap:8px;align-items:center">'
+        + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
+        + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
+        + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
+        + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
+        + 'style="flex:1" placeholder="#e50914">'
+        + '</div>'
+        + '</div>'
+        + '<div class="rclone-help">O nome e a cor aparecem na tela de login, no menu, no '
+        + 'ícone do app instalado no celular e no manifesto — sem mexer em onde o acervo, '
+        + 'as contas e o progresso ficam guardados.</div>'
+        + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
+        + 'onclick="saveBranding()">Salvar</button>'
+        + '<div id="brandingMsg" class="user-msg"></div>';
+
+      const picker = document.getElementById('brandCorPicker');
+      const texto = document.getElementById('brandCorTexto');
+      // Os dois campos de cor ficam sincronizados nos dois sentidos: o seletor
+      // visual e o texto hexadecimal, pra quem preferir digitar direto.
+      picker.addEventListener('input', () => { texto.value = picker.value; });
+      texto.addEventListener('input', () => {
+        if (/^#[0-9a-fA-F]{6}$/.test(texto.value)) picker.value = texto.value;
+      });
+    } catch (e) {
+      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
+    }
+  }
+
+  async function saveBranding() {
+    const nome = (document.getElementById('brandNome').value || '').trim();
+    const cor = (document.getElementById('brandCorTexto').value || '').trim();
+    const msg = document.getElementById('brandingMsg');
+    const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
+    if (!nome) { mostrar('Escolha um nome.', 'err'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e50914.', 'err'); return; }
+    try {
+      const res = await fetch('/api/branding/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, cor })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') {
+        mostrar('Salvo! Atualizando...', 'ok');
+        // Recarrega em vez de repintar na hora: o nome novo tem que sair do
+        // proprio HTML que o servidor gera (titulo, topbar, sidebar, login),
+        // e nao so do CSS — mais simples e mais confiavel que sincronizar
+        // cada um desses pontos manualmente por aqui.
+        setTimeout(() => location.reload(), 600);
+      } else {
+        mostrar(data.error || 'Não foi possível salvar.', 'err');
+      }
+    } catch (e) {
+      mostrar('Falha de conexão com o servidor.', 'err');
+    }
+  }
+
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.17.0',
+      title: 'marca configurável (nome, cor e ícone por instalação)',
+      changes: [
+        '`ticianoflix/branding.py` — `get()`/`set()` com validação, persistido em `CACHE_DIR/branding.json`',
+        'Rotas públicas `/manifest.webmanifest`, `/branding.css`, `/icone-*.png` — geradas em runtime',
+        '`/api/branding` (GET) e `/api/branding/set` (POST) — admin, com `Origin` exigido no POST',
+        '`<title>`, topbar, sidebar e a tela de login passam a refletir o nome e a cor escolhidos',
+        '**Ajustes › Aparência**: nome + seletor de cor, seguindo o padrão visual de Contas/Fontes',
+      ],
+    },
+    {
+      version: '1.16.0',
+      title: 'instalar o TicianoFlix como app na tela inicial do celular',
+      changes: [
+        '`static/manifest.webmanifest` — `display: standalone`, `start_url: /`, cor do tema',
+        '`static/icons/` — 192, 512, maskable 512 e apple-touch 180',
+        '`tools/gerar-icones.py` — gera os ícones a partir do `favicon.svg`',
+        'Metatags `apple-*` e `mobile-web-app-capable` no `index.html`',
+        'Manifest e ícones passam a responder sem sessão',
+        '`mimetypes.add_type` para `.webmanifest`',
+      ],
+    },
+    {
+      version: '1.15.0',
+      title: 'instalador único (curl | bash), sem exigir git nem log',
+      changes: [
+        '`install.sh` único, cobrindo Linux e macOS — substitui `install.sh` (Linux) e `install-macos.sh`, que sai do repositório',
+        'Serve por `curl -fsSL <url>',
+        'bash`, sem clonar nada antes',
+        'Não instala nem exige rclone — Drive é 100% opcional',
+        'Ao final, espera o servidor responder, lê o código de instalação do log e mostra na tela — ninguém precisa mais abrir arquivo de log — e abre o navegador sozinho',
+      ],
+    },
+    {
+      version: '1.14.0',
+      title: 'Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)',
+      changes: [
+        '`paths.remote_configurado()` — o servidor só tenta subir o `rclone serve` se houver remote',
+        '`_porta_responde()` separa "o processo subiu?" de "o Drive respondeu?"',
+        'README: Drive sai dos pré-requisitos e vira seção opcional',
+        'Exigência cai de Python 3.10+ para **3.9+**',
+      ],
+    },
     {
       version: '1.13.0',
       title: 'app de Android TV, com a interface da web navegável por controle',

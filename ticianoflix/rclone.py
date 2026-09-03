@@ -19,7 +19,7 @@ from .config import (
     CACHED_FILES_PATH, LOGICAL_ROOT, RCLONE_GUI_ENABLED,
     RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
 )
-from .paths import rc_remote as _rc_remote, read_remote_conf
+from .paths import rc_remote as _rc_remote, read_remote_conf, remote_configurado
 from .procutil import _pids_on_port, _proc_cmdline
 
 rclone_server_proc = None
@@ -144,6 +144,25 @@ def _urlopen_ok(url, timeout=2):
         return False
 
 
+def _porta_responde(url, timeout=2):
+    """True se algo HTTP atender, mesmo respondendo erro.
+
+    Diferente de _urlopen_ok: aqui a pergunta e "o processo ja subiu?", nao "o
+    Drive esta acessivel?". Com o token do Google expirado o rclone responde 500
+    na hora — se tratassemos isso como "nao subiu", esperariamos os 25s inteiros
+    a cada boot por algo que ja esta de pe.
+    """
+    try:
+        import urllib.error as _ue
+        import urllib.request as _ur
+        _ur.urlopen(url, timeout=timeout)
+        return True
+    except _ue.HTTPError:
+        return True
+    except Exception:
+        return False
+
+
 def _kill_rclone_on_port(port):
     """Best-effort: mata processos rclone ouvindo em 'port'.
 
@@ -168,6 +187,16 @@ def start_rclone_serve():
         # Já temos um processo vivo iniciado por nós?
         if rclone_server_proc is not None and rclone_server_proc.poll() is None:
             return rclone_server_proc
+
+        # Sem remote nao ha o que servir. Esta guarda existe porque o laco de
+        # espera la embaixo aguarda ate 25s por um serve que, sem remote, nunca
+        # vai responder: medido, o boot levava 31s e ainda deixava um processo
+        # rclone tentando pra sempre. Quem so usa pasta local pagava isso a
+        # cada subida do servidor.
+        if not remote_configurado():
+            print("[TicianoFlix] Sem remote do Drive configurado — "
+                  "usando apenas fontes locais.", flush=True)
+            return None
 
         # Já existe um serve respondendo (ex.: iniciado externamente)?
         try:
@@ -211,9 +240,17 @@ def start_rclone_serve():
             # demorar enquanto o rclone inicializa o VFS e conecta no Drive)
             for _ in range(25):
                 time.sleep(1)
+                if not _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
+                    continue
                 if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
                     print("ready!", flush=True)
-                    break
+                else:
+                    # De pe, mas o Drive nao respondeu. O caso comum e o token
+                    # do Google expirado; o painel do rclone mostra o motivo.
+                    print("no ar, mas o Drive nao respondeu — veja Ajustes > rclone "
+                          "(token expirado? 'rclone config reconnect gdrive:')",
+                          flush=True)
+                break
             else:
                 print("timed out, streams may use fallback", flush=True)
             return proc
