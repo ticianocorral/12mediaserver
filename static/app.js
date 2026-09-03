@@ -3847,6 +3847,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.19.2',
+      title: 'migração do prefixo de marca esquecia folders.parent',
+      changes: [
+        'migração do prefixo de marca esquecia folders.parent',
+      ],
+    },
+    {
       version: '1.19.1',
       title: 'rclone em modo raiz volta a usar o nome real da pasta no Drive',
       changes: [

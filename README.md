@@ -669,6 +669,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.19.2 — migração do prefixo de marca esquecia folders.parent
+
+- migração do prefixo de marca esquecia folders.parent
+
+
 ### v1.19.1 — rclone em modo raiz volta a usar o nome real da pasta no Drive
 
 - rclone em modo raiz volta a usar o nome real da pasta no Drive
