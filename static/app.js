@@ -3570,6 +3570,16 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.14.0',
+      title: 'Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)',
+      changes: [
+        '`paths.remote_configurado()` — o servidor só tenta subir o `rclone serve` se houver remote',
+        '`_porta_responde()` separa "o processo subiu?" de "o Drive respondeu?"',
+        'README: Drive sai dos pré-requisitos e vira seção opcional',
+        'Exigência cai de Python 3.10+ para **3.9+**',
+      ],
+    },
+    {
       version: '1.13.0',
       title: 'app de Android TV, com a interface da web navegável por controle',
       changes: [

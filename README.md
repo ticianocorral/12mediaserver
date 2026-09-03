@@ -636,6 +636,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.14 — Google Drive deixa de ser pré-requisito (boot de 31s para 0,3s)
+
+- `paths.remote_configurado()` — o servidor só tenta subir o `rclone serve` se houver remote
+
+- `_porta_responde()` separa "o processo subiu?" de "o Drive respondeu?"
+
+- README: Drive sai dos pré-requisitos e vira seção opcional
+
+- Exigência cai de Python 3.10+ para **3.9+**
+
+
 ### v1.13 — app de Android TV, com a interface da web navegável por controle
 
 - Modo TV na web com `?tv=1`: navegação por setas, foco visível e overscan — nada carrega sem a query
