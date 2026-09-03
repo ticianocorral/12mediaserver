@@ -67,6 +67,14 @@ AUTH_PATH = CACHE_DIR / "auth.json"
 # que restaurar um backup feito em outra maquina nao importe caminhos que nao
 # existem aqui.
 SOURCES_PATH = CACHE_DIR / "sources.json"
+# A chave do TMDB e da pessoa que instalou, nunca do projeto: uma chave
+# embutida no codigo publico ficaria exposta e todo mundo dividiria o mesmo
+# limite de uso. Fica fora do SQLite pelo mesmo motivo do sources.json.
+TMDB_KEY_PATH = CACHE_DIR / "tmdb.json"
+# Mesmo raciocinio do sources.json: nome, cor e icone sao configuracao de
+# exibicao, nao dado do acervo — nunca precisam entrar no SQLite nem viajam
+# num backup do catalogo.
+BRANDING_PATH = CACHE_DIR / "branding.json"
 SECRET_PATH = CACHE_DIR / "secret.key"
 
 for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR):
@@ -88,13 +96,23 @@ MAX_NFO_BYTES = 2 * 1024 * 1024         # teto de um arquivo .nfo
 WRITE_ROUTES = frozenset({
     "/api/refresh", "/api/clear-cache", "/api/uncache",
     "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
-    "/api/sources/add", "/api/sources/remove",
+    "/api/sources/add", "/api/sources/remove", "/api/branding/set",
+    "/api/scrape/apply", "/api/scrape/key/set",
 })
 
 # Rotas alcancaveis sem sessao.
+#
+# O manifest, o CSS de marca e os icones entram aqui porque o navegador os
+# busca fora da navegacao normal, sem mandar o cookie: se respondessem 401 o
+# celular nao ofereceria instalar o app, e a pagina de login (que roda antes
+# de qualquer sessao existir) ficaria sem a cor e o icone escolhidos. Sao
+# lista exata, nao prefixo — o resto de /static/ continua exigindo sessao.
 PUBLIC_PATHS = frozenset({
     "/login", "/favicon.ico", "/favicon.svg",
     "/api/auth/status", "/api/auth/login", "/api/auth/setup", "/api/auth/logout",
+    "/manifest.webmanifest", "/branding.css",
+    "/icone-192.png", "/icone-512.png",
+    "/icone-maskable-512.png", "/icone-apple-touch.png",
 })
 
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
@@ -106,6 +124,9 @@ TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
 ADMIN_PATHS = frozenset({
     "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
     "/api/sources/add", "/api/sources/remove", "/api/sources/detect",
+    "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
+    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/branding", "/api/branding/set",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

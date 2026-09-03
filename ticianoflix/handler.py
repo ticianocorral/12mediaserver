@@ -87,6 +87,9 @@ from .rclone import (
 )
 from . import scanner as _scanner
 from . import sources as _sources
+from . import scraper as _scraper
+from . import branding as _branding
+from .branding import NOME_PADRAO
 from .nfo import _fetch_nfo_from_db
 from .queries import (
     cached_list_directory, cached_movie_detail, cached_get_file_info,
@@ -101,6 +104,11 @@ _UNSET = object()
 # Progresso de download pro cache VFS: video_path -> {percent, status, ...}
 _download_progress = {}
 _download_progress_lock = threading.Lock()
+
+
+# O mimetypes do Python nao conhece .webmanifest, e sem o tipo certo o
+# navegador ignora o manifesto e nao oferece instalar o app.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 def _bust_asset_cache(html):
@@ -1157,6 +1165,37 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             conn.close()
         self._send_json({"status": "ok"})
 
+    def _handle_scrape_apply(self):
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        tmdb_id = body.get("tmdb_id")
+        if not folder_path or not tmdb_id:
+            self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
+            return
+        try:
+            tmdb_id = int(tmdb_id)
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "tmdb_id invalido"}, 400)
+            return
+        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 502)
+            return
+        self._send_json({"status": "ok"})
+
+    def _handle_scrape_key_set(self):
+        body = self._read_json_body() or {}
+        _scraper.set_api_key(str(body.get("api_key", "")))
+        self._send_json({"status": "ok", "configurado": _scraper.configurado()})
+
+    def _handle_branding_set(self):
+        body = self._read_json_body() or {}
+        ok, err = _branding.set(body.get("nome", ""), body.get("cor", ""))
+        if not ok:
+            self._send_json({"status": "error", "error": err}, 400)
+            return
+        self._send_json({"status": "ok", "branding": _branding.get()})
+
     def do_POST(self):
         self._reset_request_state()
         if not self._security_gate():
@@ -1345,6 +1384,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         # Serve frontend
         if path == "/" or path == "/index.html":
             html_content = FRONTEND_PATH.read_text(encoding="utf-8") if FRONTEND_PATH.exists() else "<h1>TicianoFlix</h1><p>Frontend not found.</p>"
+            # Troca o nome de exibicao antes de servir: fazer isso por
+            # JavaScript depois piscaria "TicianoFlix" por um instante a cada
+            # carregamento, em qualquer instalacao que tenha escolhido outro
+            # nome. So esse texto muda — CACHE_DIR, nome do banco e do
+            # servico continuam fixos, de proposito (ver branding.py).
+            html_content = html_content.replace(NOME_PADRAO, _branding.get()["nome"])
             # Inject HTTP base URL for Chromecast media streaming
             # (Chromecast doesn't trust self-signed certs, so media must use HTTP)
             html_content = html_content.replace(
@@ -1365,6 +1410,49 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         # Static files
         if path.startswith("/static/"):
             self._serve_file(path)
+            return
+
+        # Marca: manifest, CSS de cor e icones gerados na hora, na cor e nome
+        # escolhidos. Publicos (ver PUBLIC_PATHS) porque o navegador os busca
+        # fora da navegacao normal, sem cookie — inclusive antes do login.
+        if path == "/manifest.webmanifest":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/manifest+json")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(_branding.manifest_json().encode("utf-8"))
+            return
+
+        if path == "/branding.css":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(_branding.css().encode("utf-8"))
+            return
+
+        if path.startswith("/icone-") and path.endswith(".png"):
+            chave = path[len("/icone-"):-len(".png")]
+            dados = _branding.icone_png(chave)
+            if dados is None:
+                self._send_error("Icone desconhecido", 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            # A cor entra no nome do arquivo em cache (branding.py); um icone
+            # nunca fica desatualizado atras deste cache, so muda de URL.
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(dados)
+            return
+
+        # API: Marca atual (nome e cor) — admin, ver Ajustes > Aparencia
+        if path == "/api/branding":
+            self._send_json(_branding.get())
+            return
+
+        if path == "/api/branding/set":
+            self._handle_branding_set()
             return
 
         # API: Refresh cache (escaneia todas as fontes, ou so uma)
@@ -1388,6 +1476,36 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/sources/remove":
             self._handle_source_remove()
+            return
+
+        # API: Metadados via TMDB (editor que substitui o tinyMediaManager)
+        if path == "/api/scrape/status":
+            pendentes, total = _scraper.listar_pendentes(limite=1)
+            self._send_json({"configurado": _scraper.configurado(), "pendentes": total})
+            return
+
+        if path == "/api/scrape/pendentes":
+            pendentes, total = _scraper.listar_pendentes()
+            self._send_json({"pendentes": pendentes, "total": total})
+            return
+
+        if path == "/api/scrape/search":
+            folder_path = params.get("path", [""])[0]
+            query = params.get("q", [""])[0].strip() or None
+            if not folder_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
+            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/scrape/apply":
+            self._handle_scrape_apply()
+            return
+
+        if path == "/api/scrape/key/set":
+            self._handle_scrape_key_set()
             return
 
         # API: Scan progress

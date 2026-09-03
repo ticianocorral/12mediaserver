@@ -19,7 +19,7 @@ if not exist "%DIR%server.py" (
 )
 echo  [OK] Diretorio do projeto: %DIR%
 
-REM ─── 1. Python 3.10+ ───────────────────────────────────
+REM ─── 1. Python 3.9+ ────────────────────────────────────
 echo.
 echo  Verificando Python...
 set "PY="
@@ -30,7 +30,7 @@ if not defined PY (
     if %errorlevel%==0 set "PY=python"
 )
 if not defined PY (
-    echo  [ERRO] Python 3.10+ nao encontrado.
+    echo  [ERRO] Python 3.9+ nao encontrado.
     echo  Baixe em https://www.python.org/downloads/ e marque "Add to PATH".
     echo  Depois rode este instalador novamente.
     pause
