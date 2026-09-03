@@ -3673,6 +3673,17 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.17.0',
+      title: 'marca configurável (nome, cor e ícone por instalação)',
+      changes: [
+        '`ticianoflix/branding.py` — `get()`/`set()` com validação, persistido em `CACHE_DIR/branding.json`',
+        'Rotas públicas `/manifest.webmanifest`, `/branding.css`, `/icone-*.png` — geradas em runtime',
+        '`/api/branding` (GET) e `/api/branding/set` (POST) — admin, com `Origin` exigido no POST',
+        '`<title>`, topbar, sidebar e a tela de login passam a refletir o nome e a cor escolhidos',
+        '**Ajustes › Aparência**: nome + seletor de cor, seguindo o padrão visual de Contas/Fontes',
+      ],
+    },
+    {
       version: '1.16.0',
       title: 'instalar o TicianoFlix como app na tela inicial do celular',
       changes: [

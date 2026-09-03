@@ -644,6 +644,19 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.17 — marca configurável (nome, cor e ícone por instalação)
+
+- `ticianoflix/branding.py` — `get()`/`set()` com validação, persistido em `CACHE_DIR/branding.json`
+
+- Rotas públicas `/manifest.webmanifest`, `/branding.css`, `/icone-*.png` — geradas em runtime
+
+- `/api/branding` (GET) e `/api/branding/set` (POST) — admin, com `Origin` exigido no POST
+
+- `<title>`, topbar, sidebar e a tela de login passam a refletir o nome e a cor escolhidos
+
+- **Ajustes › Aparência**: nome + seletor de cor, seguindo o padrão visual de Contas/Fontes
+
+
 ### v1.16 — instalar o TicianoFlix como app na tela inicial do celular
 
 - `static/manifest.webmanifest` — `display: standalone`, `start_url: /`, cor do tema
