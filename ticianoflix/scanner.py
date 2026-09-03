@@ -306,7 +306,7 @@ def scan_drive(progress_base=0.0, progress_span=1.0):
 
     conn = get_db()
     try:
-        stats = _index_tree(conn, LOGICAL_ROOT, "TicianoFlix", tree,
+        stats = _index_tree(conn, LOGICAL_ROOT, LOGICAL_ROOT.lstrip("/"), tree,
                             progress_base, progress_span)
         conn.commit()
         _report("Google Drive", LOGICAL_ROOT, stats, time.time() - start, conn)

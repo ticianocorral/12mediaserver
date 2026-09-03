@@ -4,8 +4,8 @@
 #
 #  Deixa o TicianoFlix com o menor privilegio possivel no Drive:
 #
-#    gdrive         scope=drive.readonly + root_folder_id da pasta TicianoFlix
-#                   -> so LE, e so enxerga a pasta TicianoFlix
+#    gdrive         scope=drive.readonly + root_folder_id da pasta Mediaflix
+#                   -> so LE, e so enxerga a pasta Mediaflix
 #    gdrive_backup  scope=drive.file
 #                   -> so enxerga arquivos que o proprio TicianoFlix criou
 #
@@ -15,7 +15,7 @@ set -euo pipefail
 
 REMOTE="gdrive"
 BACKUP_REMOTE="gdrive_backup"
-FOLDER_NAME="TicianoFlix"
+FOLDER_NAME="Mediaflix"  # LOGICAL_ROOT em ticianoflix/config.py, sem a barra
 
 c_red=$'\033[0;31m'; c_grn=$'\033[0;32m'; c_yel=$'\033[1;33m'
 c_cyn=$'\033[0;36m'; c_rst=$'\033[0m'
@@ -42,7 +42,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 cp "$CONF" "${CONF}.bak-${STAMP}"
 ok "Config salvo em ${CONF}.bak-${STAMP}"
 
-# ── 2. Descobrir o ID da pasta TicianoFlix ───────────────────
+# ── 2. Descobrir o ID da pasta Mediaflix ──────────────────────
 # Precisa acontecer ANTES de escopar, enquanto o remote ainda ve a raiz.
 EXISTING_ROOT="$(rclone config show "$REMOTE" | sed -n 's/^root_folder_id[[:space:]]*=[[:space:]]*//p')"
 
@@ -103,7 +103,7 @@ else
   cat <<EOF
 
 Agora o remote de ${c_cyn}backup${c_rst}. Ele usa scope ${c_cyn}drive.file${c_rst}: enxerga
-exclusivamente os arquivos que o proprio TicianoFlix criar. Seus filmes,
+exclusivamente os arquivos que o proprio app criar. Seus filmes,
 documentos e o resto do Drive ficam invisiveis pra ele.
 
 EOF
@@ -141,7 +141,7 @@ for n in names[:12]:
 if any(n in ("Documentos", "Maya", "OpenEmu") for n in names):
     print("\n  \033[0;31m✗ O remote ainda ve a raiz do Drive.\033[0m")
 else:
-    print("\n  \033[0;32m✓ Escopado: so o conteudo da pasta TicianoFlix.\033[0m")
+    print("\n  \033[0;32m✓ Escopado: so o conteudo da pasta Mediaflix.\033[0m")
 PY
   rm -f /tmp/tf-verify.json
 else

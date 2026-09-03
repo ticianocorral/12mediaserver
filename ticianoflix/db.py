@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR
+from .config import DB_PATH, IMAGE_CACHE_DIR, LOGICAL_ROOT, LOGICAL_ROOT_LEGADO, SUBS_CACHE_DIR
 
 _db_write_lock = threading.Lock()
 
@@ -125,8 +125,55 @@ def init_db():
             "ALTER TABLE folders ADD COLUMN mod_time TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass  # coluna ja existe
+    _migrar_prefixo_marca(conn)
     conn.commit()
     conn.close()
+
+
+# Tabelas que guardam path logico, e a coluna onde ele mora em cada uma. Fixo
+# e interno — nunca vem de entrada externa — entao formatar nome de
+# tabela/coluna direto na string e seguro aqui.
+_TABELAS_COM_PATH = (
+    ("folders", "path"),
+    ("files", "folder_path"),
+    ("movie_meta", "folder_path"),
+    ("watch_progress", "folder_path"),
+    ("movie_collections", "folder_path"),
+)
+
+
+def _migrar_prefixo_marca(conn):
+    """Reescreve o prefixo logico da marca antiga (LOGICAL_ROOT_LEGADO) para a
+    atual (LOGICAL_ROOT), nas cinco tabelas que guardam folder_path.
+
+    Sem isto, um rescan ate reconstroi folders/files sozinho, mas PERDERIA o
+    progresso de exibicao e os vinculos de colecao, que sao indexados pelo
+    path exato — trocar so o nome de exibicao (branding) nunca bastaria aqui,
+    porque o path logico gravado no banco e uma identidade fixa, nao mutavel.
+
+    Gatilho unico via cache_meta, no mesmo idioma que o scanner ja usa pro
+    backfill de NFO (meta_version): se o valor gravado ja bate com o
+    LOGICAL_ROOT atual, nao ha nada a fazer — cobre tanto quem ja migrou
+    quanto quem instalou do zero direto com o nome novo (nunca teve o antigo).
+    """
+    if LOGICAL_ROOT == LOGICAL_ROOT_LEGADO:
+        return
+    row = conn.execute(
+        "SELECT value FROM cache_meta WHERE key='logical_root_migrado'").fetchone()
+    if row and row["value"] == LOGICAL_ROOT:
+        return
+    prefixo_like = like_prefix(LOGICAL_ROOT_LEGADO)
+    tamanho_antigo = len(LOGICAL_ROOT_LEGADO) + 1  # +1: substr e 1-indexado
+    for tabela, coluna in _TABELAS_COM_PATH:
+        conn.execute(
+            f"UPDATE {tabela} SET {coluna} = ? || substr({coluna}, ?) "
+            f"WHERE {coluna} = ? OR {coluna} LIKE ? ESCAPE '\\'",
+            (LOGICAL_ROOT, tamanho_antigo, LOGICAL_ROOT_LEGADO, prefixo_like),
+        )
+    conn.execute(
+        "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('logical_root_migrado', ?)",
+        (LOGICAL_ROOT,),
+    )
 
 
 def get_cache_time():

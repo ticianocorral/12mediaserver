@@ -171,10 +171,12 @@ def validate_root(raw_root):
 def add_source(name, raw_root):
     """Cadastra uma fonte local. Devolve (fonte, erro).
 
-    A fonte precisa conter uma pasta chamada "TicianoFlix" — a mesma convencao
-    do Drive. Ela pode estar na pasta escolhida ou ate dois niveis abaixo, ja
-    que o volume que o usuario seleciona costuma ficar acima do acervo
-    ("/Volumes/MeuHD" com os filmes em "MeuHD/Filmes/TicianoFlix/...").
+    A fonte precisa conter uma pasta chamada "Mediaflix" (localfs.CATALOG_DIR_NAME)
+    — a mesma convencao do Drive. Ela pode estar na pasta escolhida ou ate dois
+    niveis abaixo, ja que o volume que o usuario seleciona costuma ficar acima
+    do acervo ("/Volumes/MeuHD" com os filmes em "MeuHD/Filmes/Mediaflix/...").
+    Uma pasta ja existente chamada "TicianoFlix" (o nome antigo) tambem serve —
+    ninguem deveria ter que renomear nada no HD por causa de uma troca de marca.
 
     Sem essa pasta o cadastro e recusado: o scanner le a estrutura em posicao
     fixa, entao aceitar uma pasta qualquer produziria um catalogo vazio sem
@@ -187,10 +189,10 @@ def add_source(name, raw_root):
     catalog = _localfs.find_catalog_dir(root)
     if catalog is None:
         return None, (
-            f'Nao encontrei uma pasta "TicianoFlix" em {root}. '
-            "Crie uma pasta com esse nome e ponha os generos dentro dela "
-            "(TicianoFlix/Terror/Filme (2024)/filme.mkv) — e a mesma organizacao "
-            "do Google Drive.")
+            f'Nao encontrei uma pasta "{_localfs.CATALOG_DIR_NAME}" em {root}. '
+            f"Crie uma pasta com esse nome e ponha os generos dentro dela "
+            f"({_localfs.CATALOG_DIR_NAME.capitalize()}/Terror/Filme (2024)/filme.mkv) "
+            "— e a mesma organizacao do Google Drive.")
     descended = catalog != root
     root = catalog
 

@@ -200,7 +200,7 @@ systemctl --user stop ticianoflix
 Organize seus filmes assim no Drive:
 
 ```
-TicianoFlix/
+Mediaflix/
 ├── Acervo/
 │   ├── Filme A (2024)/
 │   │   ├── Filme A (2024).mp4
@@ -224,11 +224,11 @@ administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
 - ou cole o caminho à mão, se preferir.
 
 A regra é **uma só, igual à do Drive: tem que existir uma pasta chamada
-`TicianoFlix`**, com os gêneros dentro dela.
+`Mediaflix`**, com os gêneros dentro dela.
 
 ```
 /Volumes/MeuHD/
-└── TicianoFlix/            ← o nome é obrigatório
+└── Mediaflix/               ← o nome é obrigatório
     ├── Terror/
     │   └── Alien (1979)/
     │       ├── Alien (1979).mkv
@@ -239,9 +239,10 @@ A regra é **uma só, igual à do Drive: tem que existir uma pasta chamada
 
 **Não precisa apontar exato.** O volume que você escolhe quase sempre fica acima
 do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
-`/Volumes/MeuHD/Filmes/TicianoFlix/...`. O TicianoFlix procura essa pasta na
+`/Volumes/MeuHD/Filmes/Mediaflix/...`. O TicianoFlix procura essa pasta na
 raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
-encontrou. Maiúsculas não importam (`ticianoflix` serve).
+encontrou. Maiúsculas não importam (`mediaflix` serve), e uma pasta já
+criada como `TicianoFlix` (o nome antigo) também é aceita.
 
 Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar —
 em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.
@@ -345,7 +346,7 @@ A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
                          ▼          ▼                 ▼
               ┌──────────────┐  ┌────────────┐  ┌──────────────────┐
               │  SQLite      │  │ disco      │  │  Google Drive    │
-              │  (catálogo)  │  │ (Range)    │  │ pasta TicianoFlix│
+              │  (catálogo)  │  │ (Range)    │  │ pasta Mediaflix  │
               └──────────────┘  └─────┬──────┘  └──────────────────┘
                                       │
                                       ▼
@@ -355,7 +356,7 @@ A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
                           └────────────────────────┘
 ```
 
-O catálogo é um só: o SQLite guarda caminhos lógicos (`/TicianoFlix/...` para o
+O catálogo é um só: o SQLite guarda caminhos lógicos (`/Mediaflix/...` para o
 Drive, `/Local/<fonte>/...` para as pastas locais) e cada requisição é roteada
 para a fonte dona daquele caminho. Por isso busca, A-Z, continuar assistindo e
 Chromecast valem para as duas origens sem código duplicado.
@@ -402,7 +403,7 @@ disso — mas nada nele responde sem autenticação.
 - **Chromecast por URL assinada** — token HMAC de 12h válido só para aquele
   arquivo, em vez de abrir as rotas de mídia.
 - **`rclone serve` apenas em `127.0.0.1:18082`**, read-only e montado na pasta
-  `TicianoFlix` — nunca na raiz do Drive. O TicianoFlix faz o proxy; nada
+  `Mediaflix` — nunca na raiz do Drive. O TicianoFlix faz o proxy; nada
   externo alcança essa porta.
 - **Configurador do rclone desligado por padrão.** Habilite com
   `TICIANOFLIX_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
@@ -428,7 +429,7 @@ Para rodar manualmente, a qualquer momento:
 
 | Remote | Escopo | Alcance |
 |--------|--------|---------|
-| `gdrive` | `drive.readonly` + `root_folder_id` | Só lê, e só enxerga a pasta `TicianoFlix` |
+| `gdrive` | `drive.readonly` + `root_folder_id` | Só lê, e só enxerga a pasta `Mediaflix` |
 | `gdrive_backup` | `drive.file` | Só os arquivos que o próprio TicianoFlix criou |
 
 Depois disso, o resto do seu Drive fica fora de alcance mesmo que algo dê errado
