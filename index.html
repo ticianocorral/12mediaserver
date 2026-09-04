@@ -526,6 +526,12 @@
   <!-- ====== MOVIE INFO OVERLAY ====== -->
   <div class="movie-info-breadcrumb" id="movieInfoBreadcrumb"></div>
   <div class="movie-info-overlay" id="movieInfoOverlay">
+    <!-- Fica dentro da propria overlay (nao ao lado, como o breadcrumb) so
+         pra herdar o show/hide de graca do .active — sem precisar de mais
+         uma linha de JS so pra alternar visibilidade. -->
+    <button class="movie-info-back" onclick="voltarDoFilme()" aria-label="Voltar" title="Voltar">
+      <svg class="icon-svg"><use href="#i-arrow-left"></use></svg>
+    </button>
     <div class="movie-info-bg" id="movieInfoBg"></div>
     <div class="movie-info-content" id="movieInfoContent"></div>
   </div>
