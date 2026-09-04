@@ -669,6 +669,11 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.20 — botão de voltar na ficha do filme + responsividade dos botões
+
+- botão de voltar na ficha do filme + responsividade dos botões
+
+
 ### v1.19.2 — migração do prefixo de marca esquecia folders.parent
 
 - migração do prefixo de marca esquecia folders.parent

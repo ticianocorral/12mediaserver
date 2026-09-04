@@ -3861,6 +3861,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.20.0',
+      title: 'botão de voltar na ficha do filme + responsividade dos botões',
+      changes: [
+        'botão de voltar na ficha do filme + responsividade dos botões',
+      ],
+    },
+    {
       version: '1.19.2',
       title: 'migração do prefixo de marca esquecia folders.parent',
       changes: [
