@@ -1254,6 +1254,20 @@
     document.getElementById('movieInfoBreadcrumb').style.display = 'none';
   }
 
+  // Botão de voltar da ficha do filme: sem ele, no PWA instalado (tela cheia,
+  // sem barra do navegador) não havia nenhum jeito visível de sair — só quem
+  // sabia do gesto de arrastar da borda ou do Escape (desktop) conseguia.
+  // Usa o histórico (showMovieInfo empilha um estado ao abrir) pra voltar pra
+  // pasta de onde veio, não só fechar; se não houver histórico pra voltar
+  // (ex.: chegou aqui direto por um link), cai pra closeMovieInfo() puro.
+  function voltarDoFilme() {
+    const overlay = document.getElementById('movieInfoOverlay');
+    history.back();
+    setTimeout(() => {
+      if (overlay.classList.contains('active')) closeMovieInfo();
+    }, 300);
+  }
+
   function playFromInfo(videoPath, movieName, subtitlePath, resumePosition) {
     closeMovieInfo();
     playMovie(videoPath, movieName, subtitlePath, resumePosition);
