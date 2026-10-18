@@ -4,7 +4,28 @@ Fecha DNS rebinding (Host publico apontando pro IP local) e leitura cross-site
 (Origin de terceiro). Modulo folha: nao importa nada do proprio pacote.
 """
 
+import ipaddress
 import urllib.parse
+
+# CGNAT (Tailscale): o ipaddress desta versao do Python nao marca a faixa
+# como privada, entao ela fica explicita aqui.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _ip_local(h):
+    """True/False para IP literal; None quando nao e IP (hostname).
+
+    Antes isso era prefixo de string — qualquer dominio publico comecando
+    com "fc"/"fd" ("fc-evil.com", "fdic.gov") passava como se fosse IPv6
+    privado, derrubando o DNS rebinding que este modulo existe para fechar.
+    """
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return None
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_unspecified:
+        return True
+    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT
 
 
 def is_private_host(hostname):
@@ -12,26 +33,11 @@ def is_private_host(hostname):
     if not hostname:
         return False
     h = hostname.strip().strip("[]").lower()
-    if h in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+    if h == "localhost":
         return True
     if h.endswith((".local", ".localhost", ".lan", ".internal", ".home.arpa")):
         return True
-    parts = h.split(".")
-    if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-        a, b = int(parts[0]), int(parts[1])
-        if a in (10, 127):
-            return True
-        if a == 192 and b == 168:
-            return True
-        if a == 172 and 16 <= b <= 31:
-            return True
-        if a == 169 and b == 254:
-            return True
-        if a == 100 and 64 <= b <= 127:   # CGNAT (Tailscale)
-            return True
-    if h.startswith(("fe80:", "fc", "fd")):
-        return True
-    return False
+    return _ip_local(h) is True
 
 
 def host_allowed(host_header):

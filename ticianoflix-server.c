@@ -20,8 +20,31 @@ int main(void) {
     // projeto mudasse de lugar; assim, so o plist precisa saber onde ela esta.
     child = fork();
     if (child == 0) {
-        char *const args[] = {"/usr/bin/python3", "server.py", NULL};
-        execv(args[0], args);
+        // Interpretador: o python3 do sistema (Apple) esta congelado no 3.9,
+        // sem atualizacoes e sem hashlib.scrypt. Preferimos um python3 do
+        // Homebrew (atual); TICIANOFLIX_PYTHON permite apontar outro na mao.
+        // (Fora do array: getenv pode devolver NULL e um NULL no inicio do
+        // array encerraria o loop antes de testar qualquer candidato.)
+        const char *env_py = getenv("TICIANOFLIX_PYTHON");
+        if (env_py && env_py[0] && access(env_py, X_OK) == 0) {
+            char *const args[] = {(char *)env_py, "server.py", NULL};
+            execv(env_py, args);
+        }
+        const char *cands[] = {
+            "/opt/homebrew/bin/python3",   // Homebrew (Apple Silicon)
+            "/usr/local/bin/python3",      // Homebrew (Intel) / python.org
+            "/usr/bin/python3",            // fallback do sistema
+            NULL
+        };
+        for (int i = 0; cands[i]; i++) {
+            if (access(cands[i], X_OK) == 0) {
+                char *const args[] = {(char *)cands[i], "server.py", NULL};
+                execv(cands[i], args);
+            }
+        }
+        // Nenhum candidato fixo: ultimo recurso, o python3 do PATH.
+        char *const args[] = {(char *)"python3", "server.py", NULL};
+        execvp("python3", args);
         perror("execv");
         _exit(127);
     }

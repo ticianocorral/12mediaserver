@@ -26,6 +26,9 @@ NOME_PADRAO = "TicianoFlix"
 COR_PADRAO = "#e50914"
 
 _RE_COR = re.compile(r"^#[0-9a-fA-F]{6}$")
+# O nome vira pasta real na nuvem/HD/pendrive (ver pasta_biblioteca()), entao
+# nao pode conter nada invalido em nome de arquivo em nenhum dos tres SOs.
+_RE_NOME_INVALIDO = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 _lock = threading.Lock()
 _cache = None
@@ -33,7 +36,9 @@ _cache = None
 
 def _nome_valido(nome):
     nome = (nome or "").strip()
-    return 1 <= len(nome) <= 40
+    if not (1 <= len(nome) <= 40):
+        return False
+    return not _RE_NOME_INVALIDO.search(nome)
 
 
 def _cor_valida(cor):
@@ -61,16 +66,24 @@ def get():
         return dict(dados)
 
 
-def set(nome, cor):
-    """Valida e grava. Devolve (ok: bool, erro: str|None)."""
+def set(nome=None, cor=None):
+    """Valida e grava so os campos fornecidos; o outro mantem o valor atual.
+    Devolve (ok: bool, erro: str|None).
+
+    Nome nunca e passado por quem edita a marca ja instalada (Ajustes so
+    manda cor) — e essa omissao, e nao uma flag de "travado", que torna o
+    nome imutavel depois da instalacao. So _handle_auth_setup passa nome,
+    e so roda uma vez, antes de existir administrador."""
     global _cache
-    nome = (nome or "").strip()
-    cor = (cor or "").strip()
-    if not _nome_valido(nome):
-        return False, "O nome precisa ter entre 1 e 40 caracteres"
-    if not _cor_valida(cor):
+    atual = get()
+    novo_nome = atual["nome"] if nome is None else (nome or "").strip()
+    novo_cor = atual["cor"] if cor is None else (cor or "").strip()
+    if nome is not None and not _nome_valido(novo_nome):
+        return False, ("O nome precisa ter entre 1 e 40 caracteres e nao "
+                       'pode conter \\ / : * ? " < > |')
+    if cor is not None and not _cor_valida(novo_cor):
         return False, "A cor precisa ser hexadecimal, por exemplo #e50914"
-    dados = {"nome": nome, "cor": cor.lower()}
+    dados = {"nome": novo_nome, "cor": novo_cor.lower()}
     tmp = BRANDING_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, BRANDING_PATH)
@@ -85,6 +98,18 @@ def set(nome, cor):
         # invalidar ali. So o cache em memoria da marca precisa ser derrubado,
         # e ja foi, na linha acima.
     return True, None
+
+
+def pasta_biblioteca():
+    """Nome real da pasta da biblioteca (nuvem, HD, pendrive): o nome escolhido
+    na instalacao, imutavel depois disso — ver set() e localfs.catalog_dir_name()."""
+    return get()["nome"]
+
+
+def logical_root():
+    """Prefixo logico usado no banco/rclone/frontend pra raiz do acervo no
+    nuvem. Ver ticianoflix/paths.py pra como isso vira (ou nao) pasta real."""
+    return "/" + pasta_biblioteca()
 
 
 def _clarear(cor_hex, fator=0.15):

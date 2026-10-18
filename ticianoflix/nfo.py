@@ -1,7 +1,7 @@
 """Metadados NFO (formato Kodi / tinyMediaManager).
 
 Usado tanto pelo scanner (grava no banco durante a varredura) quanto pelas
-consultas (le do banco, com fallback pro Drive).
+consultas (le do banco, com fallback pra nuvem).
 """
 
 import json
@@ -138,7 +138,7 @@ def _local_nfo_file(folder_path):
 def _fetch_nfo_raw(folder_path):
     """Texto XML do NFO de um filme, direto da fonte. Sem cache.
 
-    Despacha por fonte: pasta local le do disco, Drive continua no rclone cat.
+    Despacha por fonte: pasta local le do disco, nuvem continua no rclone cat.
     """
     if _sources.is_local(folder_path):
         nfo_file = _local_nfo_file(folder_path)
@@ -195,50 +195,6 @@ def _save_nfo_to_db(conn, folder_path, nfo_data):
     ))
 
 
-def _save_collection_to_db(conn, folder_path, nfo_data):
-    """Grava (ou desfaz) a participacao de um filme numa colecao.
-
-    Um filme pertence a no maximo um conjunto, que e como o Kodi e o
-    tinyMediaManager modelam <set>. Por isso qualquer vinculo anterior deste
-    filme sai antes: se voce tirou a tag <set> do NFO, ou trocou o filme de
-    conjunto, o scan seguinte reflete isso em vez de acumular vinculo velho.
-    """
-    conn.execute("DELETE FROM movie_collections WHERE folder_path=?", (folder_path,))
-    nome = (nfo_data or {}).get("set_name")
-    if not nome:
-        return
-    resumo = nfo_data.get("set_overview")
-    # Casa o nome ignorando maiusculas: NFO editado a mao com "star wars
-    # collection" tem que cair na mesma colecao que "Star Wars Collection",
-    # e nao virar uma segunda coleção de um filme só. O primeiro a chegar
-    # define a grafia exibida.
-    row = conn.execute(
-        "SELECT id FROM collections WHERE name = ? COLLATE NOCASE", (nome,)).fetchone()
-    if row:
-        if resumo:
-            conn.execute("UPDATE collections SET overview=? WHERE id=?",
-                         (resumo, row["id"]))
-    else:
-        conn.execute("INSERT INTO collections (name, overview) VALUES (?, ?)",
-                     (nome, resumo))
-        row = conn.execute("SELECT id FROM collections WHERE name=?", (nome,)).fetchone()
-    if row:
-        conn.execute(
-            "INSERT OR IGNORE INTO movie_collections (folder_path, collection_id) "
-            "VALUES (?, ?)", (folder_path, row["id"]))
-
-
-def _prune_empty_collections(conn):
-    """Remove colecoes que ficaram sem nenhum filme.
-
-    Acontece quando o ultimo filme do conjunto sai do acervo, ou quando a tag
-    <set> e removida do NFO — sem isso a colecao vazia continuaria aparecendo.
-    """
-    conn.execute(
-        "DELETE FROM collections WHERE id NOT IN "
-        "(SELECT collection_id FROM movie_collections)")
-
-
 def _fetch_nfo_from_db(folder_path):
     """Read parsed NFO metadata from movie_meta table."""
     conn = get_db()
@@ -264,6 +220,25 @@ def _fetch_nfo_from_db(folder_path):
     }
 
 
+def _titulos_nfo_de_pastas(conn, pastas):
+    """Título do NFO por pasta, numa consulta só.
+
+    Os laços da home chamavam _fetch_nfo_from_db por linha — cada chamada
+    abria a própria conexão. Fatiado em lotes de 400 (teto de variáveis do
+    SQLite).
+    """
+    saida = {}
+    pastas = sorted({p for p in pastas if p})
+    for i in range(0, len(pastas), 400):
+        lote = pastas[i:i + 400]
+        marca = ",".join("?" * len(lote))
+        for row in conn.execute(
+                f"SELECT folder_path, title FROM movie_meta "
+                f"WHERE folder_path IN ({marca})", lote):
+            saida[row["folder_path"]] = row["title"]
+    return saida
+
+
 def _fetch_nfo(folder_path):
     """Metadados do NFO, do banco quando ja indexado, da fonte quando nao."""
     # Try DB cache first
@@ -271,7 +246,7 @@ def _fetch_nfo(folder_path):
     if from_db:
         return from_db
 
-    # Fallback: le da fonte (disco ou Drive) e memoriza pra proxima
+    # Fallback: le da fonte (disco ou nuvem) e memoriza pra proxima
     raw = _fetch_nfo_raw(folder_path)
     if not raw:
         return None

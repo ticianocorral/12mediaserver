@@ -44,7 +44,12 @@
 
   function posterUrl(folderPath, imageName) {
     if (!imageName) return null;
-    const fullPath = folderPath + '/' + imageName;
+    // Algumas APIs (séries, coleções) já entregam o caminho completo da
+    // imagem; colar de novo virava ".../Série//Local/.../poster.jpg" (404).
+    // Nome de arquivo nunca tem "/" — a barra é o sinal de caminho pronto.
+    const fullPath = imageName.indexOf('/') === -1
+      ? folderPath + '/' + imageName
+      : imageName;
     return '/api/stream?path=' + encodeURIComponent(fullPath);
   }
 
@@ -221,7 +226,7 @@
   let _sidebarGenresLoaded = false;
 
   function sourceIcon(kind) {
-    return kind === 'drive'
+    return kind === 'cloud'
       ? '<svg class="icon-svg"><use href="#i-cloud"></use></svg>'
       : '<svg class="icon-svg"><use href="#i-hard-drive"></use></svg>';
   }
@@ -232,57 +237,49 @@
   // ("/Local/hd-externo"), entao o breadcrumb mostra "HD Externo".
   const _sourceNames = {};
 
-  function groupGenresBySource(data) {
-    const sources = data.sources || [];
-    sources.forEach(src => { _sourceNames[src.id] = src.name; });
-    const seen = {};
-    const groups = [];
-    // A ordem e a das fontes (Drive primeiro, locais em ordem alfabetica), nao
-    // a ordem alfabetica dos generos — senao as fontes se intercalariam.
-    sources.forEach(src => {
-      seen[src.id] = { id: src.id, source: src, items: [] };
-      groups.push(seen[src.id]);
+  // Marca no menu o item da tela atual. O HTML nasce com "Início" ativo, mas
+  // quem manda é esta função: toda navegação passa por loadPathInternal ou
+  // loadAZ, e eles redesenham a seleção — inclusive para tag, série e
+  // coleção, que não são pastas.
+  function _updateSidebarActive() {
+    const atual = currentPath || '';
+    document.querySelectorAll('#sidebarNav .sidebar-item[data-nav]').forEach(function (btn) {
+      const alvo = btn.getAttribute('data-nav');
+      let ativo = (alvo === atual);
+      if (!ativo && alvo === 'home') ativo = isHomePage(atual);
+      if (!ativo && alvo === 'series') ativo = atual.indexOf(SERIE_PREFIXO) === 0;
+      if (!ativo && alvo === 'colecoes') ativo = atual.indexOf(COLECAO_PREFIXO) === 0;
+      btn.classList.toggle('active', ativo);
     });
-    (data.folders || []).forEach(g => {
-      const id = g.source || '';
-      if (!seen[id]) {
-        seen[id] = { id: id, source: null, items: [] };
-        groups.push(seen[id]);
-      }
-      seen[id].items.push(g);
-    });
-    return groups.filter(grp => grp.items.length > 0);
   }
 
   function loadSidebarGenres(force) {
     const container = document.getElementById('sidebarGenres');
     if (_sidebarGenresLoaded && !force) return;
     _sidebarGenresLoaded = true;
-    cachedFetch('/api/genres').then(data => {
-      if (!data || !data.folders) return;
-      const groups = groupGenresBySource(data);
-      // Com uma fonte so, o cabecalho seria ruido: ele so aparece quando ha
-      // mais de uma para separar.
-      const showHeaders = groups.length > 1;
-      let html = '';
-      groups.forEach(grp => {
-        const src = grp.source;
-        if (showHeaders) {
-          const off = src && src.online === false;
-          html += '<div class="sidebar-source-label' + (off ? ' offline' : '') + '">'
-            + sourceIcon(src ? src.kind : 'local') + ' '
-            + escHtml(src ? src.name : 'Outros')
-            + (off ? ' · desconectada' : '') + '</div>';
-        }
-        grp.items.forEach(g => {
-          const name = g.Name || '';
-          const path = '/' + g.Path;
-          html += '<button class="sidebar-item" onclick="loadPath(decodeURIComponent(\'' + enc(path) + '\'))">'
-            + '<span class="icon">' + genreIcon(name) + '</span> '
-            + escHtml(name) + '</button>';
-        });
+    // A barra lateral lista só as tags criadas na interface — gênero por
+    // pasta deixou de existir. O "+" (admin) cria uma tag nova na hora.
+    cachedFetch('/api/generos').then(generos => {
+      const isAdmin = _me && _me.role === 'admin';
+      let html = '<div class="sidebar-source-label"><svg class="icon-svg">'
+        + '<use href="#i-layers"></use></svg> Tags'
+        + (isAdmin
+            ? ' <button class="sidebar-genre-add" onclick="openGeneroNovoModal()" title="Criar tag">+</button>'
+            : '')
+        + '</div>';
+      (generos || []).forEach(g => {
+        html += '<button class="sidebar-item" data-nav="' + GENERO_PREFIXO + g.id + '" onclick="loadPath(\'' + GENERO_PREFIXO + g.id + '\')">'
+          + '<span class="icon"><svg class="icon-svg"><use href="#i-layers"></use></svg></span> '
+          + escHtml(g.nome) + '</button>';
       });
+      if (!generos || !generos.length) {
+        html += '<div class="sidebar-sem-genero">Use o <b>+</b> para criar tags '
+          + 'e reunir filmes nelas.</div>';
+      }
       container.innerHTML = html;
+      _updateSidebarActive();
+    }).catch(() => {
+      container.innerHTML = '';
     });
   }
 
@@ -304,6 +301,7 @@
   function loadPathInternal(path) {
     closeSidebar();
     currentPath = path;
+    _updateSidebarActive();
     document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
     document.getElementById('searchInput').value = '';
     _updateSearchClear();
@@ -313,13 +311,31 @@
 
     // Coleção não é uma pasta, mas entra pelo mesmo caminho de navegação
     // (pushState/popstate) — assim o botão Voltar do navegador funciona nela
-    // igual funciona num gênero, sem um segundo mecanismo de histórico.
+    // igual funciona numa tag, sem um segundo mecanismo de histórico.
     if (path && path.indexOf(COLECAO_PREFIXO) === 0) {
       renderCollectionView(path.slice(COLECAO_PREFIXO.length));
       return;
     }
+    if (path && path.indexOf(SERIE_PREFIXO) === 0) {
+      renderSerieView(decodeURIComponent(path.slice(SERIE_PREFIXO.length)));
+      return;
+    }
+    if (path === LISTA_SERIES) {
+      renderSeriesList();
+      return;
+    }
+    // A página A-Z não é uma pasta: o clique em "Filmes", o refresh depois do
+    // scan e uma volta no histórico caem todos aqui.
+    if (path === LISTA_FILMES) {
+      loadAZ();
+      return;
+    }
     if (path === LISTA_COLECOES) {
       renderCollectionsList();
+      return;
+    }
+    if (path && path.indexOf(GENERO_PREFIXO) === 0) {
+      renderGeneroView(path.slice(GENERO_PREFIXO.length));
       return;
     }
 
@@ -331,17 +347,32 @@
         document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar</h3><p>Não foi possível conectar ao servidor.</p></div>';
         return;
       }
+      // Guarda a listagem: ao tocar um episódio desta pasta, a transmissão
+      // monta a fila com os vizinhos (ver _playlistDaPastaAberta).
+      _pastaAtual = { path: data.path || '', videos: data.videos || [] };
       renderDirectory(data);
     });
   }
 
   // ==================== A-Z VIEW ====================
   function loadAZ() {
-    currentPath = '__az__';
+    currentPath = LISTA_FILMES;
+    closeSidebar();
+    _updateSidebarActive();
     document.getElementById('searchInput').value = '';
     _updateSearchClear();
     closeMovieInfo();
-    document.getElementById('hero').style.display = 'none';
+    // Mesmo cabeçalho das outras páginas (Séries, Coleções): o hero com
+    // título e contagem, em vez de um título solto dentro do conteúdo.
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    _heroCapa(null, null);
+    document.getElementById('breadcrumb').innerHTML = '';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
+    document.getElementById('heroTitle').innerHTML =
+      '<svg class="icon-svg"><use href="#i-sort"></use></svg> Filmes';
+    document.getElementById('heroDesc').textContent = '';
     const container = document.getElementById('content');
     container.innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando filmes...</span></div>';
     // Invalidate cache so we always get fresh data
@@ -367,6 +398,10 @@
 
     const letters = Object.keys(groups).sort();
 
+    document.getElementById('heroDesc').innerHTML =
+      '<svg class="icon-svg"><use href="#i-sort"></use></svg> '
+      + movies.length + (movies.length === 1 ? ' filme' : ' filmes');
+
     let html = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:24px;padding:0 4px" id="azJump">';
     letters.forEach(l => {
       html += '<a href="javascript:;" onclick="document.getElementById(\'az-' + l + '\').scrollIntoView({behavior:\'smooth\'});return false" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--surface);border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;color:var(--accent);transition:background .2s">' + l + '</a>';
@@ -382,14 +417,25 @@
       items.forEach(m => {
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
         const safePath = enc(m.path);
-        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">';
+        // Filme solto (arquivo avulso) não tem ficha: o clique toca direto.
+        // Filme em pasta abre a ficha, como em todo o app.
+        const clique = m.is_file
+          ? 'playMovie(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))'
+          : 'showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)';
+        const botaoGenero = (_me && _me.role === 'admin')
+          ? '<button class="movie-card-genero" onclick="event.stopPropagation(); openGeneroFilmeModal(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))" title="Tags do filme"><svg class="icon-svg"><use href="#i-layers"></use></svg></button>'
+          : '';
+        html += '<div class="movie-card" onclick="' + clique + '" title="' + escHtml(nameClean) + '">'
+          + botaoGenero;
         if (m.poster) {
           html += '<img class="movie-card-poster" src="' + posterUrl(m.path, m.poster) + '" alt="' + escHtml(nameClean) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
           html += '<div class="movie-card-poster-placeholder" style="display:none"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
         } else {
           html += '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
         }
-        html += '<div class="movie-card-overlay"><div class="movie-card-title">' + escHtml(nameClean) + '</div></div>';
+        html += '<div class="movie-card-overlay"><div class="movie-card-title">' + escHtml(nameClean) + '</div>'
+          + (m.is_file ? '<div class="movie-card-subtitle">arquivo solto</div>' : '')
+          + '</div>';
         html += '</div>';
       });
       html += '</div></div>';
@@ -459,10 +505,15 @@
     // lateral, que ja agrupa os generos pela fonte dona.
     container.innerHTML = `
       <div class="home-stats">
-        <div class="home-stat">
+        <div class="home-stat" onclick="loadAZ()" title="Ver todos os filmes">
           <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-film"></use></svg></div>
           <div class="home-stat-num" id="statMovies">—</div>
           <div class="home-stat-label">Filmes no acervo</div>
+        </div>
+        <div class="home-stat" onclick="loadSeries()" title="Ver todas as séries">
+          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-tv"></use></svg></div>
+          <div class="home-stat-num" id="statSeries">—</div>
+          <div class="home-stat-label">Séries no acervo</div>
         </div>
         <div class="home-stat" onclick="openSourcesOrSettings()" title="Fontes do acervo">
           <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></div>
@@ -472,12 +523,7 @@
         <div class="home-stat" onclick="openCacheManager()" title="Gerenciar o cache offline">
           <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-download"></use></svg></div>
           <div class="home-stat-num" id="statDownloaded">—</div>
-          <div class="home-stat-label" id="statDownloadedLabel">Baixados do Drive</div>
-        </div>
-        <div class="home-stat" onclick="refreshCache()" title="Escanear todas as fontes agora">
-          <div class="home-stat-icon"><svg class="icon-svg"><use href="#i-refresh"></use></svg></div>
-          <div class="home-stat-num" id="statScan">—</div>
-          <div class="home-stat-label">Último scan</div>
+          <div class="home-stat-label" id="statDownloadedLabel">Baixados da nuvem</div>
         </div>
       </div>
       <div class="genre-section">
@@ -493,10 +539,11 @@
           <div class="genre-title"><svg class="icon-svg"><use href="#i-play"></use></svg> Continuar Assistindo</div>
         </div>
         <div class="movie-grid" id="continueWatchingGrid"></div>
+        <div class="episodio-lista" id="continueWatchingLista"></div>
       </div>
       <div class="genre-section" id="offlineSection" style="display:none">
         <div class="genre-header" style="cursor:default;border:none">
-          <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixados do Drive</div>
+          <div class="genre-title"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixados da nuvem</div>
         </div>
         <div class="movie-grid" id="offlineGrid"></div>
       </div>`;
@@ -522,7 +569,10 @@
       recent.forEach((m, idx) => {
         const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
         const safePath = enc(m.path);
-        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
+        const cliqueRecente = m.is_serie
+          ? 'loadPath(\'' + SERIE_PREFIXO + safePath + '\')'
+          : 'showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)';
+        html += '<div class="movie-card" onclick="' + cliqueRecente + '" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>'
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
@@ -556,11 +606,32 @@
       }
       section.style.display = '';
       let html2 = '';
+      let linhas = '';
       items.forEach((m, idx) => {
         const pct = (m.duration > 0) ? Math.round((m.position / m.duration) * 100) : 0;
-        const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ').replace(/\.[^.]+$/, '');
-        const safePath = enc(m.path);
         const posStr = Math.floor(m.position / 60) + ':' + String(Math.floor(m.position % 60)).padStart(2, '0');
+        const tipo = m.tipo || 'filme';
+
+        // Episódio de série e filme solto: linha com retomada direta.
+        if (tipo === 'episodio' || tipo === 'solto') {
+          const rotulo = tipo === 'episodio'
+            ? m.serie + ' · ' + m.temporada + ' · ' + m.episodio
+            : m.name;
+          linhas += '<button class="episodio-linha" onclick="playMovie(decodeURIComponent(\''
+            + enc(m.path) + '\'), decodeURIComponent(\'' + enc(rotulo) + '\')'
+            + (m.subtitle ? ', decodeURIComponent(\'' + enc(m.subtitle) + '\')' : ', null')
+            + ', ' + Math.floor(m.position) + ')">'
+            + '<span class="episodio-play"><svg class="icon-svg"><use href="#i-play"></use></svg></span>'
+            + '<span class="episodio-titulo">' + escHtml(rotulo)
+            + ' <span class="episodio-tamanho">' + posStr + ' assistido</span></span>'
+            + '<span class="episodio-progresso"><span style="width:' + pct + '%"></span></span>'
+            + '</button>';
+          return;
+        }
+
+        // Filme em pasta: poster card com retomada pela ficha (como sempre).
+        const nameClean = (m.title || m.name || '').replace(/[._]/g, ' ');
+        const safePath = enc(m.path);
         html2 += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>'
           + '<div class="movie-card-overlay">'
@@ -583,37 +654,27 @@
           }, 0);
         }
       });
-      grid.innerHTML = html2;
+      // Séries e soltos em progresso entram no MESMO campo, logo abaixo
+      // dos cards de filme — um único "Continuar Assistindo".
+      const listaEl = document.getElementById('continueWatchingLista');
+      if (listaEl) listaEl.innerHTML = linhas;      grid.innerHTML = html2;
     });
 
     // Carrega filmes marcados como offline
     _renderOfflineGrid();
   }
 
-  // "há 5 min" / "há 2 h" / "há 3 dias" — o valor cru (timestamp) nao diz nada
-  // a quem so quer saber se o catalogo esta velho.
-  function tempoDesde(ts) {
-    if (!ts) return 'nunca';
-    const seg = Math.max(0, Math.floor(Date.now() / 1000) - parseInt(ts, 10));
-    if (seg < 90) return 'agora';
-    const min = Math.floor(seg / 60);
-    if (min < 60) return min + ' min';
-    const h = Math.floor(min / 60);
-    if (h < 24) return h + ' h';
-    const d = Math.floor(h / 24);
-    return d + (d === 1 ? ' dia' : ' dias');
-  }
-
   // Estatisticas da home. As duas fontes de dado ja existiam; o que muda e
   // mostrar o que importa num acervo com varias fontes, em vez de contar
-  // generos.
+  // generos. As contagens de filme e serie sao as mesmas das paginas A-Z e
+  // Series (ver cached_movie_count/cached_series_count no servidor).
   function _loadHomeStats() {
     cachedFetch('/api/cache-status').then(st => {
       if (!st) return;
       const filmes = document.getElementById('statMovies');
       if (filmes) filmes.textContent = st.movies != null ? st.movies : '—';
-      const scan = document.getElementById('statScan');
-      if (scan) scan.textContent = tempoDesde(st.last_updated);
+      const series = document.getElementById('statSeries');
+      if (series) series.textContent = st.series != null ? st.series : '—';
       const baixLabel = document.getElementById('statDownloadedLabel');
       const uso = st.usage && st.usage.details ? st.usage.details.vfs : 0;
       if (baixLabel && uso > 0) {
@@ -647,10 +708,14 @@
   }
 
   // ==================== COLEÇÕES ====================
-  // Star Wars 1-6 e afins. Vem da tag <set> do NFO — os filmes continuam
-  // cada um na sua pasta e no seu gênero; a coleção é só um agrupamento.
+  // Agrupamentos de filmes criados na própria interface (sagas, franquias).
+  // O valor depois do prefixo é o id da coleção no banco.
   const COLECAO_PREFIXO = 'colecao:';
   const LISTA_COLECOES = 'colecoes';
+  const GENERO_PREFIXO = 'genero:';
+  const SERIE_PREFIXO = 'serie:';
+  const LISTA_SERIES = 'series';
+  const LISTA_FILMES = '__az__';
 
   // url() de CSS com aspas. Sem elas o parser rejeita a regra inteira quando o
   // caminho tem parenteses — e "Filme (1980)" e justamente a convencao de
@@ -701,6 +766,76 @@
 
   function abrirColecao(nome) { loadPath(COLECAO_PREFIXO + nome); }
   function loadCollections() { loadPath(LISTA_COLECOES); }
+  function loadSeries() { loadPath(LISTA_SERIES); }
+
+  // ==================== LISTA DE SÉRIES ====================
+  function renderSeriesList() {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    _heroCapa(null, null);
+    document.getElementById('breadcrumb').innerHTML = '';
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
+    document.getElementById('heroTitle').innerHTML =
+      '<svg class="icon-svg"><use href="#i-tv"></use></svg> Séries';
+    document.getElementById('heroDesc').textContent = '';
+
+    cachedFetch('/api/series').then(series => {
+      if (!series || series.length === 0) {
+        container.innerHTML = '<div class="empty-state">'
+          + '<div class="empty-icon"><svg class="icon-svg"><use href="#i-tv"></use></svg></div>'
+          + '<h3>Nenhuma série no acervo</h3>'
+          + '<p>Dentro da pasta <b>tv shows</b> do acervo, crie uma pasta por série '
+          + 'e, dentro dela, as temporadas (S01, S02...) com os episódios.</p></div>';
+        return;
+      }
+      document.getElementById('heroDesc').innerHTML =
+        '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
+        + series.length + (series.length === 1 ? ' série' : ' séries');
+      // A-Z igual ao menu de Filmes: navegação por letra + seções.
+      const grupos = {};
+      series.forEach(s => {
+        const letra = (s.title || s.name || '').charAt(0).toUpperCase();
+        (grupos[letra] = grupos[letra] || []).push(s);
+      });
+      const letras = Object.keys(grupos).sort();
+      let html = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:24px;padding:0 4px">';
+      letras.forEach(l => {
+        html += '<a href="javascript:;" onclick="document.getElementById(\'azs-' + l + '\').scrollIntoView({behavior:\'smooth\'});return false" '
+          + 'style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--surface);border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;color:var(--accent)">' + l + '</a>';
+      });
+      html += '</div>';
+      letras.forEach(l => {
+        html += '<div class="genre-section" id="azs-' + l + '">'
+          + '<div class="genre-header" style="cursor:default;border:none;position:sticky;top:0;z-index:10;background:var(--bg)">'
+          + '<div class="genre-title">' + l
+          + ' <span class="genre-count">(' + grupos[l].length + ')</span></div></div>'
+          + '<div class="movie-grid">';
+        grupos[l].forEach(s => {
+          const titulo = escHtml(s.title);
+          const poster = s.poster ? streamUrl(s.poster) : null;
+          const meta = s.temporadas
+            + (s.temporadas === 1 ? ' temporada · ' : ' temporadas · ')
+            + s.episodios + (s.episodios === 1 ? ' episódio' : ' episódios');
+          html += '<div class="movie-card" onclick="loadPath(\'' + SERIE_PREFIXO + enc(s.path) + '\')" title="' + titulo + '">'
+            + (poster
+                ? '<img class="movie-card-poster" src="' + poster + '" alt="' + titulo
+                  + '" loading="lazy" onerror="this.style.display=\'none\';'
+                  + 'this.nextElementSibling.style.display=\'flex\'">'
+                  + '<div class="movie-card-poster-placeholder" style="display:none">'
+                  + '<svg class="icon-svg"><use href="#i-tv"></use></svg></div>'
+                : '<div class="movie-card-poster-placeholder" style="display:flex">'
+                  + '<svg class="icon-svg"><use href="#i-tv"></use></svg></div>')
+            + '<div class="movie-card-overlay"><div class="movie-card-title">' + titulo + '</div>'
+            + '<div class="movie-card-subtitle">' + meta + '</div>'
+            + '</div></div>';
+        });
+        html += '</div></div>';
+      });
+      container.innerHTML = html;
+    });
+  }
 
   function renderCollectionsList() {
     const container = document.getElementById('content');
@@ -713,23 +848,25 @@
     document.getElementById('heroBg').style.backgroundImage = 'none';
     hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
 
+    const botaoNova = (_me && _me.role === 'admin')
+      ? '<button class="btn btn-primary colecao-nova-btn" onclick="openColecaoModal()">'
+        + '<svg class="icon-svg"><use href="#i-plus"></use></svg> Nova coleção</button>'
+      : '';
     cachedFetch('/api/collections').then(cols => {
+      document.getElementById('heroDesc').innerHTML =
+        '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
+        + (cols && cols.length ? cols.length + (cols.length === 1 ? ' coleção' : ' coleções') : '');
       if (!cols || cols.length === 0) {
-        document.getElementById('heroDesc').textContent = '';
-        container.innerHTML = '<div class="empty-state">'
+        container.innerHTML = botaoNova + '<div class="empty-state">'
           + '<div class="empty-icon"><svg class="icon-svg"><use href="#i-layers"></use></svg></div>'
-          + '<h3>Nenhuma coleção no acervo</h3>'
-          + '<p>Coleções vêm da tag <code>&lt;set&gt;</code> do NFO — o tinyMediaManager '
-          + 'grava sozinho quando você agrupa um conjunto de filmes lá.</p></div>';
+          + '<h3>Nenhuma coleção ainda</h3>'
+          + '<p>Agrupe filmes num só lugar: uma saga, uma franquia, o que você quiser. '
+          + 'Crie a coleção, escolha os filmes e a capa — tudo por aqui.</p></div>';
         return;
       }
-      document.getElementById('heroDesc').innerHTML =
-        '<svg class="icon-svg"><use href="#i-layers"></use></svg> ' + cols.length
-        + (cols.length === 1 ? ' coleção' : ' coleções');
-      let html = '<div class="genre-section"><div class="colecao-lista">';
+      let html = '<div class="genre-section">' + botaoNova + '<div class="colecao-lista">';
       cols.forEach(c => {
-        html += '<button class="colecao-item" onclick="abrirColecao(decodeURIComponent(\''
-          + enc(c.name) + '\'))">'
+        html += '<button class="colecao-item" onclick="abrirColecao(' + c.id + ')">'
           + (c.poster
               ? '<img class="colecao-capa" src="' + streamUrl(c.poster) + '" alt="" '
                 + 'loading="lazy" onerror="this.remove()">'
@@ -754,32 +891,45 @@
       + ' <span class="sep">›</span> <a onclick="loadCollections()">Coleções</a>'
       + ' <span class="sep">›</span> <span>' + escHtml(nome) + '</span>';
 
-    cachedFetch('/api/collection?name=' + encodeURIComponent(nome)).then(col => {
+    cachedFetch('/api/collection?key=' + encodeURIComponent(nome)).then(col => {
       if (!col || !col.movies) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
           + '<svg class="icon-svg"><use href="#i-error"></use></svg></div>'
           + '<h3>Coleção não encontrada</h3></div>';
         return;
       }
+      // O endereço guarda o id; o nome de verdade chega na resposta.
+      const ultimoBc = document.querySelector('#breadcrumb span:last-child');
+      if (ultimoBc) ultimoBc.textContent = col.name;
       _heroCapa(col.poster, col.fanart);
       document.getElementById('heroTitle').innerHTML =
         (col.poster ? '' : '<svg class="icon-svg"><use href="#i-layers"></use></svg> ')
         + escHtml(col.name);
+      const acoesAdmin = (_me && _me.role === 'admin')
+        ? '<button class="colecao-acao-btn" onclick="openColecaoModal(' + col.id + ')">'
+          + '<svg class="icon-svg"><use href="#i-gear"></use></svg> Editar</button>'
+          + '<button class="colecao-acao-btn perigo" onclick="excluirColecao(' + col.id
+          + ', decodeURIComponent(\'' + enc(col.name) + '\'))">'
+          + '<svg class="icon-svg"><use href="#i-trash"></use></svg> Excluir</button>'
+        : '';
       document.getElementById('heroDesc').innerHTML =
-        '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + col.movies.length
+        '<span class="colecao-acoes">' + acoesAdmin + '</span>'
+        + '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + col.movies.length
         + (col.movies.length === 1 ? ' filme' : ' filmes')
         + (col.overview ? '<div class="colecao-sinopse">' + escHtml(col.overview) + '</div>' : '');
 
       // Ordenados por ano no servidor — é o que põe a saga na ordem certa.
       let html = '<div class="genre-section"><div class="movie-grid">';
       col.movies.forEach(m => {
-        // Cartão próprio em vez de renderMovieCardHtml: aqui o item é uma
-        // PASTA de filme (clique abre a ficha), não um arquivo de vídeo. E o
-        // pôster e o ano já vêm prontos da API, sem regex no nome da pasta.
+        // Cartão próprio em vez de renderMovieCardHtml: filme abre a ficha,
+        // série abre a página dela (com as temporadas). Pôster e ano vêm
+        // prontos da API, sem regex no nome da pasta.
         const titulo = escHtml((m.title || m.name).replace(/[._]/g, ' '));
         const poster = m.poster ? posterUrl(m.path, m.poster) : null;
-        html += '<div class="movie-card" onclick="showMovieInfo(decodeURIComponent(\''
-          + enc(m.path) + '\'), event)" title="' + titulo + '">'
+        const clique = m.is_serie
+          ? 'loadPath(\'' + SERIE_PREFIXO + enc(m.path) + '\')'
+          : 'showMovieInfo(decodeURIComponent(\'' + enc(m.path) + '\'), event)';
+        html += '<div class="movie-card" onclick="' + clique + '" title="' + titulo + '">'
           + (poster
               ? '<img class="movie-card-poster" src="' + poster + '" alt="' + titulo
                 + '" loading="lazy" onerror="this.style.display=\'none\';'
@@ -794,6 +944,859 @@
       });
       container.innerHTML = html + '</div></div>';
     });
+  }
+
+  // ==================== COLEÇÕES: CRIAR / EDITAR ====================
+  // Estado do modal. filmes é um Set de folder_path; a ordem de escolha é a
+  // que a capa picker apresenta. capa é o folder_path do filme escolhido.
+  let _colecao = null;
+  let _colecaoTodos = null;   // cache de /api/all-movies pro seletor
+  let _colecaoBusca = '';
+
+  function _colecaoAbrirEstado(id) {
+    document.getElementById('colecaoModalTitulo').innerHTML =
+      '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
+      + (id ? 'Editar coleção' : 'Nova coleção');
+    if (id) {
+      return cachedFetch('/api/collection?key=' + id).then(col => {
+        if (!col) return null;
+        return {
+          id: col.id, nome: col.name, descricao: col.overview || '',
+          filmes: col.movies.map(m => ({ path: m.path, title: m.title, poster: m.poster })),
+          capa: col.capa_path || (col.movies.length === 1 ? col.movies[0].path : ''),
+        };
+      });
+    }
+    return Promise.resolve({ id: null, nome: '', descricao: '', filmes: [], capa: '' });
+  }
+
+  function openColecaoModal(id) {
+    const conteudo = document.getElementById('colecaoModalConteudo');
+    conteudo.innerHTML = '<div class="loading" style="min-height:140px">'
+      + '<div class="spinner"></div><span>Carregando filmes...</span></div>';
+    document.getElementById('colecaoModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    Promise.all([
+      _colecaoAbrirEstado(id || null),
+      cachedFetch('/api/all-movies'),
+      cachedFetch('/api/series'),
+    ]).then(([estado, filmes, series]) => {
+      if (!estado) {
+        conteudo.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-error"></use></svg></div>'
+          + '<h3>Coleção não encontrada</h3></div>';
+        return;
+      }
+      // Filmes e séries lado a lado no seletor: uma coleção pode misturar.
+      const seriesFormatadas = (series || []).map(s => ({
+        path: s.path, name: s.name, title: s.title, is_serie: true,
+        poster: s.poster, _capaPronta: s.poster ? streamUrl(s.poster) : null,
+      }));
+      _colecaoTodos = (filmes || []).concat(seriesFormatadas);
+      _colecao = {
+        id: estado.id, nome: estado.nome, descricao: estado.descricao,
+        capa: estado.capa,
+        filmes: new Map(estado.filmes.map(f => [f.path, {
+          path: f.path, title: f.title, poster: f.poster,
+          is_serie: f.is_serie,
+          _capaPronta: f.is_serie && f.poster ? streamUrl(f.poster) : null,
+        }])),
+      };
+      _colecaoBusca = '';
+      _colecaoRenderPasso1();
+    }).catch(() => {
+      conteudo.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
+    });
+  }
+
+  function closeColecaoModal() {
+    document.getElementById('colecaoModal').classList.remove('active');
+    document.body.style.overflow = '';
+    _colecao = null;
+    _colecaoBusca = '';
+  }
+  document.getElementById('colecaoModal').addEventListener('click', function(e) {
+    if (e.target === this) closeColecaoModal();
+  });
+
+  function _colecaoRenderPasso1() {
+    const conteudo = document.getElementById('colecaoModalConteudo');
+    let html = '<label class="colecao-campo"><span>Nome da coleção</span>'
+      + '<input id="colecaoNome" type="text" maxlength="80" placeholder="Ex.: Star Wars — a saga completa" '
+      + 'value="' + escHtml(_colecao.nome) + '"></label>'
+      + '<label class="colecao-campo"><span>Descrição <em>(opcional)</em></span>'
+      + '<textarea id="colecaoDescricao" rows="2" maxlength="300" '
+      + 'placeholder="Uma linha sobre o conjunto...">' + escHtml(_colecao.descricao) + '</textarea></label>'
+      + '<div class="colecao-secao-titulo">Filmes da coleção '
+      + '<span class="colecao-contador" id="colecaoContador"></span></div>'
+      + '<input id="colecaoBusca" class="colecao-busca" type="text" '
+      + 'placeholder="Filtrar por título..." value="' + escHtml(_colecaoBusca) + '" '
+      + 'oninput="_colecaoFiltrar(this.value)">'
+      + '<div class="colecao-picker" id="colecaoPicker"></div>'
+      + '<div class="colecao-passos">'
+      + '<span></span>'
+      + '<button class="rclone-action-btn primary" onclick="_colecaoIrParaCapa()">Continuar →</button>'
+      + '</div>'
+      + '<div id="colecaoMsg"></div>';
+    conteudo.innerHTML = html;
+    document.getElementById('colecaoBusca').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') e.preventDefault();
+    });
+    _colecaoRenderPicker();
+  }
+
+  function _colecaoFiltrar(valor) {
+    _colecaoBusca = valor;
+    _colecaoRenderPicker();
+  }
+
+  function _colecaoRenderPicker() {
+    const picker = document.getElementById('colecaoPicker');
+    if (!picker) return;
+    const busca = _colecaoBusca.trim().toLowerCase();
+    // Selecionados primeiro (na ordem em que entraram), depois o resto — assim
+    // a seleção não some ao filtrar. Sem busca, mostra só os escolhidos + aviso.
+    const escolhidos = [..._colecao.filmes.keys()];
+    const ordem = escolhidos.concat(
+      _colecaoTodos.filter(m => !escolhidos.includes(m.path))
+        .map(m => m.path));
+    const termos = ordem.filter(path => {
+      if (busca) {
+        const m = _colecaoTodos.find(x => x.path === path)
+          || _colecao.filmes.get(path);
+        const titulo = ((m && (m.title || m.name)) || '').toLowerCase();
+        if (!titulo.includes(busca)) return false;
+      }
+      return true;
+    });
+    if (!termos.length) {
+      picker.innerHTML = '<div class="colecao-picker-vazio">Nenhum filme encontrado'
+        + (busca ? ' para "' + escHtml(_colecaoBusca) + '".' : '.') + '</div>';
+      _colecaoAtualizarContador();
+      return;
+    }
+    let html = '';
+    termos.forEach(path => {
+      const m = _colecaoTodos.find(x => x.path === path) || _colecao.filmes.get(path);
+      const escolhido = _colecao.filmes.has(path);
+      const titulo = escHtml((m.title || m.name || '').replace(/[._]/g, ' '));
+      const poster = m.poster ? posterUrl(m.path, m.poster) : null;
+      html += '<button class="colecao-filme' + (escolhido ? ' escolhido' : '') + '" '
+        + 'onclick="_colecaoToggle(\'' + enc(path) + '\')" title="' + titulo + '">'
+        + (poster
+            ? '<img src="' + poster + '" alt="" loading="lazy" onerror="this.remove()">'
+            : '<span class="colecao-filme-sem"><svg class="icon-svg"><use href="#i-film"></use></svg></span>')
+        + '<span class="colecao-filme-check"><svg class="icon-svg"><use href="#i-check"></use></svg></span>'
+        + '<span class="colecao-filme-titulo">' + titulo + '</span>'
+        + '</button>';
+    });
+    picker.innerHTML = html;
+    _colecaoAtualizarContador();
+  }
+
+  function _colecaoToggle(pathEnc) {
+    const path = decodeURIComponent(pathEnc);
+    if (_colecao.filmes.has(path)) {
+      _colecao.filmes.delete(path);
+      if (_colecao.capa === path) _colecao.capa = '';
+    } else {
+      const m = _colecaoTodos.find(x => x.path === path);
+      _colecao.filmes.set(path, { path: path, title: (m && m.title) || path,
+        poster: (m && m.poster) || null, _capaPronta: m && m._capaPronta });
+    }
+    _colecaoRenderPicker();
+  }
+
+  function _colecaoAtualizarContador() {
+    const el = document.getElementById('colecaoContador');
+    if (el) el.textContent = _colecao.filmes.size
+      + (_colecao.filmes.size === 1 ? ' filme escolhido' : ' filmes escolhidos');
+  }
+
+  // ── Passo 2: capa ──
+  function _colecaoIrParaCapa() {
+    _colecao.nome = (document.getElementById('colecaoNome').value || '').trim();
+    _colecao.descricao = (document.getElementById('colecaoDescricao').value || '').trim();
+    if (!_colecao.nome) {
+      _colecaoMostrarErro('Dê um nome à coleção.');
+      return;
+    }
+    if (_colecao.filmes.size === 0) {
+      _colecaoMostrarErro('Escolha pelo menos um filme.');
+      return;
+    }
+    if (!_colecao.capa) {
+      _colecao.capa = _colecao.filmes.keys().next().value;
+    }
+    _colecaoRenderPasso2();
+  }
+
+  function _colecaoRenderPasso2() {
+    const conteudo = document.getElementById('colecaoModalConteudo');
+    let grade = '';
+    for (const [path, f] of _colecao.filmes) {
+      const poster = f.poster ? posterUrl(f.path, f.poster) : null;
+      grade += '<button class="colecao-capa-opcao' + (_colecao.capa === path ? ' escolhida' : '') + '" '
+        + 'onclick="_colecaoEscolherCapa(\'' + enc(path) + '\')">'
+        + (poster
+            ? '<img src="' + poster + '" alt="" onerror="this.parentElement.classList.add(\'sem-poster\'); this.remove()">'
+            : '')
+        + '<span class="colecao-capa-titulo">' + escHtml((f.title || '').replace(/[._]/g, ' ')) + '</span>'
+        + '<span class="colecao-capa-check"><svg class="icon-svg"><use href="#i-check"></use></svg></span>'
+        + '</button>';
+    }
+    conteudo.innerHTML = '<div class="colecao-secao-titulo">Qual capa usar?</div>'
+      + '<p class="colecao-dica">O pôster do filme escolhido representa a coleção — '
+      + 'você pode trocar depois em Editar.</p>'
+      + '<div class="colecao-capa-grade">' + grade + '</div>'
+      + '<div class="colecao-passos">'
+      + '<button class="rclone-action-btn" onclick="_colecaoRenderPasso1()">← Voltar</button>'
+      + '<button class="rclone-action-btn primary" id="colecaoSalvarBtn" onclick="_colecaoSalvar()">'
+      + (_colecao.id ? 'Salvar alterações' : 'Criar coleção') + '</button>'
+      + '</div>'
+      + '<div id="colecaoMsg"></div>';
+  }
+
+  function _colecaoEscolherCapa(pathEnc) {
+    _colecao.capa = decodeURIComponent(pathEnc);
+    _colecaoRenderPasso2();
+  }
+
+  function _colecaoMostrarErro(texto) {
+    const msg = document.getElementById('colecaoMsg');
+    if (msg) msg.innerHTML = '<div class="user-msg err">' + escHtml(texto) + '</div>';
+  }
+
+  function _colecaoSalvar() {
+    const btn = document.getElementById('colecaoSalvarBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+    fetch(_colecao.id ? '/api/colecoes/update' : '/api/colecoes/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: _colecao.id,
+        nome: _colecao.nome,
+        descricao: _colecao.descricao,
+        capa: _colecao.capa,
+        filmes: [..._colecao.filmes.keys()],
+      }),
+    }).then(res => res.json()).then(data => {
+      if (data.status === 'ok') {
+        closeColecaoModal();
+        showToast('✅ ' + (data.message || 'Coleção salva.'), 'success');
+        _invalidateCache('/api/collections');
+        loadCollections();
+      } else {
+        _colecaoMostrarErro(data.error || 'Não foi possível salvar.');
+        if (btn) { btn.disabled = false; btn.textContent = _colecao.id ? 'Salvar alterações' : 'Criar coleção'; }
+      }
+    }).catch(() => {
+      _colecaoMostrarErro('Falha de conexão com o servidor.');
+      if (btn) { btn.disabled = false; btn.textContent = _colecao.id ? 'Salvar alterações' : 'Criar coleção'; }
+    });
+  }
+
+  function excluirColecao(id, nome) {
+    _confirmarGenerico(
+      'Excluir coleção?',
+      'A coleção "' + nome + '" vai embora. Os filmes não são tocados — continuam no acervo, nas suas tags.',
+      function() {
+        fetch('/api/colecoes/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id }),
+        }).then(res => res.json()).then(data => {
+          if (data.status === 'ok') {
+            showToast('Coleção excluída', 'success');
+            _invalidateCache('/api/collections');
+            loadCollections();
+          } else {
+            showToast('Erro: ' + (data.error || 'falha ao excluir'), 'error');
+          }
+        }).catch(() => showToast('Erro ao excluir coleção', 'error'));
+      });
+  }
+
+  // Reaproveita o modal de confirmação do player para qualquer decisão:
+  // troca os textos, encaminha o OK e devolve os textos originais ao fechar.
+  function _confirmarGenerico(titulo, descricao, aoConfirmar) {
+    const modal = document.getElementById('confirmModal');
+    const tit = modal.querySelector('.confirm-title');
+    const desc = modal.querySelector('.confirm-desc');
+    const icon = modal.querySelector('.confirm-icon');
+    const cancel = modal.querySelector('.confirm-btn.cancel');
+    const sim = document.getElementById('confirmYesBtn');
+    const originais = { tit: tit.textContent, desc: desc.textContent,
+                        icon: icon.textContent, cancel: cancel.textContent,
+                        sim: sim.textContent };
+    tit.textContent = titulo;
+    desc.textContent = descricao;
+    icon.textContent = '🗑️';
+    cancel.textContent = 'Manter';
+    sim.textContent = 'Excluir';
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    sim.onclick = function() {
+      modal.classList.remove('active');
+      _confirmarRestaurar(originais);
+      document.body.style.overflow = '';
+      aoConfirmar();
+    };
+    cancel.onclick = function() {
+      modal.classList.remove('active');
+      _confirmarRestaurar(originais);
+      document.body.style.overflow = '';
+    };
+  }
+  // Igual ao _confirmarGenerico, mas com um campo de texto — usado para
+  // renomear. O OK entrega o valor digitado (vazio = cancelado).
+  function _confirmarGenericoComInput(titulo, valorInicial, aoConfirmar) {
+    const modal = document.getElementById('confirmModal');
+    const body = modal.querySelector('.confirm-body');
+    let input = document.getElementById('confirmInputDinamico');
+    if (!input) {
+      input = document.createElement('input');
+      input.id = 'confirmInputDinamico';
+      input.className = 'confirm-input';
+      body.insertBefore(input, body.querySelector('.confirm-actions'));
+    }
+    input.style.display = '';
+    input.value = valorInicial || '';
+    _confirmarGenerico(titulo, '', function() {
+      const v = input.value.trim();
+      input.style.display = 'none';
+      aoConfirmar(v);
+    });
+    const cancel = modal.querySelector('.confirm-btn.cancel');
+    const cancelOriginal = cancel.onclick;
+    cancel.onclick = function() {
+      input.style.display = 'none';
+      if (cancelOriginal) cancelOriginal();
+    };
+    setTimeout(() => input.focus(), 80);
+  }
+
+  function _confirmarRestaurar(originais) {
+    const modal = document.getElementById('confirmModal');
+    modal.querySelector('.confirm-title').textContent = originais.tit;
+    modal.querySelector('.confirm-desc').textContent = originais.desc;
+    modal.querySelector('.confirm-icon').textContent = originais.icon;
+    modal.querySelector('.confirm-btn.cancel').textContent = originais.cancel;
+    document.getElementById('confirmYesBtn').textContent = originais.sim;
+    // O onclick do "Sair" é reatribuído pelo próprio fluxo de saída do player.
+  }
+
+  // ==================== SÉRIES ====================
+  function renderSerieView(seriePath) {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    document.getElementById('breadcrumb').innerHTML =
+      '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>'
+      + ' <span class="sep">›</span> <span id="serieBcNome">...</span>';
+
+    cachedFetch('/api/serie?path=' + encodeURIComponent(seriePath)).then(serie => {
+      if (!serie) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-error"></use></svg></div>'
+          + '<h3>Série não encontrada</h3></div>';
+        return;
+      }
+      _heroCapa(serie.poster, serie.fanart);
+      // Guarda a ficha da série: capa, sinopse e episódios em ordem. A
+      // transmissão usa isso para mostrar a capa da série (o episódio não
+      // tem pôster próprio) e para emendar o próximo episódio no fim.
+      (function() {
+        var epsSerie = [];
+        serie.temporadas.forEach(function(t) {
+          (t.episodios || []).forEach(function(e) { epsSerie.push(e); });
+        });
+        _serieAtual = {
+          path: seriePath,
+          poster: serie.poster || null,
+          fanart: serie.fanart || null,
+          overview: serie.overview || null,
+          year: serie.year || null,
+          episodios: epsSerie,
+        };
+      })();
+      document.getElementById('serieBcNome').textContent = serie.name;
+      document.getElementById('heroTitle').textContent = serie.name;
+      const isAdmin = _me && _me.role === 'admin';
+      const totalEps = serie.temporadas.reduce((n, t) => n + t.episodios.length, 0);
+      document.getElementById('heroDesc').innerHTML =
+        (isAdmin ? '<span class="colecao-acoes">'
+          + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
+                               'vale para a série inteira: todas as temporadas e episódios')
+          + '</span>' : '')
+        + '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
+        + serie.temporadas.length + (serie.temporadas.length === 1 ? ' temporada · ' : ' temporadas · ')
+        + totalEps + (totalEps === 1 ? ' episódio' : ' episódios')
+        + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '');
+
+      if (!serie.temporadas.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-tv"></use></svg></div>'
+          + '<h3>Nenhum episódio ainda</h3>'
+          + '<p>Dentro da pasta da série, crie as pastas das temporadas '
+          + '(S01, S02...) e ponha os episódios dentro delas.</p></div>';
+        return;
+      }
+      let html = '';
+      serie.temporadas.forEach(temp => {
+        html += '<div class="genre-section">'
+          + '<div class="genre-header" style="cursor:default;border:none">'
+          + '<div class="genre-title">' + escHtml(temp.nome)
+          + ' <span class="genre-count">(' + temp.episodios.length + ')</span></div></div>'
+          + '<div class="episodio-lista">';
+        temp.episodios.forEach(ep => {
+          // Episódio pela metade: retoma de onde parou e oferece "Já assisti".
+          const temProgresso = (ep.position || 0) > 5 &&
+            (!ep.duration || (ep.position / ep.duration) <= 0.95);
+          const posStr = Math.floor((ep.position || 0) / 60) + ':' +
+            String(Math.floor((ep.position || 0) % 60)).padStart(2, '0');
+          const pct = (ep.duration > 0) ? Math.round((ep.position / ep.duration) * 100) : 0;
+          html += '<button class="episodio-linha' + (temProgresso ? ' em-progresso' : '') + '" '
+            + 'onclick="playMovie(decodeURIComponent(\'' + enc(ep.path) + '\'), '
+            + 'decodeURIComponent(\'' + enc(ep.title) + '\')'
+            + (ep.subtitle ? ', decodeURIComponent(\'' + enc(ep.subtitle) + '\')' : ', null')
+            + (temProgresso ? ', ' + Math.floor(ep.position) : ', null')
+            + ', decodeURIComponent(\'' + enc(ep.path) + '\')'
+            + ')" title="' + escHtml(ep.title) + '">'
+            + '<span class="episodio-play"><svg class="icon-svg"><use href="#i-'
+            + (temProgresso ? 'pause' : 'play') + '"></use></svg></span>'
+            + '<span class="episodio-titulo">' + escHtml(ep.title)
+            + (temProgresso ? ' <span class="episodio-pos">' + posStr + '</span>' : '')
+            + '</span>'
+            + '<span class="episodio-tamanho">' + formatSize(ep.size) + '</span>'
+            + (ep.subtitle ? '<span class="episodio-cc" title="Com legenda">CC</span>' : '')
+            + (temProgresso
+                ? '<span class="episodio-progresso" title="' + pct + '% assistido">'
+                  + '<span style="width:' + pct + '%"></span></span>'
+                : '')
+            + (temProgresso
+                ? '<span class="episodio-assistido" onclick="event.stopPropagation();'
+                  + 'limparProgressoEpisodio(decodeURIComponent(\'' + enc(ep.path) + '\'), this)" '
+                  + 'title="Remove o progresso deste episódio">Já assisti</span>'
+                : '')
+            + '</button>';
+        });
+        html += '</div></div>';
+      });
+      container.innerHTML = html;
+    });
+  }
+
+  function limparProgressoEpisodio(epPath, el) {
+    fetch('/api/progress', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: epPath, position: 0, duration: 0 }),
+      keepalive: true,
+    }).then(() => {
+      const linha = el.closest('.episodio-linha');
+      if (!linha) return;
+      linha.classList.remove('em-progresso');
+      linha.querySelectorAll('.episodio-progresso, .episodio-assistido, .episodio-pos')
+        .forEach(x => x.remove());
+      const play = linha.querySelector('.episodio-play use');
+      if (play) play.setAttribute('href', '#i-play');
+      showToast('✔ Episódio marcado como assistido', 'success');
+    }).catch(() => showToast('Erro ao limpar progresso', 'error'));
+  }
+
+  // ==================== TAGS DO APP ====================
+  // Criadas na interface, independentes de pastas. Uma tag reúne filmes de
+  // qualquer fonte; filmes soltos entram pelo path do próprio arquivo.
+
+  function renderGeneroView(generoId) {
+    const container = document.getElementById('content');
+    const hero = document.getElementById('hero');
+    hero.style.display = 'block';
+    _heroCapa(null, null);
+    document.getElementById('heroBg').style.backgroundImage = 'none';
+    hero.style.background = 'linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%)';
+    document.getElementById('breadcrumb').innerHTML =
+      '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>'
+      + ' <span class="sep">›</span> <span id="generoBcNome">...</span>';
+
+    cachedFetch('/api/genero?id=' + generoId).then(gen => {
+      if (!gen) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-error"></use></svg></div>'
+          + '<h3>Tag não encontrada</h3></div>';
+        return;
+      }
+      document.getElementById('generoBcNome').textContent = gen.name;
+      document.getElementById('heroTitle').innerHTML =
+        '<svg class="icon-svg"><use href="#i-layers"></use></svg> ' + escHtml(gen.name);
+      const isAdmin = _me && _me.role === 'admin';
+      document.getElementById('heroDesc').innerHTML =
+        (isAdmin ? '<span class="colecao-acoes">'
+          + '<button class="colecao-acao-btn" onclick="openGeneroRenomear(' + gen.id
+          + ', decodeURIComponent(\'' + enc(gen.name) + '\'))">'
+          + '<svg class="icon-svg"><use href="#i-gear"></use></svg> Renomear</button>'
+          + '<button class="colecao-acao-btn perigo" onclick="excluirGenero(' + gen.id
+          + ', decodeURIComponent(\'' + enc(gen.name) + '\'))">'
+          + '<svg class="icon-svg"><use href="#i-trash"></use></svg> Excluir</button>'
+          + '</span>' : '')
+        + '<svg class="icon-svg"><use href="#i-film"></use></svg> ' + gen.movies.length
+        + (gen.movies.length === 1 ? ' filme' : ' filmes');
+
+      if (!gen.movies.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
+          + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>'
+          + '<h3>Nenhum filme nesta tag</h3>'
+          + '<p>Abra a ficha de um filme (ou um card no A-Z) e toque em '
+          + '<b>Tags</b> para colocá-lo aqui.</p></div>';
+        return;
+      }
+      let html = '<div class="genre-section"><div class="movie-grid">';
+      gen.movies.forEach(m => {
+        const titulo = escHtml((m.title || m.name).replace(/[._]/g, ' '));
+        const poster = m.poster ? posterUrl(m.path, m.poster) : null;
+        const clique = m.is_file
+          ? 'playMovie(decodeURIComponent(\'' + enc(m.path) + '\'), decodeURIComponent(\'' + enc(m.title || m.name) + '\'))'
+          : 'showMovieInfo(decodeURIComponent(\'' + enc(m.path) + '\'), event)';
+        html += '<div class="movie-card" onclick="' + clique + '" title="' + titulo + '">'
+          + (poster
+              ? '<img class="movie-card-poster" src="' + poster + '" alt="' + titulo
+                + '" loading="lazy" onerror="this.style.display=\'none\';'
+                + 'this.nextElementSibling.style.display=\'flex\'">'
+                + '<div class="movie-card-poster-placeholder" style="display:none">'
+                + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>'
+              : '<div class="movie-card-poster-placeholder" style="display:flex">'
+                + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>')
+          + '<div class="movie-card-overlay"><div class="movie-card-title">' + titulo + '</div>'
+          + '<div class="movie-card-subtitle">'
+          + (m.is_file ? 'arquivo solto' : (m.year ? escHtml(m.year) : 'Filme'))
+          + '</div></div></div>';
+      });
+      container.innerHTML = html + '</div></div>';
+    });
+  }
+
+  // ── Modal: atribuir tags a um filme ──
+  let _generoAlvo = null;
+
+  function openGeneroFilmeModal(alvo, titulo) {
+    _generoAlvo = { alvo: alvo, titulo: titulo };
+    document.getElementById('generoFilmeTitulo').textContent = titulo;
+    const corpo = document.getElementById('generoFilmeCorpo');
+    corpo.innerHTML = '<div class="loading" style="min-height:90px"><div class="spinner"></div><span>Carregando...</span></div>';
+    document.getElementById('generoFilmeMsg').innerHTML = '';
+    document.getElementById('generoFilmeModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _invalidateCache('/api/generos');
+    _invalidateCache('/api/generos/de?alvo=' + encodeURIComponent(alvo));
+    Promise.all([
+      cachedFetch('/api/generos'),
+      cachedFetch('/api/generos/de?alvo=' + encodeURIComponent(alvo)),
+    ]).then(([todos, meus]) => {
+      _generoRenderChips(todos, (meus && meus.ids) || []);
+    }).catch(() => {
+      corpo.innerHTML = '<div class="user-msg err">Falha ao carregar tags.</div>';
+    });
+  }
+
+  function _generoRenderChips(todos, meusIds) {
+    const corpo = document.getElementById('generoFilmeCorpo');
+    let chips = '';
+    todos.forEach(g => {
+      const on = meusIds.includes(g.id);
+      chips += '<button class="genero-chip' + (on ? ' on' : '') + '" '
+        + 'onclick="_generoToggleChip(this, ' + g.id + ')">' + escHtml(g.nome) + '</button>';
+    });
+    corpo.innerHTML = (todos.length
+        ? '<div class="genero-chips">' + chips + '</div>'
+        : '<p class="colecao-dica">Nenhuma tag criada ainda — crie a primeira abaixo.</p>')
+      + '<div class="genero-nova-linha">'
+      + '<input id="generoNovoNome" type="text" maxlength="40" placeholder="Nova tag...">'
+      + '<button class="rclone-action-btn" onclick="_generoCriarEDar()">Criar</button>'
+      + '</div>'
+      + '<div class="colecao-passos"><span></span>'
+      + '<button class="rclone-action-btn primary" onclick="closeGeneroFilmeModal()">Pronto</button>'
+      + '</div>';
+    corpo.dataset.meus = JSON.stringify(meusIds);
+  }
+
+  function _generoToggleChip(chip, id) {
+    const corpo = document.getElementById('generoFilmeCorpo');
+    const meus = JSON.parse(corpo.dataset.meus || '[]');
+    const i = meus.indexOf(id);
+    if (i >= 0) { meus.splice(i, 1); chip.classList.remove('on'); }
+    else { meus.push(id); chip.classList.add('on'); }
+    corpo.dataset.meus = JSON.stringify(meus);
+  }
+
+  function _generoCriarEDar() {
+    const input = document.getElementById('generoNovoNome');
+    const nome = (input.value || '').trim();
+    if (!nome) return;
+    fetch('/api/generos/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: nome }),
+    }).then(r => r.json()).then(data => {
+      if (data.status !== 'ok') {
+        document.getElementById('generoFilmeMsg').innerHTML =
+          '<div class="user-msg err">' + escHtml(data.error || 'Erro.') + '</div>';
+        return;
+      }
+      const corpo = document.getElementById('generoFilmeCorpo');
+      const meus = JSON.parse(corpo.dataset.meus || '[]');
+      if (!meus.includes(data.id)) meus.push(data.id);
+      input.value = '';
+      // Recarrega a lista para incluir a tag nova já marcada.
+      _invalidateCache('/api/generos');
+      cachedFetch('/api/generos').then(todos => _generoRenderChips(todos, meus));
+      _sidebarGenerosRefresh();
+    }).catch(() => {
+      document.getElementById('generoFilmeMsg').innerHTML =
+        '<div class="user-msg err">Falha de conexão.</div>';
+    });
+  }
+
+  function closeGeneroFilmeModal() {
+    const corpo = document.getElementById('generoFilmeCorpo');
+    const meus = JSON.parse(corpo.dataset.meus || '[]');
+    if (_generoAlvo) {
+      fetch('/api/generos/atribuir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alvo: _generoAlvo.alvo, generos: meus }),
+      }).then(r => r.json()).then(data => {
+        if (data.status === 'ok') {
+          showToast('✅ ' + data.message, 'success');
+          (JSON.parse(document.getElementById('generoFilmeCorpo').dataset.meus || '[]'))
+            .forEach(gid => _invalidateCache('/api/genero?id=' + gid));
+          _invalidateCache('/api/genres');
+          _invalidateCache('/api/all-movies');
+        } else showToast('Erro: ' + (data.error || 'falha'), 'error');
+      }).catch(() => showToast('Erro ao salvar tags', 'error'));
+    }
+    document.getElementById('generoFilmeModal').classList.remove('active');
+    document.body.style.overflow = '';
+    _generoAlvo = null;
+    loadSidebarGenres(true);
+    // Se estamos numa tag ou no A-Z, recarrega para refletir mudanças.
+    if (currentPath && currentPath.indexOf(GENERO_PREFIXO) === 0) loadPath(currentPath, true);
+  }
+  document.getElementById('generoFilmeModal').addEventListener('click', function(e) {
+    if (e.target === this) closeGeneroFilmeModal();
+  });
+
+  // ── Modal: criar tag (barra lateral) ──
+  function openGeneroNovoModal() {
+    document.getElementById('generoNovoInput').value = '';
+    document.getElementById('generoNovoMsg').innerHTML = '';
+    document.getElementById('generoNovoModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => document.getElementById('generoNovoInput').focus(), 80);
+  }
+  function closeGeneroNovoModal() {
+    document.getElementById('generoNovoModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  document.getElementById('generoNovoModal').addEventListener('click', function(e) {
+    if (e.target === this) closeGeneroNovoModal();
+  });
+  function criarGeneroDoModal() {
+    const input = document.getElementById('generoNovoInput');
+    const nome = (input.value || '').trim();
+    if (!nome) return;
+    fetch('/api/generos/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: nome }),
+    }).then(r => r.json()).then(data => {
+      if (data.status !== 'ok') {
+        document.getElementById('generoNovoMsg').innerHTML =
+          '<div class="user-msg err">' + escHtml(data.error || 'Erro.') + '</div>';
+        return;
+      }
+      closeGeneroNovoModal();
+      showToast('✅ ' + data.message, 'success');
+      _invalidateCache('/api/generos');
+      loadSidebarGenres(true);
+    }).catch(() => {
+      document.getElementById('generoNovoMsg').innerHTML =
+        '<div class="user-msg err">Falha de conexão.</div>';
+    });
+  }
+
+  function _sidebarGenerosRefresh() { loadSidebarGenres(true); }
+
+  function openGeneroRenomear(id, nomeAtual) {
+    _confirmarGenericoComInput('Renomear tag', nomeAtual, function(novoNome) {
+      if (!novoNome || novoNome === nomeAtual) return;
+      fetch('/api/generos/renomear', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, nome: novoNome }),
+      }).then(r => r.json()).then(data => {
+        if (data.status === 'ok') {
+          showToast('✅ ' + data.message, 'success');
+          _invalidateCache('/api/genero?id=' + id);
+          _invalidateCache('/api/generos');
+          _invalidateCache('/api/genres');
+          loadPath(GENERO_PREFIXO + id, true); loadSidebarGenres(true);
+        }
+        else showToast('Erro: ' + (data.error || 'falha'), 'error');
+      }).catch(() => showToast('Erro ao renomear', 'error'));
+    });
+  }
+
+  function excluirGenero(id, nome) {
+    _confirmarGenerico('Excluir tag?',
+      'A tag "' + nome + '" vai embora. Os filmes não são tocados.',
+      function() {
+        fetch('/api/generos/delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id }),
+        }).then(r => r.json()).then(data => {
+          if (data.status === 'ok') {
+          showToast('✅ ' + data.message, 'success');
+          _invalidateCache('/api/genero?id=' + id);
+          _invalidateCache('/api/generos');
+          _invalidateCache('/api/genres');
+          loadPath(''); loadSidebarGenres(true);
+        }
+          else showToast('Erro: ' + (data.error || 'falha'), 'error');
+        }).catch(() => showToast('Erro ao excluir tag', 'error'));
+      });
+  }
+
+  // ==================== PERFIL INFANTIL ====================
+  // Interruptor com rótulo claro: "Perfil infantil" + ON/OFF. O mesmo
+  // componente serve para a ficha do filme e para a página da série
+  // (na série, marcar vale para a série inteira — todas as temporadas).
+  function switchInfantilHtml(alvo, ativo, rotulo, nota) {
+    return '<span class="switch-infantil" onclick="toggleInfantil(this)">'
+      + '<span class="switch-texto">'
+      + '<span class="switch-rotulo">' + escHtml(rotulo || 'Perfil infantil') + '</span>'
+      + (nota ? '<span class="switch-nota">' + escHtml(nota) + '</span>' : '')
+      + '</span>'
+      + '<span class="switch-track' + (ativo ? ' on' : '') + '" data-alvo="' + escHtml(alvo) + '" '
+      + 'role="switch" aria-checked="' + (ativo ? 'true' : 'false') + '">'
+      + '<span class="switch-knob"></span></span>'
+      + '<span class="switch-estado">' + (ativo ? 'Sim' : 'Não') + '</span>'
+      + '</span>';
+  }
+
+  function toggleInfantil(switchEl) {
+    const raiz = switchEl.closest('.switch-infantil') || switchEl;
+    const track = raiz.querySelector('.switch-track');
+    const alvo = track.dataset.alvo;
+    if (!alvo) return;
+    const on = !track.classList.contains('on');
+    raiz.style.pointerEvents = 'none';
+    fetch('/api/infantil/marcar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alvo: alvo, on: on }),
+    }).then(r => r.json()).then(data => {
+      if (data.status === 'ok') {
+        track.classList.toggle('on', data.on);
+        track.setAttribute('aria-checked', data.on ? 'true' : 'false');
+        const estado = raiz.querySelector('.switch-estado');
+        if (estado) estado.textContent = data.on ? 'Sim' : 'Não';
+        showToast((data.on ? '👶 No perfil infantil' : 'Fora do perfil infantil'), 'success');
+        _invalidateCache('/api/all-movies');
+        _invalidateCache('/api/recent-movies');
+        _invalidateCache('/api/genres');
+        _invalidateCache('/api/series');
+      } else {
+        showToast('Erro: ' + (data.error || 'falha'), 'error');
+      }
+    }).catch(() => showToast('Erro ao marcar', 'error'))
+      .finally(() => { raiz.style.pointerEvents = ''; });
+  }
+
+  // ── Controles em pílula da ficha do filme ──────────────────
+  // Mesma casca do interruptor do perfil infantil. "Já assisti" é interruptor
+  // de verdade (marca/desmarca); "Tags" é um botão com a contagem que abre o
+  // modal. Assim os dois deixam de parecer botõezinhos soltos na linha.
+
+  function switchAssistidoHtml(folderPath, assistido) {
+    return '<span class="pill-acao" onclick="toggleAssistido(this)">'
+      + '<span class="switch-texto">'
+      + '<span class="switch-rotulo">Já assisti</span>'
+      + '<span class="switch-nota">' + (assistido ? 'Fora do continuar' : 'Marcar como visto') + '</span>'
+      + '</span>'
+      + '<span class="switch-track' + (assistido ? ' on' : '') + '" data-alvo="' + escHtml(folderPath) + '" '
+      + 'role="switch" aria-checked="' + (assistido ? 'true' : 'false') + '">'
+      + '<span class="switch-knob"></span></span>'
+      + '<span class="switch-estado">' + (assistido ? 'Sim' : 'Não') + '</span>'
+      + '</span>';
+  }
+
+  // Repinta o interruptor a partir de um estado conhecido — o /api/progress
+  // que a ficha já buscava corrige um cache velho do movie-detail.
+  function _pintarAssistido(raiz, on) {
+    if (!raiz) return;
+    const track = raiz.querySelector('.switch-track');
+    if (track) {
+      track.classList.toggle('on', on);
+      track.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    const estado = raiz.querySelector('.switch-estado');
+    if (estado) estado.textContent = on ? 'Sim' : 'Não';
+    const nota = raiz.querySelector('.switch-nota');
+    if (nota) nota.textContent = on ? 'Fora do continuar' : 'Marcar como visto';
+  }
+
+  // Tira o filme da fileira "Continuar Assistindo" sem esperar a home recarregar.
+  function _removerDoContinueAssistindo(folderPath) {
+    const cwSection = document.getElementById('continueWatchingSection');
+    if (!cwSection || cwSection.style.display === 'none') return;
+    const cards = cwSection.querySelectorAll('.movie-card');
+    for (let i = 0; i < cards.length; i++) {
+      const onclick = cards[i].getAttribute('onclick') || '';
+      if (onclick.indexOf(folderPath) !== -1
+          || onclick.indexOf(encodeURIComponent(folderPath)) !== -1) {
+        cards[i].remove();
+        break;
+      }
+    }
+    if (cwSection.querySelectorAll('.movie-card').length === 0) {
+      cwSection.style.display = 'none';
+    }
+  }
+
+  function toggleAssistido(pillEl) {
+    const raiz = pillEl.closest('.pill-acao') || pillEl;
+    const track = raiz.querySelector('.switch-track');
+    const alvo = track && track.dataset.alvo;
+    if (!alvo) return;
+    const on = !track.classList.contains('on');
+    raiz.style.pointerEvents = 'none';
+    fetch('/api/watched', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: alvo, on: on }),
+    }).then(r => r.json()).then(data => {
+      if (data.status === 'ok') {
+        _pintarAssistido(raiz, data.watched);
+        if (data.watched) {
+          const actionsEl = document.querySelector('.movie-info-actions');
+          const resumeBtn = actionsEl && actionsEl.querySelector('.btn-resume');
+          if (resumeBtn) resumeBtn.remove();
+        }
+        showToast(data.watched ? '✔ Marcado como assistido' : 'Fora de assistidos', 'success');
+        _invalidateCache('/api/continue-watching');
+        _invalidateCache('/api/movie-detail?path=' + encodeURIComponent(alvo));
+        if (data.watched) _removerDoContinueAssistindo(alvo);
+      } else {
+        showToast('Erro: ' + (data.error || 'falha'), 'error');
+      }
+    }).catch(() => showToast('Erro ao marcar', 'error'))
+      .finally(() => { raiz.style.pointerEvents = ''; });
+  }
+
+  function pillTagsHtml(alvo, titulo, tags) {
+    const n = (tags || []).length;
+    const nota = n === 0 ? 'Sem tags' : (n + (n === 1 ? ' tag' : ' tags'));
+    return '<button class="pill-acao pill-acao-btn" '
+      + 'onclick="openGeneroFilmeModal(decodeURIComponent(\'' + enc(alvo) + '\'), '
+      + 'decodeURIComponent(\'' + enc(titulo) + '\'))" title="Tags do filme">'
+      + '<span class="pill-acao-icone"><svg class="icon-svg"><use href="#i-layers"></use></svg></span>'
+      + '<span class="switch-texto"><span class="switch-rotulo">Tags</span>'
+      + '<span class="switch-nota">' + escHtml(nota) + '</span></span>'
+      + '</button>';
   }
 
   function genreIcon(name) {
@@ -823,7 +1826,7 @@
 
     const parts = data.path.split('/').filter(Boolean);
     const genreName = parts.length > 0 ? parts[parts.length - 1] : 'Género';
-    // Pasta de filme e vídeo solto na pasta do gênero viram o mesmo cartão na
+    // Pasta de filme e vídeo solto na pasta da tag viram o mesmo cartão na
     // tela, então contam junto: separar os dois era uma distinção interna que
     // não dizia nada a quem lê.
     const total = data.folders.length + (data.videos ? data.videos.length : 0);
@@ -845,7 +1848,7 @@
           <h3>Nenhum filme em "${escHtml(genreName)}"</h3>
           <p>${isLocalPath(data.path)
               ? 'Adicione pastas de filme nesta pasta do disco e clique em Atualizar.'
-              : 'Adicione filmes nesta pasta do Google Drive para vê-los aqui.'}</p>
+              : 'Adicione filmes nesta pasta da nuvem para vê-los aqui.'}</p>
         </div>`;
       return;
     }
@@ -1014,6 +2017,11 @@
   let currentMovieFolder = null;
   // Arte e ficha do filme aberto, para a TV mostrar algo alem do titulo pelado.
   let _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
+  // Ficha da última série aberta (capa, sinopse e episódios em ordem) e da
+  // última listagem de pasta: é daqui que saem a capa e a fila ao transmitir
+  // um episódio (ver _arteEPlaylistDoEpisodio).
+  let _serieAtual = null;
+  let _pastaAtual = null;
 
   function showMovieInfo(folderPath, event) {
     if (event) event.stopPropagation();
@@ -1039,7 +2047,7 @@
     let cur = window.__LOGICAL_ROOT__ || '/TicianoFlix';
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
     parts.forEach((p, i) => {
-      if (i === 0) return; // pula a raiz do Drive (LOGICAL_ROOT, ex.: "/Mediaflix")
+      if (i === 0) return; // pula a raiz da nuvem (LOGICAL_ROOT, o nome escolhido na instalação)
       cur += '/' + p;
       const name = p.replace(/[._]/g, ' ');
       if (i === parts.length - 1) {
@@ -1059,7 +2067,7 @@
         return;
       }
 
-      // Cache VFS só existe pro Drive: em fonte local a pergunta não se aplica
+      // Cache VFS só existe pra nuvem: em fonte local a pergunta não se aplica
       // e a requisição seria desperdício.
       if (!isLocalPath(folderPath) && !_cachedSet.has(folderPath)
           && detail.video && detail.video.Name) {
@@ -1126,10 +2134,12 @@
         </div>`;
       }
 
-      // Genres
+      // Genres do metadado (drama, ação...): chip com o ícone da categoria.
       if (nfo && nfo.genres && nfo.genres.length > 0) {
         nfoHtml += '<div class="movie-genres">';
-        nfo.genres.forEach(g => { nfoHtml += '<span class="movie-genre-tag">' + escHtml(g) + '</span>'; });
+        nfo.genres.forEach(g => {
+          nfoHtml += '<span class="movie-genre-tag">' + genreIcon(g) + escHtml(g) + '</span>';
+        });
         nfoHtml += '</div>';
       }
 
@@ -1180,9 +2190,10 @@
         nfoHtml += '</div></div>';
       }
 
-      // Tags
+      // Tags do metadado (NFO) = palavras-chave. Rótulo explícito para não
+      // confundir com as Tags do app, que o usuário cria na mão.
       if (nfo && nfo.tags && nfo.tags.length > 0) {
-        nfoHtml += '<div class="movie-tags">';
+        nfoHtml += '<div class="movie-tags"><span class="movie-tags-rotulo">Palavras-chave</span>';
         nfo.tags.forEach(t => { nfoHtml += '<span class="movie-tag">#' + escHtml(t.replace(/[^a-z0-9]/gi, '')) + '</span>'; });
         nfoHtml += '</div>';
       }
@@ -1208,10 +2219,16 @@
             ${isLocalPath(folderPath)
                 ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
                 : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
-            ${'<button class="btn-watched" onclick="_markAsWatched(decodeURIComponent(\'' + enc(folderPath) + '\'))"><svg class="icon-svg"><use href="#i-check"></use></svg> Já assisti</button>'}
+            ${switchAssistidoHtml(folderPath, !!detail.watched)}
+            ${(_me && _me.role === 'admin')
+                ? pillTagsHtml(folderPath, titleClean, detail.tags)
+                : ''}
+            ${(_me && _me.role === 'admin')
+                ? switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
+                : ''}
             ${detail.collection
-                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao(decodeURIComponent(\''
-                  + enc(detail.collection.name) + '\'))" title="Ver a coleção inteira">'
+                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao('
+                  + detail.collection.id + ')" title="Ver a coleção inteira">'
                   + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
                   + escHtml(detail.collection.name)
                   + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
@@ -1224,6 +2241,11 @@
 
       // Check progress and show resume button
       fetch('/api/progress?path=' + encodeURIComponent(folderPath)).then(r => r.json()).then(prog => {
+        // O /api/progress é a fonte da verdade do "assistido": corrige o
+        // interruptor caso o movie-detail tenha vindo do cache.
+        if (prog && typeof prog.watched === 'boolean') {
+          _pintarAssistido(content.querySelector('.movie-info-actions .pill-acao'), prog.watched);
+        }
         if (!prog || !prog.position || prog.position <= 0) return;
         const actionsEl = content.querySelector('.movie-info-actions');
         if (!actionsEl) return;
@@ -1274,13 +2296,33 @@
   }
 
   // Close movie info on Escape
+  // Modais do sistema em ordem de precedência pro Escape: o primeiro aberto
+  // fecha e nada mais acontece — apertar Escape num modal nunca podia derrubar
+  // o player que ficou tocando por trás.
+  const _MODAIS_ESCAPE = [
+    ['confirmModal', 'closeConfirmModal'],
+    ['nuvemWizardModal', 'closeNuvemWizard'],
+    ['generoFilmeModal', 'closeGeneroFilmeModal'],
+    ['generoNovoModal', 'closeGeneroNovoModal'],
+    ['colecaoModal', 'closeColecaoModal'],
+    ['backupModal', 'closeBackupModal'],
+    ['cacheManagerModal', 'closeCacheManager'],
+    ['settingsModal', 'closeSettingsModal'],
+    ['sourcesModal', 'closeSourcesModal'],
+    ['usersModal', 'closeUsersModal'],
+    ['brandingModal', 'closeBrandingModal'],
+    ['rcloneModal', 'closeRcloneModal'],
+    ['changelogModal', 'closeChangelogModal'],
+  ];
+
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       if (gavetaAberta()) { closeSidebar(); return; }
-      const confirmModal = document.getElementById('confirmModal');
-      if (confirmModal.classList.contains('active')) {
-        closeConfirmModal();
-        return;
+      for (const [id, fechar] of _MODAIS_ESCAPE) {
+        if (document.getElementById(id).classList.contains('active')) {
+          window[fechar]();
+          return;
+        }
       }
       const infoOverlay = document.getElementById('movieInfoOverlay');
       if (infoOverlay.classList.contains('active')) {
@@ -1315,9 +2357,9 @@
     const parts = path ? path.split('/').filter(Boolean) : [];
     let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
 
-    // A raiz da fonte ocupa 1 segmento no Drive (LOGICAL_ROOT) e 2 nas fontes
+    // A raiz da fonte ocupa 1 segmento na nuvem (LOGICAL_ROOT) e 2 nas fontes
     // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
-    // path — remontar com um prefixo fixo gerava link quebrado fora do Drive.
+    // path — remontar com um prefixo fixo gerava link quebrado fora da nuvem.
     const rootLen = isLocalPath(path) ? 2 : 1;
     if (rootLen === 2 && parts.length >= 2) {
       const slug = parts[1];
@@ -1375,37 +2417,6 @@
       body: JSON.stringify({path: folderPath, position: 0, duration: 0}),
       keepalive: true
     }).catch(() => {});
-  }
-
-  function _markAsWatched(folderPath) {
-    _clearProgress(folderPath);
-    showToast('✔ Marcado como assistido', 'success');
-    // Refresh the movie info to hide resume button and show watched state
-    const actionsEl = document.querySelector('.movie-info-actions');
-    if (actionsEl) {
-      const resumeBtn = actionsEl.querySelector('.btn-resume');
-      if (resumeBtn) resumeBtn.remove();
-      const watchedBtn = actionsEl.querySelector('.btn-watched');
-      if (watchedBtn) watchedBtn.innerHTML = '<svg class="icon-svg"><use href="#i-check-circle"></use></svg> Assistido';
-    }
-    // Invalidate cache so Continue Watching updates on next visit
-    _invalidateCache('/api/continue-watching');
-    // If on the home page, remove the movie from the visible Continue Watching grid
-    var cwSection = document.getElementById('continueWatchingSection');
-    if (cwSection && cwSection.style.display !== 'none') {
-      var cards = cwSection.querySelectorAll('.movie-card');
-      for (var i = 0; i < cards.length; i++) {
-        var onclick = cards[i].getAttribute('onclick') || '';
-        if (onclick.indexOf(folderPath) !== -1 || onclick.indexOf(encodeURIComponent(folderPath)) !== -1) {
-          cards[i].remove();
-          break;
-        }
-      }
-      // Hide the entire section if no cards left
-      if (cwSection.querySelectorAll('.movie-card').length === 0) {
-        cwSection.style.display = 'none';
-      }
-    }
   }
 
   // ═══════════════════════════════════════════════
@@ -1560,6 +2571,11 @@
   // Enquanto transmite, o tempo vem do receiver — o <video> local esta parado.
   let _castTicker = null;
   let _castUltimoSave = 0;
+  // Fila de episódios da transmissão: montada no playMovie (página da série
+  // ou da temporada) e consumida quando a TV avisa que o episódio terminou.
+  let _castPlaylist = null;          // { itens: [{path,title,sub,arte}], idx }
+  let _castProximoArmado = false;    // vira "armado" quando algo esta tocando
+  let _castAvancando = false;        // trava do carregamento do proximo
 
   function _startCastTicker() {
     if (_castTicker) clearInterval(_castTicker);
@@ -1575,10 +2591,22 @@
       var btn = document.getElementById('playBtn');
       var tocando = (m.playerState === chrome.cast.media.PlayerState.PLAYING
                      || m.playerState === chrome.cast.media.PlayerState.BUFFERING);
-      if (btn) {
-        btn.innerHTML = tocando
-          ? '<svg class="icon-svg"><use href="#i-pause"></use></svg>'
-          : '<svg class="icon-svg"><use href="#i-play"></use></svg>';
+      var icone = tocando
+        ? '<svg class="icon-svg"><use href="#i-pause"></use></svg>'
+        : '<svg class="icon-svg"><use href="#i-play"></use></svg>';
+      if (btn) btn.innerHTML = icone;
+      // O botão do painel de transmissão espelha o mesmo estado.
+      var cbtn = document.getElementById('castingPlayBtn');
+      if (cbtn) cbtn.innerHTML = icone;
+      // Fim do episódio: o receiver avisa IDLE/"finished" — com a fila
+      // montada, o próximo entra sozinho (sem isso a TV ficava parada).
+      if (tocando) {
+        _castProximoArmado = true;
+      } else if (_castProximoArmado
+                 && m.playerState === chrome.cast.media.PlayerState.IDLE
+                 && String(m.idleReason || '').toLowerCase() === 'finished') {
+        _castProximoArmado = false;
+        _castAvancarFila();
       }
       // "Continuar assistindo" precisa do tempo da TV, nao do player parado.
       if (tocando && dur && (Date.now() - _castUltimoSave) > 30000) {
@@ -1592,13 +2620,30 @@
     if (_castTicker) { clearInterval(_castTicker); _castTicker = null; }
   }
 
+  // Nome do aparelho para o painel. No Android o SDK às vezes devolve o nome
+  // do RECEBEDOR ("media receiver") no lugar do Chromecast — melhor ficar
+  // sem nome do que mostrar um aparelho que não existe. Tenta a sessão
+  // legada antes de desistir.
+  function _nomeDaTV() {
+    var generico = /media\s*receiver|cast media player/i;
+    var nome = '';
+    try { nome = _castSession.getCastDevice().friendlyName || ''; } catch (e) {}
+    if (nome && !generico.test(nome)) return nome;
+    try {
+      var legado = _castSession.getSessionObj ? _castSession.getSessionObj() : null;
+      var rec = legado && legado.receiver;
+      var alternativo = (rec && (rec.friendlyName || rec.displayName)) || '';
+      if (alternativo && !generico.test(alternativo)) return alternativo;
+    } catch (e) {}
+    return '';
+  }
+
   function _showCastingPanel(mostrar) {
     var painel = document.getElementById('castingPanel');
     if (!painel) return;
     painel.classList.toggle('active', !!mostrar);
     if (!mostrar) { _stopCastTicker(); return; }
-    var nome = '';
-    try { nome = _castSession.getCastDevice().friendlyName || ''; } catch (e) {}
+    var nome = _nomeDaTV();
     var dev = document.getElementById('castingDevice');
     if (dev) dev.textContent = nome ? ('para ' + nome) : '';
     var tit = document.getElementById('castingTitle');
@@ -1616,6 +2661,21 @@
         img.style.display = 'none';
       }
     }
+    // Controle remoto da tela: botões de legenda só aparecem quando o filme
+    // tem faixa, e o estado (tamanho e CC) nasce igual ao da barra.
+    var temLegenda = !!currentSubtitlePath;
+    ['castingSubSep', 'castingSizeBtn', 'castingCcBtn'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = temLegenda ? '' : 'none';
+    });
+    var ccBtn = document.getElementById('castingCcBtn');
+    if (ccBtn) {
+      var midia = _castMedia();
+      var ligada = midia ? (midia.activeTrackIds || []).indexOf(1) !== -1
+                         : (temLegenda && subtitlesEnabled);
+      ccBtn.classList.toggle('active', ligada);
+    }
+    _syncSubtitleControls();
     _startCastTicker();
   }
 
@@ -1704,13 +2764,12 @@
   // tocar o filme busca a midia sozinho, direto do servidor, sem o cookie de
   // sessao do navegador. As duas rotas pedem aqui uma URL assinada, valida so
   // para o arquivo em questao (e a legenda/imagens, se informadas).
-  async function _fetchMediaToken(video, extraImages) {
-    if (!video || !video.src) return null;
-    var baseUrl = window.__HTTP_BASE__ || _getBaseUrl();
-    var urlObj = new URL(video.src, _getBaseUrl());
-    var mediaPath = urlObj.searchParams.get('path') || '';
+  // Assina uma mídia sem depender do <video> local: o próximo episódio da
+  // fila chega aqui só com o caminho na mão.
+  async function _fetchMediaTokenDe(mediaPath, subPath, extraImages) {
     if (!mediaPath) return null;
-    var body = { path: mediaPath, subtitle: currentSubtitlePath || '' };
+    var baseUrl = window.__HTTP_BASE__ || _getBaseUrl();
+    var body = { path: mediaPath, subtitle: subPath || '' };
     if (extraImages && extraImages.length) body.images = extraImages;
     var tokens = null;
     try {
@@ -1725,9 +2784,123 @@
     return {
       baseUrl: baseUrl,                    // Chromecast: sempre http
       midiaBase: _baseMidiaDaPagina(),     // AirPlay: acompanha a pagina
-      streamPath: urlObj.pathname + urlObj.search,
+      // Reconstruído do zero: o src do <video> pode carregar um token velho
+      // de uma tentativa anterior, e "...&t=antigo&t=novo" confundia o
+      // servidor (403 na TV, tela presa no carregando).
+      streamPath: '/api/stream?path=' + encodeURIComponent(mediaPath),
       tokens: tokens,
     };
+  }
+
+  // Assina a mídia que está no <video> (envio manual e AirPlay).
+  async function _fetchMediaToken(video, extraImages) {
+    if (!video || !video.src) return null;
+    var urlObj = new URL(video.src, _getBaseUrl());
+    var mediaPath = urlObj.searchParams.get('path') || '';
+    return _fetchMediaTokenDe(mediaPath, currentSubtitlePath, extraImages);
+  }
+
+  // Poster/fanart que acompanham o pedido de token.
+  function _castImagensDe(arte) {
+    return [arte && arte.poster, arte && arte.fanart].filter(Boolean);
+  }
+
+  // ===== PREPARO PARA TV =====
+  // O receptor do Chromecast e o AirPlay nao leem MKV — e o audio AC3/EAC3
+  // fica mudo ate no Chrome do computador (sem decodificador Dolby). Em vez
+  // de recusar o filme, o servidor gera um MP4 com o video copiado (sem
+  // re-encodar) e faixa AAC, e guarda em cache: so a primeira transmissao
+  // de cada arquivo espera. Ver ticianoflix/prepare.py.
+  var _prepareWatch = {};
+
+  async function _postPrepare(mediaPath) {
+    try {
+      var res = await fetch('/api/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: mediaPath })
+      });
+      return res.ok ? await res.json() : null;
+    } catch (e) {
+      console.warn('[TV] falha ao pedir o preparo:', e);
+      return null;
+    }
+  }
+
+  async function _getPrepareStatus(mediaPath) {
+    try {
+      var res = await fetch('/api/prepare-status?path=' + encodeURIComponent(mediaPath));
+      return res.ok ? await res.json() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Avisa quando a conversao terminar, sem segurar o usuario: o AirPlay
+  // exige o gesto do toque para abrir o seletor, e esperar minutos aqui o
+  // invalidaria — melhor pedir um novo toque quando tudo estiver pronto.
+  function _watchPrepare(mediaPath) {
+    if (_prepareWatch[mediaPath]) return;
+    _prepareWatch[mediaPath] = true;
+    (async function() {
+      for (var i = 0; i < 600; i++) {          // teto de ~20 min
+        await new Promise(function(r) { setTimeout(r, 2000); });
+        var s = await _getPrepareStatus(mediaPath);
+        if (!s) continue;
+        if (s.state === 'ready') {
+          delete _prepareWatch[mediaPath];
+          showToast('📺 Vídeo pronto — toque no AirPlay de novo', 'info');
+          return;
+        }
+        if (s.state === 'error') {
+          delete _prepareWatch[mediaPath];
+          showToast('❌ Falha ao preparar o vídeo: ' + (s.error || 'erro'), 'error');
+          return;
+        }
+      }
+      delete _prepareWatch[mediaPath];
+    })();
+  }
+
+  // Devolve a rota certa para o receptor: '/api/prepared' quando o servidor
+  // converteu, '/api/stream' quando o original já toca, 'preparing' quando a
+  // conversão ainda roda, ou null quando deu erro (já avisado ao usuário).
+  // wait=false (AirPlay): não espera aqui — avisa depois, via _watchPrepare;
+  // wait=true (Cast): acompanha com progresso até ficar pronto.
+  async function _routeForCast(mediaPath, wait) {
+    if (!mediaPath) return '/api/stream';
+    var st = await _postPrepare(mediaPath);
+    if (!st || !st.needed) return '/api/stream';
+    if (st.state === 'ready') return '/api/prepared';
+    if (st.state === 'error') {
+      showToast('❌ Não foi possível preparar o vídeo: ' + (st.error || 'erro'), 'error');
+      return null;
+    }
+    if (!wait) {
+      _watchPrepare(mediaPath);
+      return 'preparing';
+    }
+    for (var i = 0; i < 2400; i++) {           // re-encodes longos cabem aqui
+      await new Promise(function(r) { setTimeout(r, 1500); });
+      var s = await _getPrepareStatus(mediaPath);
+      if (!s) continue;
+      if (s.state === 'ready') {
+        showToast('📺 Vídeo pronto — transmitindo…', 'info');
+        return '/api/prepared';
+      }
+      if (s.state === 'error') {
+        showToast('❌ Falha ao preparar o vídeo: ' + (s.error || 'erro'), 'error');
+        return null;
+      }
+      if (s.state === 'idle') {                // servidor reiniciou no meio
+        await _postPrepare(mediaPath);
+        continue;
+      }
+      showToast('⏳ Preparando o vídeo para a TV…'
+                + (s.percent > 0 ? ' ' + s.percent + '%' : ''), 'info');
+    }
+    showToast('❌ A preparação demorou demais', 'error');
+    return null;
   }
 
   // ===== AIRPLAY (iOS/Safari) =====
@@ -1746,6 +2919,11 @@
     if (!_airplaySupported(video)) { btn.style.display = 'none'; return; }
     btn.style.display = '';
 
+    // playMovie chama isto a cada filme; sem a trava os listeners iam
+    // empilhando a cada reprodução (e o aviso de conexão repetia junto).
+    if (video._tflixAirplaySetup) return;
+    video._tflixAirplaySetup = true;
+
     // O evento existe pra afinar a visibilidade quando o Safari sabe que nao
     // ha receptor por perto — mas nem toda versao dispara ele de forma
     // confiavel, entao o botao comeca visivel (o pior caso e abrir o seletor
@@ -1757,11 +2935,66 @@
 
     // Enquanto transmite via AirPlay, o proprio <video> continua sendo o
     // controle — o WebKit repassa play/pause/seek pro receptor por baixo dos
-    // panos, sem precisar de um ticker separado como o Cast usa. So refletimos
-    // o estado no botao.
+    // panos, sem precisar de um ticker separado como o Cast usa. Aqui só
+    // refletimos o estado no botão e confirmamos a conexão: o seletor nativo
+    // fecha calado, e sem o aviso parecia que o toque não tinha feito nada.
     video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', function() {
-      btn.classList.toggle('active', video.webkitCurrentPlaybackTargetIsWireless);
+      var wireless = video.webkitCurrentPlaybackTargetIsWireless;
+      btn.classList.toggle('active', wireless);
+      if (wireless) {
+        showToast('📡 Transmitindo via AirPlay', 'info');
+        _airplayRepararSePreciso(video);
+      }
     });
+  }
+
+  // Monta a URL assinada que o receptor vai buscar, troca no <video> e
+  // devolve a posicao/estado de reproducao quando o novo buffer carregar.
+  // Trocar o src reinicia o buffer, entao guardamos e restauramos a posicao.
+  function _airplayTrocarSrc(video, info, rota, mediaPath) {
+    var pos = video.currentTime;
+    var tocando = !video.paused;
+    video.addEventListener('loadedmetadata', function retomar() {
+      video.removeEventListener('loadedmetadata', retomar);
+      video.currentTime = pos;
+      if (tocando) video.play().catch(function() {});
+    });
+    video.src = info.midiaBase + (rota === '/api/prepared'
+      ? '/api/prepared?path=' + encodeURIComponent(mediaPath)
+      : info.streamPath) + '&t=' + encodeURIComponent(info.tokens.t);
+    if (currentSubtitlePath && info.tokens.sub) {
+      var track = document.getElementById('subtitleTrack');
+      if (track) {
+        track.src = info.midiaBase + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
+                  + '&t=' + encodeURIComponent(info.tokens.sub);
+      }
+    }
+  }
+
+  // Se a transmissao foi iniciada pelo seletor NATIVO do iOS (ícone do player
+  // da Apple, fora do botão do app), o src ainda é a URL sem token: o receptor
+  // busca ela sem o cookie da sessao, leva 401 e fica preso no "carregando"
+  // pra sempre. Ao detectar a conexão wireless, reassina e troca o src sem
+  // fechar a sessao — o Roku/Apple TV refaz a busca já autorizado.
+  async function _airplayRepararSePreciso(video) {
+    if (!video || !video.src) return;
+    if (/[?&]t=/.test(video.src)) return;                  // nosso botão já assinou
+    if (video.src.indexOf('/api/stream') < 0) return;      // só URL do próprio app
+    if (video._tflixAirplayReparando) return;
+    video._tflixAirplayReparando = true;
+    try {
+      var mediaPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
+      var info = await _fetchMediaToken(video, []);
+      if (!info) { showToast('❌ Não foi possível autorizar o AirPlay', 'error'); return; }
+      var rota = await _routeForCast(mediaPath, false);
+      if (rota === null) return;
+      if (rota === 'preparing') { _watchPrepare(mediaPath); return; }
+      _airplayTrocarSrc(video, info, rota, mediaPath);
+    } catch (e) {
+      console.warn('[AirPlay] falha ao reassinar a URL:', e);
+    } finally {
+      video._tflixAirplayReparando = false;
+    }
   }
 
   async function toggleAirplay() {
@@ -1771,28 +3004,73 @@
     // Troca o src pra versao assinada antes de abrir o seletor: se o usuario
     // escolher o Roku, ele vai buscar essa URL sozinho, sem cookie. Trocar o
     // src reinicia o buffer, entao guardamos e restauramos a posicao.
-    var pos = video.currentTime;
-    var tocando = !video.paused;
     var info = await _fetchMediaToken(video, []);
-    if (info) {
-      video.addEventListener('loadedmetadata', function retomar() {
-        video.removeEventListener('loadedmetadata', retomar);
-        video.currentTime = pos;
-        if (tocando) video.play().catch(function() {});
-      });
-      video.src = info.midiaBase + info.streamPath + '&t=' + encodeURIComponent(info.tokens.t);
-      if (currentSubtitlePath && info.tokens.sub) {
-        var track = document.getElementById('subtitleTrack');
-        if (track) {
-          track.src = info.midiaBase + '/api/subtitle?path=' + encodeURIComponent(currentSubtitlePath)
-                    + '&t=' + encodeURIComponent(info.tokens.sub);
-        }
-      }
+    if (!info) {
+      // Sem o token assinado o receptor nao consegue buscar a midia (ele nao
+      // tem o cookie da sessao) e a TV fica presa no "conectando" pra sempre.
+      // Melhor avisar aqui do que mandar o aparelho pra um beco sem saida.
+      showToast('❌ Não foi possível autorizar o AirPlay', 'error');
+      return;
     }
+    // O seletor nativo precisa do gesto do toque ainda "quente": se o
+    // arquivo precisa de conversao (MKV/E-AC3) e ela ainda não terminou,
+    // não dá pra segurar o usuário aqui — avisa e pede um novo toque quando
+    // ficar pronto (o _watchPrepare mostra o aviso).
+    var mediaPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
+    var rota = await _routeForCast(mediaPath, false);
+    if (rota === null) return;
+    if (rota === 'preparing') {
+      showToast('⏳ Preparando o vídeo para a TV… aviso quando ficar pronto', 'info');
+      return;
+    }
+    _airplayTrocarSrc(video, info, rota, mediaPath);
     // O seletor nativo do iOS precisa ser chamado enquanto o toque do usuario
     // ainda "conta" como gesto ativo — por isso roda logo em seguida, sem mais
     // nenhuma espera depois do fetch acima.
     video.webkitShowPlaybackTargetPicker();
+  }
+
+  // O visual da legenda na TV sai da MESMA escolha da barra (tamanho e cor):
+  // o receiver desenha do jeito que o TextTrackStyle pedir, então o usuário
+  // regula uma vez no computador e vale também no sofá. Chamado no load da
+  // mídia e de novo a cada troca de tamanho/cor com o filme já rolando.
+  function _estiloLegendaCast() {
+    var estilo = new chrome.cast.media.TextTrackStyle();
+    estilo.foregroundColor = subtitleColors[subtitleColorIndex].castColor;
+    estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
+    estilo.fontStyle = chrome.cast.media.TextTrackFontStyle.NORMAL;
+    estilo.fontScale = subtitleSizes[subtitleSizeIndex].castScale;
+    // A caixa vem do backgroundColor, nao da "window": o receiver padrao do
+    // Google ignora windowType/windowColor, e apostar neles deixava a legenda
+    // sem fundo nenhum na TV — branco puro, ilegivel em cena clara.
+    // O preco e perder o canto arredondado: o backgroundColor pinta um
+    // retangulo colado no texto. Fundo visivel vale mais que canto bonito.
+    estilo.backgroundColor = '#000000D9';   // preto a ~85%
+    estilo.windowType = chrome.cast.media.TextTrackWindowType.NONE;
+    // Sombra como seguro: se ate o backgroundColor for ignorado, o texto
+    // ainda se separa do fundo. Onde a caixa aparece, ela some contra o preto.
+    estilo.edgeType = chrome.cast.media.TextTrackEdgeType.DROP_SHADOW;
+    estilo.edgeColor = '#000000FF';
+    return estilo;
+  }
+
+  // Reaplica o estilo na sessão em andamento, sem mexer nas faixas ativas.
+  // "Não mexer" é OMITIR o activeTrackIds (a API rejeita null; não fornecido =
+  // tracks como estão). O receiver aceita trocar o estilo a qualquer momento —
+  // a legenda na TV muda sem recarregar o vídeo.
+  function _aplicarEstiloLegendaCast() {
+    var m = _castMedia();
+    if (!m) return;
+    try {
+      var faixas = (m.activeTrackIds && m.activeTrackIds.length)
+        ? m.activeTrackIds : undefined;
+      m.editTracksInfo(
+        new chrome.cast.media.EditTracksInfoRequest(faixas, _estiloLegendaCast()),
+        function() { console.log('[Cast] estilo da legenda atualizado'); },
+        function(e) { console.warn('[Cast] estilo da legenda falhou:', e); });
+    } catch (e) {
+      console.warn('[Cast] estilo da legenda indisponível:', e);
+    }
   }
 
   async function _sendMediaToCast() {
@@ -1800,49 +3078,96 @@
     var video = document.getElementById('videoPlayer');
     if (!video || !video.src) return;
 
-    var info = await _fetchMediaToken(video, [_castArt.poster, _castArt.fanart].filter(Boolean));
+    var info = await _fetchMediaToken(video, _castImagensDe(_castArt));
     if (!info) {
       showToast('❌ Não foi possível autorizar o envio para a TV', 'error');
       return;
     }
+    var mediaPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
+    var titleEl = document.getElementById('playerMovieName');
+    var titulo = titleEl ? titleEl.textContent : 'TicianoFlix';
+    try {
+      var ok = await _castEnviarMidia(info, mediaPath, currentSubtitlePath,
+                                      titulo, _castArt, video.currentTime);
+      if (!ok) return;
+    } catch (err) {
+      console.warn('[Cast] Load media error:', err);
+      showToast('❌ Erro ao transmitir', 'error');
+      return;
+    }
+    console.log('[Cast] Media loaded on Chromecast');
+    showToast('📡 Transmitindo para Chromecast', 'info');
+    // Pause local video while casting
+    video.pause();
+    _showCastingPanel(true);
+    _prepararProximoDaFila();
+    // Force enable subtitle track after load (some receivers ignore activeTrackIds).
+    // Retry a cada 2s até ~30s: o receiver só associa o track depois que o vídeo
+    // carregou/bufferizou (stream via rclone→nuvem demora a começar).
+    if (currentSubtitlePath) {
+      _forceCastSubtitles(1, 0);
+    }
+  }
+
+  // Envia uma mídia já assinada para a TV. Separado do _sendMediaToCast
+  // porque o próximo episódio da fila não passa pelo <video> local: título,
+  // arte, legenda e posição vêm do item da fila.
+  // Devolve false quando a rota não ficou pronta (conversão falhou etc.).
+  async function _castEnviarMidia(info, mediaPath, subPath, titulo, arte, tempo) {
+    // MKV/E-AC3/HEVC não toca direto nos receptores: antes de a TV buscar
+    // os bytes, o servidor gera o MP4 (H.264 + AAC) e a sessão espera.
+    var rota = await _routeForCast(mediaPath, true);
+    if (rota !== '/api/stream' && rota !== '/api/prepared') return false;
     var baseUrl = info.baseUrl, castTokens = info.tokens;
 
     // Construct absolute URL for Chromecast (over HTTP)
-    var contentUrl = baseUrl + info.streamPath + '&t=' + encodeURIComponent(castTokens.t);
+    var contentUrl = baseUrl + (rota === '/api/prepared'
+      ? '/api/prepared?path=' + encodeURIComponent(mediaPath)
+      : info.streamPath) + '&t=' + encodeURIComponent(castTokens.t);
 
     // Build media info
     var mediaInfo = new chrome.cast.media.MediaInfo(contentUrl, 'video/mp4');
     mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
 
     // MovieMediaMetadata no lugar do generico: e o que faz a TV desenhar a
-    // ficha do filme (arte, ano, estudio) em vez de uma tela vazia com o titulo.
+    // ficha (arte, ano, estudio) em vez de uma tela vazia com o titulo.
+    // Episódio entra com a ficha da série: o arquivo não tem pôster próprio.
     var meta = new chrome.cast.media.MovieMediaMetadata();
-    var titleEl = document.getElementById('playerMovieName');
-    meta.title = titleEl ? titleEl.textContent : 'TicianoFlix';
-    if (_castArt.year) meta.releaseDate = String(_castArt.year) + '-01-01';
-    if (_castArt.studio) meta.studio = _castArt.studio;
-    if (_castArt.plot) meta.subtitle = _castArt.plot;
-    else if (_castArt.year) meta.subtitle = String(_castArt.year);
+    meta.title = titulo || 'TicianoFlix';
+    arte = arte || {};
+    if (arte.year) meta.releaseDate = String(arte.year) + '-01-01';
+    if (arte.studio) meta.studio = arte.studio;
+    if (arte.plot) meta.subtitle = arte.plot;
+    else if (arte.year) meta.subtitle = String(arte.year);
 
     // As imagens tambem saem por /api/stream: sem o token assinado a TV recebe
     // 401 e fica sem arte.
     var imgs = castTokens.imgs || {};
-    var arte = [];
-    [_castArt.fanart, _castArt.poster].forEach(function(caminho) {
+    var arteImgs = [];
+    [arte.fanart, arte.poster].forEach(function(caminho) {
       if (!caminho || !imgs[caminho]) return;
-      arte.push(new chrome.cast.Image(
+      arteImgs.push(new chrome.cast.Image(
         baseUrl + '/api/stream?path=' + encodeURIComponent(caminho)
         + '&t=' + encodeURIComponent(imgs[caminho])));
     });
-    if (arte.length) meta.images = arte;
+    if (arteImgs.length) meta.images = arteImgs;
     mediaInfo.metadata = meta;
-    if (video.duration) mediaInfo.duration = video.duration;
+
+    // A duração do <video> local só vale quando é o MESMO arquivo — no
+    // episódio da fila o player de baixo ainda é o anterior.
+    var video = document.getElementById('videoPlayer');
+    var localPath = '';
+    try {
+      localPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
+    } catch (e) { /* sem src local, sem duração */ }
+    if (video && video.duration && localPath === mediaPath) {
+      mediaInfo.duration = video.duration;
+    }
 
     // Add subtitle track if available
-    var currentSubPath = currentSubtitlePath;
-    if (currentSubPath) {
-      console.log('[Cast] Adding subtitle track:', currentSubPath);
-      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(currentSubPath)
+    if (subPath) {
+      console.log('[Cast] Adding subtitle track:', subPath);
+      var subUrl = baseUrl + '/api/subtitle?path=' + encodeURIComponent(subPath)
                  + '&t=' + encodeURIComponent(castTokens.sub || '');
       var track = new chrome.cast.media.Track(1, chrome.cast.media.TrackType.TEXT);
       track.trackContentId = subUrl;
@@ -1851,63 +3176,141 @@
       track.language = 'pt';
       track.subtype = chrome.cast.media.TextTrackType.SUBTITLES;
       mediaInfo.tracks = [track];
-      // Legenda no espirito da Apple TV: texto branco sobre caixa escura, sem
-      // contorno nas letras (contorno e o visual "Classic"). O canto
-      // arredondado nao da pra reproduzir — veja o comentario do backgroundColor.
-      var estilo = new chrome.cast.media.TextTrackStyle();
-      estilo.foregroundColor = '#FFFFFFFF';
-      estilo.fontGenericFamily = chrome.cast.media.TextTrackFontGenericFamily.SANS_SERIF;
-      estilo.fontStyle = chrome.cast.media.TextTrackFontStyle.NORMAL;
-      // 0.8 do tamanho padrao do receiver: a legenda do Cast sai grande demais
-      // numa TV vista da distancia normal de sofa.
-      estilo.fontScale = 0.8;
-      // A caixa vem do backgroundColor, nao da "window": o receiver padrao do
-      // Google ignora windowType/windowColor, e apostar neles deixava a legenda
-      // sem fundo nenhum na TV — branco puro, ilegivel em cena clara.
-      // O preco e perder o canto arredondado: o backgroundColor pinta um
-      // retangulo colado no texto. Fundo visivel vale mais que canto bonito.
-      estilo.backgroundColor = '#000000D9';   // preto a ~85%
-      estilo.windowType = chrome.cast.media.TextTrackWindowType.NONE;
-      // Sombra como seguro: se ate o backgroundColor for ignorado, o texto
-      // ainda se separa do fundo. Onde a caixa aparece, ela some contra o preto.
-      estilo.edgeType = chrome.cast.media.TextTrackEdgeType.DROP_SHADOW;
-      estilo.edgeColor = '#000000FF';
-      mediaInfo.textTrackStyle = estilo;
+      // Legenda no espirito da Apple TV: texto sobre caixa escura, sem
+      // contorno nas letras (contorno e o visual "Classic"). Tamanho e cor
+      // vêm da escolha do usuário na barra — ver _estiloLegendaCast.
+      mediaInfo.textTrackStyle = _estiloLegendaCast();
       console.log('[Cast] Subtitle URL:', subUrl);
-    } else {
-      console.log('[Cast] No subtitle track available (currentSubtitlePath is null)');
     }
 
     var request = new chrome.cast.media.LoadRequest(mediaInfo);
     // activeTrackIds vive no LoadRequest, nao no MediaInfo — estava no lugar
     // errado, e por isso a legenda dependia inteiramente do editTracksInfo
     // depois do load.
-    if (currentSubPath) {
+    if (subPath) {
       request.activeTrackIds = [1];
     }
     // Start from current position if the video has played
-    if (video.currentTime > 0) {
-      request.currentTime = video.currentTime;
+    if (tempo > 0) {
+      request.currentTime = tempo;
     }
 
-    _castSession.loadMedia(request)
-      .then(function() {
-        console.log('[Cast] Media loaded on Chromecast');
-        showToast('📡 Transmitindo para Chromecast', 'info');
-        // Pause local video while casting
-        video.pause();
-        _showCastingPanel(true);
-        // Force enable subtitle track after load (some receivers ignore activeTrackIds).
-        // Retry a cada 2s até ~30s: o receiver só associa o track depois que o vídeo
-        // carregou/bufferizou (stream via rclone→Drive demora a começar).
-        if (currentSubPath) {
-          _forceCastSubtitles(1, 0);
-        }
-      })
-      .catch(function(err) {
-        console.warn('[Cast] Load media error:', err);
-        showToast('❌ Erro ao transmitir', 'error');
+    await _castSession.loadMedia(request);
+    // Arma o "próximo episódio": quando a TV avisar que acabou (IDLE/
+    // finished), a fila decide se emenda o seguinte.
+    _castProximoArmado = true;
+    return true;
+  }
+
+  // Emenda o próximo episódio da fila quando o atual termina na TV. A fila
+  // nasce do playMovie (página da série ou da temporada) — ver
+  // _arteEPlaylistDoEpisodio.
+  function _castAvancarFila() {
+    if (!_castPlaylist || _castAvancando) return;
+    var proximo = _castPlaylist.itens[_castPlaylist.idx + 1];
+    if (!proximo) {
+      showToast('🏁 Fim dos episódios — não há próximo', 'info');
+      return;
+    }
+    _castAvancando = true;
+    _castPlaylist.idx += 1;
+    showToast('▶ Próximo episódio: ' + proximo.title, 'info');
+    _castCarregarEpisodio(proximo).then(function(ok) {
+      if (!ok) showToast('❌ Não foi possível tocar o próximo episódio', 'error');
+    }).catch(function(e) {
+      console.warn('[Cast] próximo episódio falhou:', e);
+      showToast('❌ Não foi possível tocar o próximo episódio', 'error');
+    }).then(function() {
+      _castAvancando = false;
+    });
+  }
+
+  // Vai preparando o próximo episódio da fila em segundo plano: quando ele
+  // entrar (fim do atual), a conversão já estará pronta (ou quase) e o
+  // usuário não fica olhando a tela final esperando o preparo terminar.
+  function _prepararProximoDaFila() {
+    if (!_castPlaylist) return;
+    var proximo = _castPlaylist.itens[_castPlaylist.idx + 1];
+    if (!proximo) return;
+    _postPrepare(proximo.path);
+  }
+
+  async function _castCarregarEpisodio(item) {
+    if (!_castSession) return false;
+    var info = await _fetchMediaTokenDe(item.path, item.sub || '', _castImagensDe(item.arte));
+    if (!info) return false;
+    var ok = await _castEnviarMidia(info, item.path, item.sub || '',
+                                    item.title, item.arte, 0);
+    if (!ok) return false;
+    // O painel (título, capa, legenda) passa a valer para o episódio novo,
+    // e o progresso salvo é o dele (chave por arquivo).
+    currentVideoPath = item.path;
+    currentSubtitlePath = item.sub || null;
+    _currentPlayFolder = item.path;
+    if (item.arte) _castArt = item.arte;
+    var tit = document.getElementById('playerMovieName');
+    if (tit) tit.textContent = item.title;
+    _showCastingPanel(true);
+    if (item.sub) _forceCastSubtitles(1, 0);
+    _prepararProximoDaFila();
+    return true;
+  }
+
+  // Arte da série + fila de episódios quando o vídeo é um episódio da série
+  // aberta (o arquivo não tem pôster próprio — a capa é a da série). Sem
+  // série reconhecida, tenta a listagem de pasta aberta por último.
+  function _arteEPlaylistDoEpisodio(filePath) {
+    _castPlaylist = null;
+    var eps = _serieAtual && _serieAtual.episodios;
+    if (eps && eps.length) {
+      var idx = -1;
+      for (var i = 0; i < eps.length; i++) {
+        if (eps[i].path === filePath) { idx = i; break; }
+      }
+      if (idx >= 0) {
+        var arte = {
+          folder: filePath.substring(0, filePath.lastIndexOf('/')),
+          poster: _serieAtual.poster,
+          fanart: _serieAtual.fanart,
+          year: _serieAtual.year,
+          studio: null,
+          plot: _serieAtual.overview,
+        };
+        if (!_castArt.poster && !_castArt.fanart) _castArt = arte;
+        _castPlaylist = {
+          itens: eps.map(function(e) {
+            return { path: e.path, title: e.title, sub: e.subtitle || null, arte: arte };
+          }),
+          idx: idx,
+        };
+        return;
+      }
+    }
+    _castPlaylist = _playlistDaPastaAberta(filePath);
+  }
+
+  // Fila a partir da listagem da pasta (temporada) aberta: ordem da pasta,
+  // só quando o nome parece episódio (S01E02...) — filme solto não emenda.
+  function _playlistDaPastaAberta(filePath) {
+    var pasta = _pastaAtual && _pastaAtual.path;
+    if (!pasta || filePath.indexOf(pasta + '/') !== 0) return null;
+    var nome = filePath.slice(pasta.length + 1);
+    if (nome.indexOf('/') !== -1 || !/S\d{1,2}E\d{1,2}/i.test(nome)) return null;
+    var idx = -1;
+    var itens = [];
+    (_pastaAtual.videos || []).forEach(function(v) {
+      var n = v.Name || v.name || '';
+      if (!n || !/\.(mp4|mkv|avi|mov|m4v|webm)$/i.test(n)) return;
+      if (n === nome) idx = itens.length;
+      itens.push({
+        path: pasta + '/' + n,
+        title: n.replace(/\.[^.]+$/, '').replace(/[._]/g, ' '),
+        sub: null,
+        arte: _castArt,
       });
+    });
+    if (idx < 0 || itens.length < 2) return null;
+    return { itens: itens, idx: idx };
   }
 
   function clearBufferTimer() {
@@ -1916,7 +3319,7 @@
 
   // Tenta habilitar a legenda no receiver até ~30s (a cada 2s).
   // O receiver do Chromecast só associa o track de texto depois que o vídeo
-  // está carregado — com stream via rclone→Drive isso pode levar vários segundos.
+  // está carregado — com stream via rclone→nuvem isso pode levar vários segundos.
   function _forceCastSubtitles(trackId, attempt) {
     if (attempt > 15) {
       console.warn('[Cast] Subtitles: desistindo após ' + attempt + ' tentativas');
@@ -2014,7 +3417,7 @@
     _saveProgress(Number(posicao) || 0, Number(duracao) || 0);
   };
 
-  function playMovie(filePath, movieName, subtitlePath, resumePosition) {
+  function playMovie(filePath, movieName, subtitlePath, resumePosition, progressKey) {
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
     const loading = document.getElementById('playerLoading');
@@ -2022,8 +3425,10 @@
 
     currentVideoPath = filePath;
     currentSubtitlePath = subtitlePath || null;
-    // Derive folder path from video file path
-    _currentPlayFolder = filePath.substring(0, filePath.lastIndexOf('/'));
+    // Chave do progresso: por padrão a pasta do arquivo (filme em pasta, como
+    // sempre). Episódios passam o path do próprio arquivo — cada episódio tem
+    // seu progresso, em vez de todos dividirem a linha da temporada.
+    _currentPlayFolder = progressKey || filePath.substring(0, filePath.lastIndexOf('/'));
 
     // Na TV quem toca e o player nativo. Fica depois de _currentPlayFolder de
     // proposito: e dele que _saveProgress depende quando o app devolve a
@@ -2044,7 +3449,7 @@
     // Limpa qualquer timer de buffer pendente
     clearBufferTimer();
 
-    // Download de fundo só faz sentido pro Drive: ele existe para forçar o
+    // Download de fundo só faz sentido pra nuvem: ele existe para forçar o
     // cache VFS do rclone. Num arquivo local isso leria o filme inteiro do
     // disco à toa, disputando com a própria reprodução.
     const _local = isLocalPath(filePath);
@@ -2055,6 +3460,9 @@
     if (_castArt.folder !== filePath.substring(0, filePath.lastIndexOf('/'))) {
       _castArt = { folder: null, poster: null, fanart: null, year: null, studio: null, plot: null };
     }
+    // Episódio: capa da série (o arquivo não tem pôster) e fila com os
+    // episódios vizinhos para a transmissão emendar sozinha.
+    _arteEPlaylistDoEpisodio(filePath);
 
     // Show loading state
     video.style.display = 'none';
@@ -2062,7 +3470,7 @@
     document.getElementById('playerError').style.display = 'none';
     loading.querySelector('span').textContent = _local
       ? 'Abrindo o vídeo...'
-      : 'Preparando vídeo do Google Drive...';
+      : 'Preparando vídeo da nuvem...';
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -2202,7 +3610,7 @@
         clearBufferTimer();
         showPlayerError(_local
           ? 'O servidor demorou a responder. A fonte deste filme ainda está conectada?'
-          : 'O servidor demorou a responder. Verifique sua conexão com o Google Drive.');
+          : 'O servidor demorou a responder. Verifique sua conexão com a nuvem.');
       }
     }, 25000);
 
@@ -2301,8 +3709,16 @@
     if (m) {
       // Na TV a faixa e ligada/desligada pelo receiver, nao pelo <track> local.
       const ativa = (m.activeTrackIds || []).indexOf(1) !== -1;
-      m.editTracksInfo(new chrome.cast.media.EditTracksInfoRequest(ativa ? [] : [1]),
-        function() { btn.classList.toggle('active', !ativa); },
+      const novoTrack = ativa ? [] : [1];
+      // Ao ligar, o estilo vai junto: sem isto o receiver as vezes volta ao
+      // visual padrao do Google, ignorando o que foi mandado no load.
+      m.editTracksInfo(
+        new chrome.cast.media.EditTracksInfoRequest(novoTrack, _estiloLegendaCast()),
+        function() {
+          btn.classList.toggle('active', !ativa);
+          const cc = document.getElementById('castingCcBtn');
+          if (cc) cc.classList.toggle('active', !ativa);
+        },
         function(e) { console.warn('[Cast] editTracksInfo falhou:', e); });
       return;
     }
@@ -2402,11 +3818,14 @@
   let subtitleSizeIndex = 2;
   // Tamanho proporcional à altura do player (fração da altura visível).
   // Ex.: 0.05 = 5% da altura → fullscreen grande, janela pequena.
+  // `castScale` leva a MESMA escolha para a TV: vira o fontScale do
+  // TextTrackStyle do receiver (1.0 = padrão do Google). O 0.8 de antes —
+  // que já saía grande numa TV vista do sofá — virou o "Grande".
   const subtitleSizes = [
-    { ratio: 0.035, label: 'Peq' },
-    { ratio: 0.045, label: 'Méd' },
-    { ratio: 0.06,  label: 'Gde' },
-    { ratio: 0.08,  label: 'Ext' },
+    { ratio: 0.035, label: 'Peq', nome: 'Pequena',      castScale: 0.5 },
+    { ratio: 0.045, label: 'Méd', nome: 'Média',        castScale: 0.65 },
+    { ratio: 0.06,  label: 'Gde', nome: 'Grande',       castScale: 0.8 },
+    { ratio: 0.08,  label: 'Ext', nome: 'Extra grande', castScale: 1.05 },
   ];
 
   // Calcula o px da legenda com base na altura real do player
@@ -2421,25 +3840,115 @@
     overlay.style.setProperty('--sub-size', px + 'px');
   }
 
-  function cycleSubtitleSize() {
-    subtitleSizeIndex = (subtitleSizeIndex + 1) % subtitleSizes.length;
-    const size = subtitleSizes[subtitleSizeIndex];
-    document.getElementById('subtitleSizeLabel').textContent = size.label;
-    applySubtitleSize();
-  }
-
   let subtitleColorIndex = 0;
   const subtitleColors = [
-    { color: '#ffd700', label: 'Amarelo' },
-    { color: '#ffffff', label: 'Branco' },
+    { color: '#ffd700', label: 'Amar', nome: 'Amarelo', castColor: '#FFD700FF' },
+    { color: '#ffffff', label: 'Bran', nome: 'Branco',  castColor: '#FFFFFFFF' },
   ];
-  function cycleSubtitleColor() {
-    subtitleColorIndex = (subtitleColorIndex + 1) % subtitleColors.length;
-    const c = subtitleColors[subtitleColorIndex];
-    document.getElementById('subtitleColorLabel').textContent = c.label;
-    document.getElementById('subtitleColorIcon').style.background = c.color;
-    document.querySelector('.player-overlay').style.setProperty('--sub-color', c.color);
+
+  // Escolha lembrada entre sessões: quem regula a legenda uma vez não quer
+  // regular de novo a cada filme. O valor entra antes da primeira pintura dos
+  // menus (os _renderSubtitleMenu logo abaixo), então a UI já nasce certa.
+  try {
+    const ss = parseInt(localStorage.getItem('ticianoflix_sub_size'), 10);
+    if (ss >= 0 && ss < subtitleSizes.length) subtitleSizeIndex = ss;
+    const sc = parseInt(localStorage.getItem('ticianoflix_sub_color'), 10);
+    if (sc >= 0 && sc < subtitleColors.length) subtitleColorIndex = sc;
+  } catch (e) { /* storage indisponível: segue no padrão */ }
+
+  // Espelha a escolha atual nos botões da barra e no rótulo do painel de
+  // transmissão — tudo num lugar só, para nenhum ficar dessincronizado.
+  function _syncSubtitleControls() {
+    const size = subtitleSizes[subtitleSizeIndex];
+    const cor = subtitleColors[subtitleColorIndex];
+    const sizeLabel = document.getElementById('subtitleSizeLabel');
+    if (sizeLabel) sizeLabel.textContent = size.label;
+    const colorLabel = document.getElementById('subtitleColorLabel');
+    if (colorLabel) colorLabel.textContent = cor.label;
+    const colorIcon = document.getElementById('subtitleColorIcon');
+    if (colorIcon) colorIcon.style.background = cor.color;
+    const overlay = document.querySelector('.player-overlay');
+    if (overlay) overlay.style.setProperty('--sub-color', cor.color);
+    const castLabel = document.getElementById('castingSizeLabel');
+    if (castLabel) castLabel.textContent = size.label;
   }
+
+  // Menuzinho ancorado no proprio botao (ver .ctrl-sub-menu no CSS), em vez
+  // de ciclar o valor a cada clique — com so 2-4 opcoes, escolher direto da
+  // lista e mais rapido que adivinhar quantos cliques faltam.
+  function _renderSubtitleMenu(menuId, opcoes, indiceAtual, aoEscolher) {
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    menu.innerHTML = opcoes.map(function (op, i) {
+      const swatch = op.color
+        ? '<span class="subtitle-swatch" style="background:' + op.color + '"></span> '
+        : '';
+      return '<button type="button" class="ctrl-sub-menu-item'
+        + (i === indiceAtual ? ' active' : '') + '" onclick="' + aoEscolher + '(' + i + ')">'
+        + swatch + op.nome + '</button>';
+    }).join('');
+  }
+
+  function fecharSubtitleMenus(exceto) {
+    ['subtitleSizeMenu', 'subtitleColorMenu'].forEach(function (id) {
+      if (id === exceto) return;
+      const m = document.getElementById(id);
+      if (m) m.classList.remove('aberto');
+    });
+  }
+
+  function toggleSubtitleSizeMenu(ev) {
+    if (ev) ev.stopPropagation();
+    fecharSubtitleMenus('subtitleSizeMenu');
+    document.getElementById('subtitleSizeMenu').classList.toggle('aberto');
+    showControls();
+  }
+
+  function selectSubtitleSize(i) {
+    subtitleSizeIndex = i;
+    try { localStorage.setItem('ticianoflix_sub_size', String(i)); } catch (e) {}
+    _syncSubtitleControls();
+    applySubtitleSize();
+    _renderSubtitleMenu('subtitleSizeMenu', subtitleSizes, subtitleSizeIndex, 'selectSubtitleSize');
+    fecharSubtitleMenus();
+    // Na transmissão quem desenha a legenda é a TV: a escolha vai junto, ao
+    // vivo, via TextTrackStyle (ver _aplicarEstiloLegendaCast).
+    if (_isCasting()) {
+      _aplicarEstiloLegendaCast();
+      showToast('🔠 Legenda na TV: ' + subtitleSizes[i].nome, 'info');
+    }
+  }
+
+  // Botão "Aa" do painel de transmissão: cicla Peq > Méd > Gde > Ext. O toast
+  // é a única confirmação — a TV está do outro lado da sala.
+  function cycleSubtitleSize() {
+    selectSubtitleSize((subtitleSizeIndex + 1) % subtitleSizes.length);
+  }
+
+  function toggleSubtitleColorMenu(ev) {
+    if (ev) ev.stopPropagation();
+    fecharSubtitleMenus('subtitleColorMenu');
+    document.getElementById('subtitleColorMenu').classList.toggle('aberto');
+    showControls();
+  }
+
+  function selectSubtitleColor(i) {
+    subtitleColorIndex = i;
+    try { localStorage.setItem('ticianoflix_sub_color', String(i)); } catch (e) {}
+    _syncSubtitleControls();
+    _renderSubtitleMenu('subtitleColorMenu', subtitleColors, subtitleColorIndex, 'selectSubtitleColor');
+    fecharSubtitleMenus();
+    // Mesma viagem do tamanho: a cor escolhida troca na TV na hora.
+    if (_isCasting()) {
+      _aplicarEstiloLegendaCast();
+      showToast('🎨 Legenda na TV: ' + subtitleColors[i].nome, 'info');
+    }
+  }
+
+  _renderSubtitleMenu('subtitleSizeMenu', subtitleSizes, subtitleSizeIndex, 'selectSubtitleSize');
+  _renderSubtitleMenu('subtitleColorMenu', subtitleColors, subtitleColorIndex, 'selectSubtitleColor');
+  // Nasce com o que ficou salvo (rótulos, amostra de cor e a legenda local).
+  _syncSubtitleControls();
 
   function setStreamStatus(type, text) {
     const el = document.getElementById('streamStatus');
@@ -2561,6 +4070,13 @@
   const SPEEDS = [1, 1.5, 2, 0.5];
   let _speedIndex = 0;
   function cycleSpeed() {
+    // Na transmissão a linha do tempo é do receptor, e a API de envio do
+    // Cast não muda a taxa de reprodução: avisar é melhor que mexer só no
+    // player local (que está parado) e nada acontecer na TV.
+    if (_castMedia()) {
+      showToast('⏩ A velocidade vale só no player local, não na transmissão', 'info');
+      return;
+    }
     _speedIndex = (_speedIndex + 1) % SPEEDS.length;
     const v = document.getElementById('videoPlayer');
     if (v) v.playbackRate = SPEEDS[_speedIndex];
@@ -2598,8 +4114,11 @@
   // Toque fora fecha o menu — sem isto ele ficaria aberto sobre o filme.
   document.addEventListener('click', function(e) {
     const m = document.getElementById('playerMore');
-    if (!m || !m.classList.contains('ativo')) return;
-    if (!m.contains(e.target) && !e.target.closest('.ctrl-more')) fecharPlayerMore();
+    if (m && m.classList.contains('ativo')
+        && !m.contains(e.target) && !e.target.closest('.ctrl-more')) {
+      fecharPlayerMore();
+    }
+    if (!e.target.closest('.ctrl-sub-wrap')) fecharSubtitleMenus();
   });
 
   function showControls() {
@@ -2678,10 +4197,12 @@
   // fica visível é o que se usa toda hora (Atualizar e Sair).
   function openSettingsModal() {
     document.getElementById('settingsModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
   }
 
   function closeSettingsModal() {
     document.getElementById('settingsModal').classList.remove('active');
+    document.body.style.overflow = '';
   }
 
   // Sai do hub e abre o painel escolhido — dois modais abertos ao mesmo tempo
@@ -2695,6 +4216,109 @@
     if (e.target === this) closeSettingsModal();
   });
 
+  // ==================== INSTALAR NO CELULAR ====================
+  // As instrucoes vivem no desktop, para configurar o celular. O endereco
+  // .local e as portas vem do servidor (window.__NET__) — e o mesmo nome que
+  // o certificado HTTPS cobre, entao nao ha como divergir do que esta no ar.
+  let _phoneUrls = {};
+
+  function openPhoneModal() {
+    document.getElementById('phoneModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _renderPhone();
+  }
+
+  function closePhoneModal() {
+    document.getElementById('phoneModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('phoneModal').addEventListener('click', function (e) {
+    if (e.target === this) closePhoneModal();
+  });
+
+  // Copia sem depender da Clipboard API: ela nao existe em http:// pela rede
+  // (so localhost e HTTPS contam como contexto seguro). O textarea e o plano B.
+  function _copyText(texto, btn) {
+    const aviso = () => {
+      if (!btn) return;
+      const antes = btn.textContent;
+      btn.textContent = 'Copiado!';
+      setTimeout(() => { btn.textContent = antes; }, 1400);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(texto).then(aviso).catch(() => _copyTextFallback(texto, aviso));
+    } else {
+      _copyTextFallback(texto, aviso);
+    }
+  }
+
+  function _copyTextFallback(texto, aviso) {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); aviso(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function copyPhone(btn, qual) {
+    _copyText(_phoneUrls[qual] || '', btn);
+  }
+
+  function _renderPhone() {
+    const box = document.getElementById('phoneBox');
+    const net = window.__NET__ || {};
+    const host = net.host || '';
+    const httpsPort = net.httpsPort || 0;
+    const httpPort = net.httpPort || 9187;
+    const ip = net.ip || '';
+    if (!host || !httpsPort) {
+      box.innerHTML = '<div class="user-msg err">O HTTPS não subiu nesta sessão — instalar o app no celular depende dele. Confira o log do servidor.</div>';
+      return;
+    }
+    const porta = httpsPort === 443 ? '' : ':' + httpsPort;
+    const appUrl = 'https://' + host + porta;
+    const ipUrl = ip ? 'https://' + ip + porta : appUrl;
+    const caUrl = 'http://' + host + ':' + httpPort + '/ca.crt';
+    _phoneUrls = { app: appUrl, ip: ipUrl, ca: caUrl };
+
+    box.innerHTML =
+      '<div class="phone-url">'
+      + '<code>' + escHtml(appUrl) + '</code>'
+      + '<button class="user-btn" onclick="copyPhone(this, \'app\')">Copiar</button>'
+      + '</div>'
+      + '<div class="src-hint">O celular precisa estar no mesmo Wi-Fi do computador. '
+      + 'Use este endereço em vez do IP: o nome .local continua valendo mesmo se o roteador trocar o IP do Mac.</div>'
+
+      + '<div class="user-section-title">iPhone / iPad</div>'
+      + '<ol class="phone-steps">'
+      + '<li>Instale o certificado do app: abra <a href="' + escHtml(caUrl) + '"><code>' + escHtml(caUrl) + '</code></a> '
+      + 'no Safari e permita o download. Depois vá em Ajustes › Geral › VPN e Gerenciamento de Dispositivo, instale o perfil '
+      + 'e ative a confiança em Ajustes › Geral › Sobre › Ajustes de Confiança do Certificado.</li>'
+      + '<li>Abra <code>' + escHtml(appUrl) + '</code> no Safari — deve abrir sem aviso de certificado.</li>'
+      + '<li>Toque em Compartilhar › Adicionar à Tela de Início. O app entra na tela inicial com ícone e nome próprios.</li>'
+      + '</ol>'
+
+      + '<div class="user-section-title">Android</div>'
+      + '<ol class="phone-steps">'
+      + '<li>Instale o certificado do app: abra <a href="' + escHtml(caUrl) + '"><code>' + escHtml(caUrl) + '</code></a> '
+      + 'no Chrome. Depois, nas Configurações do Android, busque "certificado" › Instalar certificado › Certificado de CA e escolha o arquivo baixado.</li>'
+      + '<li>Abra <code>' + escHtml(appUrl) + '</code> no Chrome.</li>'
+      + '<li>Menu ⋮ › Instalar app (ou Adicionar à tela inicial). O Android cria um app de verdade, com ícone próprio.</li>'
+      + '</ol>'
+      + '<div class="src-hint">Nomes <code>.local</code> só resolvem no Android 12 ou mais novo — em aparelhos mais antigos, use o endereço por IP abaixo.</div>'
+
+      + '<div class="phone-alt">'
+      + 'Não conseguiu pelo nome? Use o IP: <code>' + escHtml(ipUrl) + '</code> '
+      + '<button class="user-btn" onclick="copyPhone(this, \'ip\')">Copiar</button>'
+      + '<div>O arquivo é só a parte pública do certificado HTTPS deste computador (gerado pelo mkcert) — '
+      + 'o celular passa a confiar no site, e a chave privada nunca sai daqui.</div>'
+      + '</div>';
+  }
+
   // ==================== FONTES ====================
   // Prefixo logico das fontes locais (espelha LOCAL_ROOT no servidor).
   const LOCAL_ROOT = '/Local';
@@ -2706,11 +4330,13 @@
 
   function openSourcesModal() {
     document.getElementById('sourcesModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
     _loadSources();
   }
 
   function closeSourcesModal() {
     document.getElementById('sourcesModal').classList.remove('active');
+    document.body.style.overflow = '';
   }
 
   document.getElementById('sourcesModal').addEventListener('click', function (e) {
@@ -2741,21 +4367,21 @@
     let html = '<div class="user-section-title">No acervo</div>';
 
     sources.forEach(src => {
-      const isDrive = src.kind === 'drive';
+      const isCloud = src.kind === 'cloud';
       const offline = src.online === false;
       html += '<div class="user-row src-row">'
         + '<div class="src-main">'
         + '<div class="user-name">' + sourceIcon(src.kind) + ' ' + escHtml(src.name)
-        + '<span class="user-tag ' + (isDrive ? 'drive' : 'local') + '">' + (isDrive ? 'nuvem' : 'local') + '</span>'
+        + '<span class="user-tag ' + (isCloud ? 'cloud' : 'local') + '">' + (isCloud ? 'nuvem' : 'local') + '</span>'
         + (offline ? '<span class="user-tag offline">desconectada</span>' : '')
         + '</div>'
         + (src.root ? '<div class="src-path">' + escHtml(src.root) + '</div>' : '')
-        + '<div class="src-counts">' + src.genres + (src.genres === 1 ? ' gênero · ' : ' gêneros · ')
+        + '<div class="src-counts">'
         + src.movies + (src.movies === 1 ? ' filme' : ' filmes') + '</div>'
         + '</div>'
         + '<button class="user-btn" title="Escanear só esta fonte" onclick="scanSource(decodeURIComponent(\'' + enc(src.id) + '\'))">'
         + '<svg class="icon-svg"><use href="#i-refresh"></use></svg></button>'
-        + (isDrive ? '' :
+        + (isCloud ? '' :
             '<button class="user-btn danger" id="srcDel-' + enc(src.id) + '" '
             + 'title="Tirar do acervo (os arquivos no disco não são apagados)" '
             + 'onclick="removeSource(decodeURIComponent(\'' + enc(src.id) + '\'), decodeURIComponent(\'' + enc(src.name) + '\'))">'
@@ -2785,11 +4411,13 @@
       html += '</div>';
     }
 
+    const nomeBiblioteca = (window.__LOGICAL_ROOT__ || '/Mediaflix').slice(1);
     html += '<div class="user-section-title">Adicionar uma pasta</div>'
-      + '<div class="src-hint">A pasta precisa ter uma pasta <b>Mediaflix</b> dentro '
-      + '(ou até dois níveis abaixo), organizada como no Drive:<br>'
-      + '<code>Mediaflix / Gênero / Filme (ano) / filme.mkv</code> — com o '
-      + '<code>.nfo</code> e o <code>poster.jpg</code> junto do vídeo.</div>'
+      + '<div class="src-hint">A pasta precisa ter uma pasta <b>' + escHtml(nomeBiblioteca) + '</b> dentro '
+      + '(ou até dois níveis abaixo), com os filmes nela:<br>'
+      + '<code>' + escHtml(nomeBiblioteca) + ' / Filme (ano) / filme.mkv</code> — com o '
+      + '<code>.nfo</code> e o <code>poster.jpg</code> junto do vídeo. '
+      + 'Arquivo solto também vale, e as tags você cria no app.</div>'
       + '<div class="user-form">'
       + '<input type="text" id="srcName" placeholder="Nome (ex.: HD Externo)" autocomplete="off">'
       + '<input type="text" id="srcPath" placeholder="Caminho (ex.: /Volumes/MeuHD/Filmes)" autocomplete="off">'
@@ -2900,7 +4528,7 @@
         const label = document.getElementById('logoutLabel');
         if (label) label.textContent = 'Sair (' + _me.username + ')';
         if (_me.role === 'admin') {
-          ['settingsUsers', 'settingsSources', 'settingsScrape', 'settingsBranding'].forEach(id => {
+          ['settingsUsers', 'settingsSources', 'settingsBranding', 'settingsBackup'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
@@ -2911,11 +4539,13 @@
 
   function openUsersModal() {
     document.getElementById('usersModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
     _loadUsers();
   }
 
   function closeUsersModal() {
     document.getElementById('usersModal').classList.remove('active');
+    document.body.style.overflow = '';
   }
 
   document.getElementById('usersModal').addEventListener('click', function (e) {
@@ -2952,11 +4582,15 @@
       html += '<div class="user-row">'
         + '<span class="user-name">' + n + '</span>'
         + (isAdmin ? '<span class="user-tag admin">admin</span>' : '')
+        + (u.infantil ? '<span class="user-tag infantil">infantil</span>' : '')
         + (isMe ? '<span class="user-tag me">você</span>' : '')
         + '<button class="user-btn" title="' + (isAdmin ? 'Tornar usuário comum' : 'Tornar administrador') + '" '
         + 'onclick="setUserRole(\'' + n + '\', \'' + (isAdmin ? 'user' : 'admin') + '\')">'
         + (isAdmin ? '<svg class="icon-svg"><use href="#i-user"></use></svg>' : '<svg class="icon-svg"><use href="#i-crown"></use></svg>') + '</button>'
         + '<button class="user-btn" title="Redefinir senha" onclick="togglePwForm(\'' + n + '\')"><svg class="icon-svg"><use href="#i-key"></use></svg></button>'
+        + (isMe ? '' : '<button class="user-btn" title="' + (u.infantil ? 'Desativar perfil infantil' : 'Ativar perfil infantil') + '" '
+          + 'onclick="setUserInfantil(\'' + n + '\', ' + (!u.infantil) + ')">'
+          + '<svg class="icon-svg"><use href="#i-user"></use></svg></button>')
         + (isMe ? '' : '<button class="user-btn danger" title="Remover conta" onclick="removeUser(\'' + n + '\')"><svg class="icon-svg"><use href="#i-trash"></use></svg></button>')
         + '</div>'
         + '<div class="user-form" id="pw-' + n + '" style="display:none">'
@@ -2970,6 +4604,7 @@
       + '<input type="text" id="newUser" placeholder="usuário" autocapitalize="none" spellcheck="false" autocomplete="off">'
       + '<input type="password" id="newPass" placeholder="senha (mín. 8)" autocomplete="new-password">'
       + '<label><input type="checkbox" id="newAdmin"> administrador</label>'
+      + '<label><input type="checkbox" id="newInfantil"> perfil infantil</label>'
       + '<button class="rclone-action-btn primary" style="flex:0 0 auto;min-width:110px" onclick="addUser()">Adicionar</button>'
       + '</div>'
       + '<div class="rclone-help">Não existe auto-cadastro: só quem aparece nesta lista consegue entrar. '
@@ -3004,9 +4639,19 @@
     const username = (document.getElementById('newUser').value || '').trim().toLowerCase();
     const password = document.getElementById('newPass').value || '';
     const role = document.getElementById('newAdmin').checked ? 'admin' : 'user';
+    const infantil = document.getElementById('newInfantil') ? document.getElementById('newInfantil').checked : false;
     if (!username || !password) { _usersMsg('Preencha usuário e senha.', 'err'); return; }
-    const data = await _usersPost('/api/users/add', { username, password, role });
+    const data = await _usersPost('/api/users/add', { username, password, role, infantil });
     if (data) { _renderUsers(data.users, _me ? _me.username : ''); _usersMsg('Conta "' + username + '" criada.', 'ok'); }
+  }
+
+  async function setUserInfantil(username, infantil) {
+    const data = await _usersPost('/api/users/infantil', { username, infantil });
+    if (data) {
+      _renderUsers(data.users, _me ? _me.username : '');
+      _usersMsg('"' + username + '" agora é um ' + (infantil ? 'perfil infantil' : 'perfil normal')
+        + ' — as sessões dele foram encerradas.', 'ok');
+    }
   }
 
   async function removeUser(username) {
@@ -3069,7 +4714,7 @@
   }
 
   // ==================== OFFLINE CACHE TRACKER ====================
-  // Só filmes do Drive baixados pro cache VFS. Filme em fonte local está no
+  // Só filmes da nuvem baixados pro cache VFS. Filme em fonte local está no
   // disco por natureza — não foi "baixado", e misturar os dois esvaziava o
   // sentido da seção. O filter limpa o que versões anteriores gravaram.
   const _cachedSet = new Set(
@@ -3095,7 +4740,7 @@
       let changed = false;
       movies.forEach(m => {
         // O servidor reporta cached=true para filme local (ele está no disco);
-        // aqui a pergunta é outra: foi baixado do Drive?
+        // aqui a pergunta é outra: foi baixado da nuvem?
         if (isLocalPath(m.path)) return;
         if (m.cached && !_cachedSet.has(m.path)) {
           _cachedSet.add(m.path);
@@ -3227,37 +4872,32 @@
   }
 
   async function _checkServerCached() {
-    // Scan all movies to check which ones are fully cached on the server
+    // Confere com o servidor quais filmes estao 100% baixados no VFS.
+    // O A-Z já traz filme de pasta e filme solto; para os de pasta o video
+    // vem da listagem da propria pasta, para o solto o arquivo e o proprio
+    // path do card.
     try {
-      const genresRes = await fetch('/api/genres');
-      const genresData = await genresRes.json();
-      if (!genresData || !genresData.folders) return;
+      const res = await fetch('/api/all-movies');
+      const movies = await res.json();
+      if (!movies) return;
 
-      const allMovies = [];
-      for (const genre of genresData.folders) {
-        // O path completo do genero vem do servidor — ele pode estar em
-        // qualquer fonte, nao so no Drive.
-        const genrePath = '/' + genre.Path;
-        const listRes = await fetch('/api/list?path=' + encodeURIComponent(genrePath));
-        const listData = await listRes.json();
-        if (listData && listData.folders) {
-          listData.folders.forEach(f => {
-            allMovies.push(genrePath + '/' + f.Name);
-          });
+      for (const m of movies) {
+        if (isLocalPath(m.path) || _cachedSet.has(m.path)) continue;
+        let filePath = null;
+        if (m.is_file) {
+          filePath = m.path;
+        } else {
+          const listRes = await fetch('/api/list?path=' + encodeURIComponent(m.path));
+          const listData = await listRes.json();
+          const video = listData && (listData.videos || []).find(v =>
+            v.Name && /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i.test(v.Name));
+          if (video) filePath = m.path + '/' + video.Name;
         }
-      }
-
-      for (const moviePath of allMovies) {
-        if (isLocalPath(moviePath) || _cachedSet.has(moviePath)) continue;
-        const detail = await apiFetch('/api/movie-detail?path=' + encodeURIComponent(moviePath));
-        if (!detail || !detail.video) continue;
-        const video = detail.video;
-        if (!video || !video.Name) continue;
-        const filePath = moviePath + '/' + video.Name;
+        if (!filePath) continue;
         const checkRes = await fetch('/api/check-cached?path=' + encodeURIComponent(filePath));
         const checkData = await checkRes.json();
         if (checkData.cached) {
-          _markCached(moviePath);
+          _markCached(m.path);
         }
       }
 
@@ -3579,10 +5219,15 @@
   // ==================== BACKUP MODAL ====================
   function openBackupModal() {
     document.getElementById('backupModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
   }
   function closeBackupModal() {
     document.getElementById('backupModal').classList.remove('active');
+    document.body.style.overflow = '';
   }
+  document.getElementById('backupModal').addEventListener('click', function(e) {
+    if (e.target === this) closeBackupModal();
+  });
 
   // ==================== RCLONE MODAL ====================
   function openRcloneModal() {
@@ -3597,180 +5242,6 @@
   document.getElementById('rcloneModal').addEventListener('click', function(e) {
     if (e.target === this) closeRcloneModal();
   });
-
-  // ==================== METADADOS (TMDB) ====================
-  // Editor que substitui o tinyMediaManager: busca no TMDB, mostra os
-  // candidatos, e so grava quando uma pessoa escolhe qual e o filme certo —
-  // nunca aplica o primeiro resultado sozinho. Ver ticianoflix/scraper.py.
-  function openScrapeModal() {
-    document.getElementById('scrapeModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    _loadScrapeStatus();
-  }
-  function closeScrapeModal() {
-    document.getElementById('scrapeModal').classList.remove('active');
-    document.body.style.overflow = '';
-  }
-  document.getElementById('scrapeModal').addEventListener('click', function(e) {
-    if (e.target === this) closeScrapeModal();
-  });
-
-  async function _loadScrapeStatus() {
-    const box = document.getElementById('scrapeBox');
-    try {
-      const res = await fetch('/api/scrape/status');
-      const st = await res.json();
-      if (!st.configurado) {
-        _renderScrapeKeyForm();
-      } else {
-        _loadScrapePendentes();
-      }
-    } catch (e) {
-      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
-    }
-  }
-
-  function _renderScrapeKeyForm(msgTexto, msgTipo) {
-    const box = document.getElementById('scrapeBox');
-    box.innerHTML =
-      '<div class="rclone-help">Sinopse, elenco, nota e pôster vêm do TMDB — a mesma '
-      + 'base que Kodi, Jellyfin e o tinyMediaManager usam. Crie uma conta gratuita em '
-      + 'themoviedb.org e gere uma "API Key (v3 auth)" em Configurações › API. Sem chave, '
-      + 'o app segue igual, só com o nome da pasta.</div>'
-      + '<div class="user-form" style="flex-direction:column;align-items:stretch">'
-      + '<input type="password" id="scrapeKeyInput" placeholder="Cole a API Key aqui" autocomplete="off">'
-      + '<button class="rclone-action-btn primary" onclick="_scrapeSalvarChave()">Salvar chave</button>'
-      + '</div>'
-      + '<div id="scrapeMsg" class="user-msg' + (msgTipo ? ' ' + msgTipo : '') + '">' + (msgTexto || '') + '</div>';
-  }
-
-  async function _scrapeSalvarChave() {
-    const chave = (document.getElementById('scrapeKeyInput').value || '').trim();
-    if (!chave) return;
-    try {
-      const res = await fetch('/api/scrape/key/set', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: chave })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.status === 'ok') {
-        _loadScrapePendentes();
-      } else {
-        _renderScrapeKeyForm(data.error || 'Não foi possível salvar.', 'err');
-      }
-    } catch (e) {
-      _renderScrapeKeyForm('Falha de conexão com o servidor.', 'err');
-    }
-  }
-
-  async function _loadScrapePendentes() {
-    const box = document.getElementById('scrapeBox');
-    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>';
-    try {
-      const res = await fetch('/api/scrape/pendentes');
-      const data = await res.json();
-      _renderScrapePendentes(data.pendentes || [], data.total || 0);
-    } catch (e) {
-      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
-    }
-  }
-
-  function _renderScrapePendentes(lista, total) {
-    const box = document.getElementById('scrapeBox');
-    if (lista.length === 0) {
-      box.innerHTML =
-        '<div class="rclone-help">Nenhum filme sem metadado — tudo já tem NFO ou já foi '
-        + 'preenchido pelo TMDB.</div>'
-        + '<button class="user-btn" onclick="_renderScrapeKeyForm()">Trocar chave do TMDB</button>';
-      return;
-    }
-    let html = '<div class="rclone-help">' + total + (total === 1 ? ' filme sem metadado.' : ' filmes sem metadado.')
-      + (total > lista.length ? ' Mostrando os primeiros ' + lista.length + '.' : '') + '</div>';
-    for (const item of lista) {
-      html += '<div class="user-row">'
-        + '<span class="user-name">' + escHtml(item.name) + '</span>'
-        + '<button class="user-btn" onclick="_scrapeAbrirBusca(\'' + enc(item.path) + '\', \'' + enc(item.name) + '\')">Buscar</button>'
-        + '</div>';
-    }
-    box.innerHTML = html;
-  }
-
-  // Tira o "(2020)" do fim do nome da pasta pro campo de busca vir limpo —
-  // mesma convencao que scraper.py usa do lado do servidor.
-  function _scrapeTituloLimpo(nome) {
-    return nome.replace(/\s*\(\d{4}\)\s*$/, '').trim();
-  }
-
-  function _scrapeAbrirBusca(pathEnc, nomeEnc) {
-    const path = decodeURIComponent(pathEnc);
-    const nome = decodeURIComponent(nomeEnc);
-    const box = document.getElementById('scrapeBox');
-    box.innerHTML =
-      '<button class="user-btn" onclick="_loadScrapePendentes()">← Voltar</button>'
-      + '<div class="user-form" style="margin-top:10px">'
-      + '<input type="text" id="scrapeQuery" value="' + escHtml(_scrapeTituloLimpo(nome)) + '" style="flex:1 1 auto">'
-      + '<button class="rclone-action-btn primary" onclick="_scrapeBuscar(\'' + pathEnc + '\')">Buscar</button>'
-      + '</div>'
-      + '<div id="scrapeResultados" style="margin-top:12px"></div>';
-    _scrapeBuscar(pathEnc);
-  }
-
-  async function _scrapeBuscar(pathEnc) {
-    const path = decodeURIComponent(pathEnc);
-    const q = (document.getElementById('scrapeQuery').value || '').trim();
-    const area = document.getElementById('scrapeResultados');
-    area.innerHTML = '<div class="loading" style="min-height:80px"><div class="spinner"></div><span>Buscando no TMDB...</span></div>';
-    try {
-      const url = '/api/scrape/search?path=' + encodeURIComponent(path) + (q ? '&q=' + encodeURIComponent(q) : '');
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.erro) {
-        area.innerHTML = '<div class="user-msg err">' + escHtml(data.erro) + '</div>';
-        return;
-      }
-      const candidatos = data.candidatos || [];
-      if (candidatos.length === 0) {
-        area.innerHTML = '<div class="user-msg">Nenhum resultado. Tente ajustar o texto da busca.</div>';
-        return;
-      }
-      area.innerHTML = candidatos.map(c =>
-        '<div class="user-row" style="align-items:flex-start">'
-        + (c.poster
-            ? '<img src="' + c.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;'
-              + 'border-radius:4px;flex:0 0 auto" onerror="this.remove()">'
-            : '')
-        + '<div class="src-main">'
-        + '<div class="user-name">' + escHtml(c.titulo) + (c.ano ? ' <span style="color:var(--text3);font-weight:400">(' + c.ano + ')</span>' : '') + '</div>'
-        + '<div class="src-hint" style="margin:2px 0 0">' + escHtml((c.sinopse || '').slice(0, 140)) + (c.sinopse && c.sinopse.length > 140 ? '…' : '') + '</div>'
-        + '</div>'
-        + '<button class="user-btn" style="flex:0 0 auto" onclick="_scrapeAplicar(\'' + pathEnc + '\', ' + c.id + ')">Usar este</button>'
-        + '</div>'
-      ).join('');
-    } catch (e) {
-      area.innerHTML = '<div class="user-msg err">Falha de conexão com o servidor.</div>';
-    }
-  }
-
-  async function _scrapeAplicar(pathEnc, tmdbId) {
-    const path = decodeURIComponent(pathEnc);
-    try {
-      const res = await fetch('/api/scrape/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: path, tmdb_id: tmdbId })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.status === 'ok') {
-        showToast('Metadados aplicados.', 'success');
-        _loadScrapePendentes();
-      } else {
-        showToast(data.error || 'Não foi possível aplicar.', 'error');
-      }
-    } catch (e) {
-      showToast('Falha de conexão com o servidor.', 'error');
-    }
-  }
 
   // ==================== APARENCIA (marca) ====================
   // Nome de exibicao e cor sao a unica coisa que muda por instalacao — onde
@@ -3797,8 +5268,7 @@
       box.innerHTML =
         '<div class="user-form" style="flex-direction:column;align-items:stretch">'
         + '<label style="font-size:12px;color:var(--text3)">Nome</label>'
-        + '<input type="text" id="brandNome" maxlength="40" value="' + escHtml(marca.nome) + '" '
-        + 'placeholder="Ex.: Família Corral">'
+        + '<div style="padding:12px 13px;color:var(--text2)">' + escHtml(marca.nome) + '</div>'
         + '<label style="font-size:12px;color:var(--text3);margin-top:4px">Cor</label>'
         + '<div style="display:flex;gap:8px;align-items:center">'
         + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
@@ -3808,9 +5278,9 @@
         + 'style="flex:1" placeholder="#e50914">'
         + '</div>'
         + '</div>'
-        + '<div class="rclone-help">O nome e a cor aparecem na tela de login, no menu, no '
-        + 'ícone do app instalado no celular e no manifesto — sem mexer em onde o acervo, '
-        + 'as contas e o progresso ficam guardados.</div>'
+        + '<div class="rclone-help">O nome foi escolhido na instalação e não muda mais '
+        + '(é também a pasta da biblioteca na nuvem/HD). A cor aparece na tela de login, '
+        + 'no menu, no ícone do app instalado no celular e no manifesto.</div>'
         + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
         + 'onclick="saveBranding()">Salvar</button>'
         + '<div id="brandingMsg" class="user-msg"></div>';
@@ -3829,25 +5299,23 @@
   }
 
   async function saveBranding() {
-    const nome = (document.getElementById('brandNome').value || '').trim();
     const cor = (document.getElementById('brandCorTexto').value || '').trim();
     const msg = document.getElementById('brandingMsg');
     const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
-    if (!nome) { mostrar('Escolha um nome.', 'err'); return; }
     if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e50914.', 'err'); return; }
     try {
       const res = await fetch('/api/branding/set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, cor })
+        body: JSON.stringify({ cor })
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.status === 'ok') {
         mostrar('Salvo! Atualizando...', 'ok');
-        // Recarrega em vez de repintar na hora: o nome novo tem que sair do
-        // proprio HTML que o servidor gera (titulo, topbar, sidebar, login),
-        // e nao so do CSS — mais simples e mais confiavel que sincronizar
-        // cada um desses pontos manualmente por aqui.
+        // Recarrega em vez de repintar na hora: a cor nova tem que sair do
+        // proprio HTML que o servidor gera (branding.css, icones, login),
+        // e nao so do CSS injetado aqui — mais simples e mais confiavel do
+        // que sincronizar cada um desses pontos manualmente.
         setTimeout(() => location.reload(), 600);
       } else {
         mostrar(data.error || 'Não foi possível salvar.', 'err');
@@ -3861,10 +5329,56 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
-      version: '1.20.0',
-      title: 'botão de voltar na ficha do filme + responsividade dos botões',
+      version: '1.23.0',
+      title: 'ficha do filme: \'já assisti\' que desmarca e Gêneros renomeados para Tags',
       changes: [
-        'botão de voltar na ficha do filme + responsividade dos botões',
+        'Botão \'Já assisti\' na ficha vira interruptor: marca e desmarca, e o filme sai na hora de Continuar Assistindo',
+        '\'Gêneros\' viram \'Tags\' em todo o app (barra lateral, A-Z, modais e mensagens) — a ficha do filme mostra quantas tags ele tem',
+        'Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como \'Palavras-chave\'',
+      ],
+    },
+    {
+      version: '1.22.0',
+      title: 'transmissão sem sustos: capa da série, próximo episódio e vídeo em toda TV',
+      changes: [
+        'Transmissão: a capa da série aparece no painel e na TV ao transmitir um episódio (o arquivo não tem pôster próprio)',
+        'Transmissão: quando o episódio termina, o próximo da série entra sozinho — a TV não fica mais parada na tela final',
+        'Transmissão: vídeo HEVC é convertido para H.264 no preparo — era o HEVC 10-bit que deixava a TV com o som rolando e a proteção de tela ligada',
+        'AirPlay: a URL enviada à TV é reconstruída do zero — o token velho do player podia duplicar e derrubar a reprodução',
+        'Android: o painel não chama mais o aparelho de \'media receiver\' — mostra o nome do Chromecast, ou nada quando o SDK não informa',
+        'Coleções e séries: a capa não duplica mais o caminho do arquivo (adeus, pôster 404)',
+      ],
+    },
+    {
+      version: '1.21.0',
+      title: 'coleções criadas e editadas no próprio app',
+      changes: [
+        'Botão "Nova coleção": nome, descrição, escolha dos filmes e da capa — sem NFO nem tinyMediaManager',
+        'Editar coleção: adicionar/remover filmes, trocar capa, nome e descrição',
+        'Coleções vindas de NFO (<set>) são importadas uma única vez, com os mesmos filmes',
+        'Gêneros criados na interface, independentes de pastas: atribua pela ficha do filme ou pelo A-Z',
+        'Séries: organize em tv shows/Série/Temporada (S01, S02...)/episódios — listagem própria em A-Z, página da série com temporadas e episódios em lista (com legenda)',
+        'Continuar assistindo: episódios de série aparecem como lista na home, com retomada no ponto exato',
+        'Perfil infantil vira interruptor claro na ficha e na série (marcar a série vale para todos os episódios)',
+        'Pasta movies/ na raiz do acervo organiza os filmes (a regra de filme continua valendo fora dela também)',
+        'Perfil infantil: conta com modo criança que só vê (e só pode tocar) os filmes marcados — o resto bloqueia até por URL',
+        'Marcar/desmarcar filmes para o perfil infantil pela ficha do filme (admin)',
+        'Chromecast: tamanho e cor da legenda regulam na TV ao vivo (a escolha fica salva), e o painel de transmissão virou um controle remoto — play, ±10s, Aa e CC',
+        'Instalador visual nas 3 plataformas: assistente gráfico no Windows, diálogos nativos no macOS e zenity/kdialog no Linux',
+        'Nuvem vira wizard: use qualquer remote do rclone (da lista) ou crie um novo com formulário guiado — B2, Drive, S3, SFTP...',
+        'Gênero por pasta sai de vez: filme é qualquer pasta com vídeo direto, na profundidade que for',
+        'Filmes soltos (arquivo avulso na pasta) viram filme no A-Z — clique toca direto',
+        'Um filme pode estar em várias coleções; quem sai do acervo sai das coleções e dos gêneros no scan',
+      ],
+    },
+    {
+      version: '1.20.0',
+      title: 'nuvem passa a ser Backblaze B2, configurada pelo próprio app',
+      changes: [
+        'Google Drive sai do código: a nuvem agora é um bucket Backblaze B2',
+        'Cadastro pela interface: keyID, applicationKey e bucket em Ajustes > Nuvem — sem script externo nem OAuth',
+        'Backup/restauração vão para o mesmo bucket (com suporte a uma key de escrita separada)',
+        'Streaming, cache e fontes locais continuam iguais',
       ],
     },
     {
@@ -4112,9 +5626,15 @@
     const box = document.getElementById('rcloneStatus');
     box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Verificando status do rclone...</span></div>';
     try {
-      const res = await fetch('/api/rclone/status');
-      const s = await res.json();
-      _renderRcloneStatus(box, s);
+      // Os dois painéis juntos: o status do rclone e o cadastro da nuvem.
+      const [resR, resB] = await Promise.all([
+        fetch('/api/rclone/status'),
+        fetch('/api/nuvem/status').catch(() => null),
+      ]);
+      const s = await resR.json();
+      let nuvem = null;
+      if (resB) { try { nuvem = await resB.json(); } catch (e) { nuvem = null; } }
+      _renderRcloneStatus(box, s, nuvem);
     } catch(e) {
       box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao verificar status</h3></div>';
     }
@@ -4126,90 +5646,338 @@
       : '<span class="rclone-badge bad"><svg class="icon-svg"><use href="#i-close"></use></svg> ' + textBad + '</span>';
   }
 
-  function _renderAcessoDrive(a) {
+  // ==================== NUVEM: WIZARD DE CONEXÃO ====================
+  // Qualquer remote rclone vale: usar um que já exista no rclone.conf ou
+  // criar um novo — o formulário é gerado a partir de "rclone config
+  // providers", que o próprio rclone descreve (tipo, campos, segredos).
+
+  function _renderAcessoNuvem(a) {
     if (!a) return '';
-    var rotulo = { ok: 'mínimo', atencao: 'mais largo que o necessário',
-                   risco: 'Drive inteiro', desconhecido: '?' }[a.nivel] || '?';
-    var html = '<div class="rclone-row"><span class="rclone-label">Acesso ao Google Drive</span>'
+    var html = '<div class="rclone-row"><span class="rclone-label">Acesso à nuvem</span>'
       + '<span class="rclone-badge ' + (a.nivel === 'ok' ? 'ok' : 'bad') + '">'
       + '<svg class="icon-svg"><use href="#i-' + (a.nivel === 'ok' ? 'check' : 'alert') + '"></use></svg> '
-      + escHtml(rotulo) + '</span></div>';
+      + escHtml(a.nivel === 'ok' ? 'ok' : '?') + '</span></div>';
+    if (a.resumo) {
+      html += '<div class="rclone-help">' + escHtml(a.resumo) + '</div>';
+    }
+    return html;
+  }
 
-    if (a.nivel === 'ok') {
-      if (a.backup_remote && !a.backup_client_proprio) {
-        html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> '
-          + 'O remote de backup usa o client_id compartilhado do rclone, que o Google '
-          + 'aposenta durante 2026. Só afeta backup e restauração.</div>';
-      }
+  function _renderNuvemPanel(st, s) {
+    var html = '<div class="rclone-subhead"><svg class="icon-svg"><use href="#i-cloud"></use></svg> Nuvem</div>';
+    if (st && st.configurado) {
+      html += '<div class="rclone-row"><span class="rclone-label">Remote</span>'
+        + _rcloneBadge(true, escHtml(st.remote) + (st.tipo ? ' <span class="rclone-mini">' + escHtml(st.tipo) + '</span>' : ''), '') + '</div>';
+      html += '<div class="rclone-row"><span class="rclone-label">Pasta do acervo</span>'
+        + _rcloneBadge(true, st.pasta ? escHtml(st.pasta) : 'raiz do remote', '') + '</div>';
+      html += '<div class="rclone-row"><span class="rclone-label">Backup</span>'
+        + _rcloneBadge(true, 'mesma nuvem, pasta "' + 'TicianoFlix Backups"', '') + '</div>';
+      if (s && s.acesso) html += _renderAcessoNuvem(s.acesso);
+      html += '<div class="rclone-actions">'
+        + '<button class="rclone-action-btn primary" onclick="openNuvemWizard()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Trocar conexão</button>'
+        + '<button class="rclone-action-btn" onclick="nuvemDesconectar()"><svg class="icon-svg"><use href="#i-unplug"></use></svg> Desconectar</button>'
+        + '</div>';
+      html += '<div class="rclone-help">Os arquivos da nuvem não são tocados por nenhuma das duas ações.</div>';
       return html;
     }
-    if (a.nivel === 'desconhecido') return html;
-
-    // Ainda não protegido: explica o risco e dá o comando exato.
-    html += '<div class="rclone-warn rclone-warn-' + a.nivel + '">'
-      + '<div class="rclone-warn-head"><svg class="icon-svg"><use href="#i-alert"></use></svg> '
-      + escHtml(a.resumo) + '</div>'
-      + '<p>O TicianoFlix só precisa <b>ler</b> a pasta <b>Mediaflix</b>. '
-      + 'Um script reduz o acesso a exatamente isso — seus outros arquivos do Drive '
-      + 'ficam fora de alcance.</p>'
-      + '<p class="rclone-warn-cmd">No terminal, dentro da pasta do Mediaflix:'
-      + '<code>' + escHtml(a.comando) + '</code></p>'
-      + '<p class="rclone-warn-foot">Ele abre o navegador para você reautorizar — '
-      + 'é o Google que aplica o limite, não dá para fazer isso daqui. '
-      + 'Depois clique em <b>Atualizar status</b>.</p>'
+    html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> '
+      + 'Conecte qualquer nuvem que o rclone conhece — Backblaze B2, Google Drive, S3, '
+      + 'Dropbox, SFTP... Use um remote que já existe no seu rclone.conf ou crie um '
+      + 'novinho pelo assistente.</div>';
+    html += '<div class="rclone-actions">'
+      + '<button class="rclone-action-btn primary" onclick="openNuvemWizard()"><svg class="icon-svg"><use href="#i-cloud"></use></svg> Conectar nuvem</button>'
       + '</div>';
     return html;
   }
 
-  function _renderRcloneStatus(box, s) {
+  // ── Wizard ──
+  let _wizard = null;   // {passo, remotes[], providers[], filtro, tipo, nome, campos, pasta}
+
+  function openNuvemWizard() {
+    _wizard = { passo: 'origem', pasta: '' };
+    document.getElementById('nuvemWizardTitulo').innerHTML =
+      '<svg class="icon-svg"><use href="#i-cloud"></use></svg> Conectar nuvem';
+    document.getElementById('nuvemWizardCorpo').innerHTML =
+      '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>';
+    document.getElementById('nuvemWizardModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    _wizardPassoOrigem();
+  }
+
+  function closeNuvemWizard() {
+    document.getElementById('nuvemWizardModal').classList.remove('active');
+    document.body.style.overflow = '';
+    _wizard = null;
+    _loadRcloneStatus();
+  }
+  document.getElementById('nuvemWizardModal').addEventListener('click', function(e) {
+    if (e.target === this) closeNuvemWizard();
+  });
+
+  function _wizardCorpo(html) {
+    document.getElementById('nuvemWizardCorpo').innerHTML = html
+      + '<div id="nuvemWizardMsg"></div>';
+  }
+
+  function _wizardErro(texto) {
+    document.getElementById('nuvemWizardMsg').innerHTML =
+      '<div class="user-msg err">' + escHtml(texto) + '</div>';
+  }
+
+  function _wizardPassoOrigem() {
+    _wizard.passo = 'origem';
+    _wizardCorpo(
+      '<div class="wizard-origem">'
+      + '<button class="wizard-opcao" onclick="_wizardPassoExistente()">'
+      + '<span class="wizard-opcao-icone"><svg class="icon-svg"><use href="#i-layers"></use></svg></span>'
+      + '<span><b>Usar um remote existente</b><br>'
+      + '<small>Escolha na lista do seu rclone.conf</small></span></button>'
+      + '<button class="wizard-opcao" onclick="_wizardPassoNovoTipo()">'
+      + '<span class="wizard-opcao-icone"><svg class="icon-svg"><use href="#i-plus"></use></svg></span>'
+      + '<span><b>Criar um remote novo</b><br>'
+      + '<small>Assistente com os campos de cada nuvem</small></span></button>'
+      + '</div>'
+      + '<div class="colecao-passos"><span></span>'
+      + '<button class="rclone-action-btn" onclick="closeNuvemWizard()">Cancelar</button></div>');
+  }
+
+  function _wizardPassoExistente() {
+    _wizard.passo = 'existente';
+    _wizardCorpo('<div class="loading" style="min-height:90px"><div class="spinner"></div><span>Listando remotes...</span></div>');
+    fetch('/api/rclone/remotes').then(r => r.json()).then(remotes => {
+      if (!Array.isArray(remotes)) {
+        _wizardErro((remotes && remotes.error) || 'Falha ao listar remotes.');
+        return;
+      }
+      _wizard.remotes = remotes;
+      if (!remotes.length) {
+        _wizardCorpo('<p class="colecao-dica">Seu rclone.conf ainda não tem remote nenhum. '
+          + 'Crie um pelo assistente:</p>'
+          + '<div class="colecao-passos">'
+          + '<button class="rclone-action-btn" onclick="_wizardPassoOrigem()">← Voltar</button>'
+          + '<button class="rclone-action-btn primary" onclick="_wizardPassoNovoTipo()">Criar remote</button>'
+          + '</div>');
+        return;
+      }
+      let opcoes = remotes.map(r =>
+        '<button class="wizard-remoto" data-nome="' + escHtml(r.nome) + '" '
+        + 'onclick="_wizardEscolherRemote(this, \'' + escHtml(r.nome) + '\')">'
+        + '<b>' + escHtml(r.nome) + '</b>'
+        + '<span class="wizard-remoto-tipo">' + escHtml(r.tipo || '?') + '</span></button>').join('');
+      _wizardCorpo('<div class="colecao-secao-titulo">Escolha o remote</div>'
+        + '<div class="wizard-lista">' + opcoes + '</div>'
+        + '<label class="colecao-campo"><span>Pasta do acervo dentro do remote <em>(opcional)</em></span>'
+        + '<input id="wizardPasta" type="text" placeholder="deixe vazio para usar a raiz do remote"></label>'
+        + '<div class="colecao-passos">'
+        + '<button class="rclone-action-btn" onclick="_wizardPassoOrigem()">← Voltar</button>'
+        + '<button class="rclone-action-btn primary" onclick="_wizardConectar()">Conectar</button>'
+        + '</div>');
+    }).catch(() => _wizardErro('Falha de conexão com o servidor.'));
+  }
+
+  function _wizardEscolherRemote(el, nome) {
+    document.querySelectorAll('.wizard-remoto').forEach(b => b.classList.remove('escolhido'));
+    el.classList.add('escolhido');
+    _wizard.remote = nome;
+  }
+
+  function _wizardPastaLida() {
+    const el = document.getElementById('wizardPasta');
+    return el ? el.value.trim().replace(/^\/+|\/+$/g, '') : '';
+  }
+
+  function _wizardConectar() {
+    if (!_wizard) return;
+    if (_wizard.passo === 'existente' && !_wizard.remote) {
+      _wizardErro('Escolha um remote da lista.');
+      return;
+    }
+    const pasta = _wizardPastaLida();
+    const btns = document.querySelectorAll('#nuvemWizardCorpo .rclone-action-btn.primary');
+    if (btns.length) btns[btns.length - 1].disabled = true;
+    fetch('/api/nuvem/conectar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote: _wizard.remote, pasta: pasta }),
+    }).then(r => r.json()).then(data => {
+      if (data.status === 'ok') {
+        showToast('☁️ Nuvem conectada: ' + data.remote, 'success');
+        closeNuvemWizard();
+      } else {
+        _wizardErro(data.error || 'Não foi possível conectar.');
+        if (btns.length) btns[btns.length - 1].disabled = false;
+      }
+    }).catch(() => {
+      _wizardErro('Falha de conexão com o servidor.');
+      if (btns.length) btns[btns.length - 1].disabled = false;
+    });
+  }
+
+  function nuvemDesconectar() {
+    _confirmarGenerico('Desconectar a nuvem?',
+      'O app deixa de mostrar o acervo da nuvem. O remote e os arquivos ficam intactos no rclone.',
+      function() {
+        fetch('/api/nuvem/desconectar', { method: 'POST' })
+          .then(r => r.json())
+          .then(data => {
+            showToast('Nuvem desconectada', 'info');
+            _loadRcloneStatus();
+          }).catch(() => showToast('Erro ao desconectar', 'error'));
+      });
+  }
+
+  // ── Wizard: criar remote novo ──
+  function _wizardPassoNovoTipo() {
+    _wizard.passo = 'novo';
+    _wizardCorpo('<div class="loading" style="min-height:90px"><div class="spinner"></div><span>Carregando nuvens suportadas...</span></div>');
+    fetch('/api/rclone/providers').then(r => r.json()).then(providers => {
+      if (!Array.isArray(providers)) {
+        _wizardErro((providers && providers.error) || 'Falha ao carregar os tipos.');
+        return;
+      }
+      _wizard.providers = providers;
+      _wizardRenderTipos();
+    }).catch(() => _wizardErro('Falha de conexão com o servidor.'));
+  }
+
+  function _wizardRenderTipos() {
+    const busca = (_wizard.filtro || '').toLowerCase();
+    const lista = _wizard.providers.filter(p =>
+      !busca || p.nome.toLowerCase().includes(busca) || p.tipo.toLowerCase().includes(busca));
+    const corpos = lista.slice(0, 60).map(p =>
+      '<button class="wizard-remoto" onclick="_wizardEscolherTipo(\'' + escHtml(p.tipo) + '\')">'
+      + '<b>' + escHtml(p.nome) + '</b>'
+      + '<span class="wizard-remoto-tipo">' + escHtml(p.tipo) + '</span></button>').join('');
+    _wizardCorpo('<div class="colecao-secao-titulo">Qual é a nuvem?</div>'
+      + '<input id="wizardFiltro" class="colecao-busca" type="text" placeholder="Filtrar (ex.: b2, drive, s3, sftp)..." '
+      + 'value="' + escHtml(_wizard.filtro || '') + '" oninput="_wizardFiltrarTipos(this.value)">'
+      + '<div class="wizard-lista" id="wizardListaTipos">' + corpos + '</div>'
+      + (lista.length > 60 ? '<div class="colecao-dica">Mostrando 60 de ' + lista.length + ' — filtre para achar.</div>' : '')
+      + '<div class="colecao-passos">'
+      + '<button class="rclone-action-btn" onclick="_wizardPassoOrigem()">← Voltar</button><span></span>'
+      + '</div>');
+  }
+
+  function _wizardFiltrarTipos(valor) {
+    _wizard.filtro = valor;
+    _wizardRenderTipos();
+    const campo = document.getElementById('wizardFiltro');
+    if (campo) { campo.focus(); campo.setSelectionRange(valor.length, valor.length); }
+  }
+
+  function _wizardEscolherTipo(tipo) {
+    const p = _wizard.providers.find(x => x.tipo === tipo);
+    if (!p) return;
+    _wizard.tipo = tipo;
+    _wizard.nomeTipo = p.nome;
+    // Campos do backend, na ordem do rclone — senha vira password, exemplos
+    // viram sugestões de preenchimento.
+    const campos = p.opcoes.map(o => {
+      const id = 'wz_' + o.nome;
+      const lista = o.exemplos && o.exemplos.length
+        ? '<datalist id="dl_' + id + '">' + o.exemplos.map(e => '<option value="' + escHtml(e) + '">').join('') + '</datalist>' : '';
+      const obrig = o.obrigatorio ? ' <em>*</em>' : '';
+      return lista + '<label class="colecao-campo"><span>' + escHtml(o.nome) + obrig + '</span>'
+        + '<input id="' + id + '" type="' + (o.senha ? 'password' : 'text') + '"'
+        + (o.exemplos && o.exemplos.length ? ' list="dl_' + id + '"' : '')
+        + (o.padrao ? ' placeholder="' + escHtml(o.padrao) + '"' : '')
+        + ' autocomplete="off"></label>'
+        + (o.ajuda ? '<div class="wizard-ajuda">' + escHtml(o.ajuda) + '</div>' : '');
+    }).join('');
+    _wizardCorpo('<div class="colecao-secao-titulo">Novo remote: ' + escHtml(p.nome) + '</div>'
+      + '<label class="colecao-campo"><span>Nome do remote</span>'
+      + '<input id="wizardNome" type="text" value="' + escHtml(tipo) + '" maxlength="30"></label>'
+      + campos
+      + '<div class="colecao-passos">'
+      + '<button class="rclone-action-btn" onclick="_wizardPassoNovoTipo()">← Voltar</button>'
+      + '<button class="rclone-action-btn primary" id="wizardCriarBtn" onclick="_wizardCriarRemote()">Criar e testar</button>'
+      + '</div>');
+  }
+
+  function _wizardCriarRemote() {
+    const nome = (document.getElementById('wizardNome').value || '').trim();
+    if (!nome) { _wizardErro('Dê um nome ao remote.'); return; }
+    const p = _wizard.providers.find(x => x.tipo === _wizard.tipo);
+    const parametros = {};
+    (p ? p.opcoes : []).forEach(o => {
+      const el = document.getElementById('wz_' + o.nome);
+      if (el && el.value.trim()) parametros[o.nome] = el.value.trim();
+    });
+    const btn = document.getElementById('wizardCriarBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+    fetch('/api/rclone/wizard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: nome, tipo: _wizard.tipo, parametros: parametros }),
+    }).then(r => r.json()).then(data => {
+      if (data.status === 'ok') {
+        showToast('✅ Remote "' + data.nome + '" criado e testado.', 'success');
+        _wizard.remote = data.nome;
+        _wizard.passo = 'existente';
+        _wizardCorpo('<p class="colecao-dica">Remote <b>' + escHtml(data.nome) + '</b> criado e respondendo. '
+          + 'Agora diga onde o acervo mora dentro dele (ou use a raiz):</p>'
+          + '<label class="colecao-campo"><span>Pasta do acervo <em>(opcional)</em></span>'
+          + '<input id="wizardPasta" type="text" placeholder="raiz do remote"></label>'
+          + '<div class="colecao-passos">'
+          + '<button class="rclone-action-btn" onclick="_wizardPassoOrigem()">← Voltar</button>'
+          + '<button class="rclone-action-btn primary" onclick="_wizardConectar()">Conectar</button>'
+          + '</div>');
+      } else {
+        _wizardErro(data.error || 'Falha ao criar o remote.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Criar e testar'; }
+      }
+    }).catch(() => {
+      _wizardErro('Falha de conexão com o servidor.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Criar e testar'; }
+    });
+  }
+
+  function _renderRcloneStatus(box, s, b2) {
     let html = '';
     html += '<div class="rclone-row"><span class="rclone-label">rclone instalado</span>'
       + (s.installed ? _rcloneBadge(true, s.version || 'ok', '') : _rcloneBadge(false, '', 'não encontrado')) + '</div>';
-    html += '<div class="rclone-row"><span class="rclone-label">Remote gdrive:</span>'
-      + _rcloneBadge(s.remote_configured, 'configurado', 'não configurado') + '</div>';
-    if (s.remote_configured) {
-      html += '<div class="rclone-row"><span class="rclone-label">Conexão com o Drive</span>'
-        + (s.remote_ok ? _rcloneBadge(true, 'ok', '') : _rcloneBadge(false, '', s.remote_error || 'falhou')) + '</div>';
-    }
-    if (s.remote_configured) html += _renderAcessoDrive(s.acesso);
-    html += '<div class="rclone-row"><span class="rclone-label">Streaming (serve)</span>'
-      + _rcloneBadge(s.serve_running, 'ativo :18082', 'parado') + '</div>';
-    html += '<div class="rclone-row"><span class="rclone-label">Web UI de configuração</span>'
-      + _rcloneBadge(s.webgui.running, 'ativa :' + s.webgui.port, 'fechada') + '</div>';
 
-    html += '<div class="rclone-actions">';
-    if (!s.installed) {
-      html += '<div class="rclone-help">Instale o rclone e reinicie o TicianoFlix.<br>'
-        + '<b>Linux:</b> <code>sudo pacman -S rclone</code> ou <code>sudo apt install rclone</code><br>'
-        + '<b>macOS:</b> <code>brew install rclone</code><br>'
-        + '<b>Windows:</b> <code>winget install Rclone.Rclone</code><br>'
-        + 'Ou baixe em <a href="https://rclone.org/downloads/" target="_blank" rel="noopener">rclone.org/downloads</a></div>';
-    } else {
-      if (!s.remote_configured) {
-        html += '<button class="rclone-action-btn primary" onclick="rcloneStartWebgui()"><svg class="icon-svg"><use href="#i-gear"></use></svg> Configurar rclone</button>';
-      } else {
+    if (s.installed) {
+      // Conexão da nuvem primeiro: sem ela, o resto do painel é secundário.
+      html += _renderNuvemPanel(b2, s);
+      html += '<div class="rclone-subhead"><svg class="icon-svg"><use href="#i-gear"></use></svg> rclone</div>';
+      html += '<div class="rclone-row"><span class="rclone-label">Remote no rclone.conf</span>'
+        + _rcloneBadge(s.remote_configured, escHtml(s.remote || 'configurado'), 'não configurado') + '</div>';
+      if (s.remote_configured) {
+        html += '<div class="rclone-row"><span class="rclone-label">Conexão com a nuvem</span>'
+          + (s.remote_ok ? _rcloneBadge(true, 'ok', '') : _rcloneBadge(false, '', s.remote_error || 'falhou')) + '</div>';
+      }
+      html += '<div class="rclone-row"><span class="rclone-label">Streaming (serve)</span>'
+        + _rcloneBadge(s.serve_running, 'ativo :18082', 'parado') + '</div>';
+      html += '<div class="rclone-row"><span class="rclone-label">Web UI de configuração</span>'
+        + _rcloneBadge(s.webgui.running, 'ativa :' + s.webgui.port, 'fechada') + '</div>';
+
+      html += '<div class="rclone-actions">';
+      if (s.remote_configured) {
         html += '<button class="rclone-action-btn" onclick="rcloneStartWebgui()"><svg class="icon-svg"><use href="#i-gear"></use></svg> Abrir configurador</button>';
       }
-      if (!s.serve_running) {
+      if (!s.serve_running && s.remote_configured) {
         html += '<button class="rclone-action-btn primary" onclick="rcloneRestartServe()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</button>';
       }
       if (s.webgui.running) {
         html += '<button class="rclone-action-btn" onclick="rcloneStopWebgui()"><svg class="icon-svg"><use href="#i-stop"></use></svg> Fechar web UI</button>';
       }
+      html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Atualizar status</button>';
+      html += '</div>';
+    } else {
+      html += '<div class="rclone-help">O rclone não foi encontrado. Rode o instalador do TicianoFlix '
+        + '(ele baixa o rclone sozinho) ou instale manualmente:<br>'
+        + '<b>Linux:</b> <code>sudo pacman -S rclone</code> ou <code>sudo apt install rclone</code><br>'
+        + '<b>macOS:</b> <code>brew install rclone</code><br>'
+        + '<b>Windows:</b> <code>winget install Rclone.Rclone</code><br>'
+        + 'Ou baixe em <a href="https://rclone.org/downloads/" target="_blank" rel="noopener">rclone.org/downloads</a></div>';
+      html += '<div class="rclone-actions">'
+        + '<button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Atualizar status</button>'
+        + '</div>';
     }
-    html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Atualizar status</button>';
-    html += '</div>';
 
     if (s.webgui.running) {
       html += '<div class="rclone-creds">Web UI aberta — acessível apenas neste computador:<br>'
         + 'URL: <a href="' + escHtml(s.webgui.url) + '" target="_blank" rel="noopener">' + escHtml(s.webgui.url) + '</a><br>'
         + 'Sem login: a interface escuta só em 127.0.0.1.</div>';
-    }
-
-    if (s.installed && !s.remote_configured) {
-      html += '<div class="rclone-help"><svg class="icon-svg"><use href="#i-bulb"></use></svg> No configurador: crie um remote chamado <b>gdrive</b> '
-        + '(tipo <b>Google Drive</b>, escopo <b>drive.readonly</b>) seguindo o assistente. '
-        + 'Depois volte aqui e clique em <b><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</b>.</div>';
     }
     box.innerHTML = html;
   }
@@ -4225,7 +5993,7 @@
           + 'URL: <a href="' + escHtml(data.url) + '" target="_blank" rel="noopener">' + escHtml(data.url) + '</a><br>'
           + 'Acessível apenas neste computador, sem login.</div>'
           + '<div class="rclone-help">Se a aba não abrir sozinha, clique no link acima e faça login.<br>'
-          + '<svg class="icon-svg"><use href="#i-bulb"></use></svg> Crie o remote <b>gdrive</b> (tipo Google Drive, escopo drive ou drive.file). Ao terminar, feche esta web UI e clique em <b><svg class="icon-svg"><use href="#i-refresh"></use></svg> Reiniciar streaming</b>.</div>'
+          + '<svg class="icon-svg"><use href="#i-bulb"></use></svg> Cadastre a nuvem em <b>Ajustes &gt; Nuvem</b> — o rclone.conf é escrito pelo próprio app. Esta web UI fica como ferramenta avançada.</div>'
           + '<div class="rclone-actions"><button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Verificar status</button></div>';
         window.open(data.url, '_blank');
       } else {
@@ -4267,10 +6035,11 @@
     if (!file) return;
     closeBackupModal();
     showToast('📂 Restaurando backup...', '');
-    const formData = new FormData();
-    formData.append('backup', file);
     try {
-      const res = await fetch('/api/restore', { method: 'POST', body: formData });
+      // Corpo = o proprio arquivo: o servidor le os bytes crus do zip e aplica
+      // o teto de tamanho; em FormData o multipart nunca passou no zipfile
+      // (a restauracao falhava sempre com "Falha ao restaurar o backup").
+      const res = await fetch('/api/restore', { method: 'POST', body: file });
       const data = await res.json();
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
@@ -4284,11 +6053,11 @@
     input.value = '';
   }
 
-  async function restoreFromDrive() {
+  async function restoreFromCloud() {
     closeBackupModal();
-    showToast('☁️ Baixando backup do Google Drive...', '');
+    showToast('☁️ Baixando backup da nuvem...', '');
     try {
-      const res = await fetch('/api/restore/drive', { method: 'POST' });
+      const res = await fetch('/api/restore/b2', { method: 'POST' });
       const data = await res.json();
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
@@ -4322,10 +6091,10 @@
     }
   }
 
-  async function backupToDrive() {
+  async function backupToCloud() {
     try {
-      showToast('☁️ Enviando backup para o Google Drive...', '');
-      const res = await fetch('/api/backup/drive', { method: 'POST' });
+      showToast('☁️ Enviando backup para a nuvem...', '');
+      const res = await fetch('/api/backup/b2', { method: 'POST' });
       const data = await res.json();
       if (data.status === 'ok') {
         showToast('☁️ Backup salvo em: ' + data.path, 'success');
@@ -4372,9 +6141,9 @@
           ? s.source_current + ' — ' : '';
         if (s.phase === 'genres') {
           if (s.movie_index > 0) {
-            ptext.textContent = `${srcPrefix}${s.genre_current}: ${s.movie_index} filmes (gênero ${s.genre_index}/${s.genre_total})`;
+            ptext.textContent = `${srcPrefix}${s.genre_current}: ${s.movie_index} filmes (${s.genre_index}/${s.genre_total})`;
           } else {
-            ptext.textContent = `${srcPrefix}Gênero ${s.genre_index}/${s.genre_total}`;
+            ptext.textContent = `${srcPrefix}${s.genre_index}/${s.genre_total}`;
           }
         } else if (s.phase === 'listing_root') {
           ptext.textContent = s.source_current ? ('Listando ' + s.source_current + '...') : 'Listando raiz...';
@@ -4399,7 +6168,7 @@
           if (btn) btn.classList.remove('loading');
           if (icon) icon.innerHTML = '<svg class="icon-svg"><use href="#i-refresh"></use></svg>';
           pbar.style.display = 'none';
-          showToast('Erro ao escanear. Confira o Drive e as fontes locais.', 'error');
+          showToast('Erro ao escanear. Confira a nuvem e as fontes locais.', 'error');
           loadPath(currentPath || '');
         }
       } catch (_) {}
@@ -4503,7 +6272,13 @@
     } catch(_) {}
   }
   updateCacheUsage();
-  setInterval(updateCacheUsage, 30000);
+  // Aba oculta nao precisa do contador: com o app aberto em TV, celular e
+  // notebook, o /api/cache-status de 30 em 30s virava consulta constante
+  // sem ninguem olhando. Ao reaparecer, atualiza na hora.
+  setInterval(() => { if (!document.hidden) updateCacheUsage(); }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) updateCacheUsage();
+  });
 
   // Quem esta logado: mostra o nome no botao Sair e revela "Contas" para admin.
   _loadMe();

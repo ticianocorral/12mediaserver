@@ -18,35 +18,34 @@ HTTPS_PORT_BASE = 9443
 BIND_HOST = os.environ.get("TICIANOFLIX_BIND", HOST)
 
 # ── rclone ───────────────────────────────────────────────────
-RCLONE_REMOTE = "gdrive:"
-# Remote separado so para o backup. O remote principal e somente-leitura
-# (scope drive.readonly), entao a escrita precisa de um token proprio com
-# scope drive.file — que enxerga apenas arquivos criados pelo proprio app.
-RCLONE_BACKUP_REMOTE = "gdrive_backup:"
+# A nuvem e qualquer remote rclone, escolhido pelo wizard da interface
+# (veja nuvem.py): um remote ja existente na lista do rclone ou um novo
+# criado por ali mesmo. O app grava a escolha no nuvem.json — o rclone.conf
+# so e tocado quando o wizard cria um remote novo.
 BACKUP_FOLDER = "TicianoFlix Backups"
 RCLONE_SERVE_PORT = 18082
 RCLONE_WEBGUI_PORT = 5572
 
 # Web GUI do rclone: desligada por padrao. Ela expoe a API de controle remoto
-# do rclone, que da acesso total ao Drive. Habilite com TICIANOFLIX_RCLONE_GUI=1
+# do rclone, que da acesso total ao remote. Habilite com TICIANOFLIX_RCLONE_GUI=1
 # — nesse caso ela sobe apenas em 127.0.0.1, acessivel so do proprio computador.
 RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
 
-# Pasta logica que o DB e o frontend usam. Quando o remote esta escopado via
-# root_folder_id, esse prefixo nao existe do lado do rclone — veja paths._rc().
+# Prefixo logico (hoje calculado em branding.logical_root(), a partir do nome
+# escolhido na instalacao) que o DB e o frontend usam pra raiz da nuvem.
+# Nao mora aqui porque config.py e modulo-folha e branding.py importa config —
+# um LOGICAL_ROOT dinamico aqui criaria um ciclo de import.
 #
-# O nome e neutro de proposito: e a pasta que a pessoa precisa criar no
-# proprio Google Drive, entao carregar a marca aqui vazaria "TicianoFlix" pro
-# Drive de qualquer um que instalasse com outro nome. LOGICAL_ROOT_LEGADO e so
-# para a migracao de quem ja tinha o app antigo — db.py reescreve o prefixo
-# gravado uma unica vez (ver _migrar_prefixo_marca).
-LOGICAL_ROOT = "/Mediaflix"
+# LOGICAL_ROOT_LEGADO segue fixo: e o nome real e historico exigido no Drive
+# por quem configurou o rclone no modo antigo, nao-escopado (ver paths.rc()),
+# e tambem o valor de fallback que db._migrar_prefixo_marca usa quando uma
+# instalacao nunca registrou o prefixo anterior em cache_meta.
 LOGICAL_ROOT_LEGADO = "/TicianoFlix"
 
 # ── Fontes locais ────────────────────────────────────────────
-# O Drive deixou de ser a unica fonte: HD externo, pendrive e pastas do proprio
+# A nuvem deixou de ser a unica fonte: HD externo, pendrive e pastas do proprio
 # computador entram no catalogo montados sob este prefixo logico, um nivel por
-# fonte ("/Local/hd-externo/Terror/Alien (1979)/filme.mkv"). O Drive continua em
+# fonte ("/Local/hd-externo/Terror/Alien (1979)/filme.mkv"). A nuvem continua em
 # LOGICAL_ROOT, entao nenhum path ja gravado no banco muda de forma.
 LOCAL_ROOT = "/Local"
 
@@ -63,21 +62,26 @@ IMAGE_CACHE_DIR = CACHE_DIR / "images"
 SUBS_CACHE_DIR = CACHE_DIR / "subs"
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
 AUTH_PATH = CACHE_DIR / "auth.json"
+# MP4s gerados pelo prepare.py para transmitir na TV (MKV/E-AC3 nao tocam
+# no Chromecast nem no AirPlay). Regeneravel a qualquer momento — o nome do
+# arquivo e o hash do path original, com um .json ao lado guardando a
+# assinatura (mtime/tamanho) da fonte.
+CAST_CACHE_DIR = CACHE_DIR / "cast"
 # Fonte e configuracao, nao cache: fica fora do SQLite (como o auth.json) para
 # que restaurar um backup feito em outra maquina nao importe caminhos que nao
 # existem aqui.
 SOURCES_PATH = CACHE_DIR / "sources.json"
-# A chave do TMDB e da pessoa que instalou, nunca do projeto: uma chave
-# embutida no codigo publico ficaria exposta e todo mundo dividiria o mesmo
-# limite de uso. Fica fora do SQLite pelo mesmo motivo do sources.json.
-TMDB_KEY_PATH = CACHE_DIR / "tmdb.json"
 # Mesmo raciocinio do sources.json: nome, cor e icone sao configuracao de
 # exibicao, nao dado do acervo — nunca precisam entrar no SQLite nem viajam
 # num backup do catalogo.
 BRANDING_PATH = CACHE_DIR / "branding.json"
 SECRET_PATH = CACHE_DIR / "secret.key"
+# Conexão da nuvem feita pelo wizard da UI: qual remote rclone usar e a pasta
+# de dentro dele onde mora o acervo. Segredos (quando o wizard cria um remote
+# novo) ficam obscurecidos no rclone.conf; aqui fica so o endereço.
+NUVEM_PATH = CACHE_DIR / "nuvem.json"
 
-for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR):
+for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, CAST_CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # ── Tipos de arquivo ─────────────────────────────────────────
@@ -95,9 +99,13 @@ MAX_NFO_BYTES = 2 * 1024 * 1024         # teto de um arquivo .nfo
 # Rotas que alteram estado: so respondem a POST com Origin local.
 WRITE_ROUTES = frozenset({
     "/api/refresh", "/api/clear-cache", "/api/uncache",
-    "/api/cache-download", "/api/backup/drive", "/api/restore/drive",
+    "/api/cache-download", "/api/backup/b2", "/api/restore/b2",
     "/api/sources/add", "/api/sources/remove", "/api/branding/set",
-    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/nuvem/conectar", "/api/nuvem/desconectar", "/api/rclone/wizard",
+    "/api/infantil/marcar", "/api/users/infantil",
+    "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
+    "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
+    "/api/generos/renomear", "/api/watched",
 })
 
 # Rotas alcancaveis sem sessao.
@@ -113,10 +121,16 @@ PUBLIC_PATHS = frozenset({
     "/manifest.webmanifest", "/branding.css",
     "/icone-192.png", "/icone-512.png",
     "/icone-maskable-512.png", "/icone-apple-touch.png",
+    # CA local (mkcert): o celular novo baixa pelo http:// antes de ter
+    # sessao (senao vira ovo e galinha com o aviso de certificado). E so o
+    # certificado publico da CA — a chave fica no computador.
+    "/ca.crt",
 })
 
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
-TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
+# /api/prepared e servido com o token do path ORIGINAL — o receptor nao
+# conhece o arquivo convertido; o mapeamento mora no prepare.py.
+TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle", "/api/prepared"})
 
 # Rotas restritas a administradores.
 # Apontar o servidor para uma pasta do computador expoe aquele diretorio na LAN
@@ -124,9 +138,18 @@ TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle"})
 ADMIN_PATHS = frozenset({
     "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
     "/api/sources/add", "/api/sources/remove", "/api/sources/detect",
-    "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
-    "/api/scrape/apply", "/api/scrape/key/set",
     "/api/branding", "/api/branding/set",
+    "/api/nuvem/conectar", "/api/nuvem/desconectar", "/api/nuvem/status",
+    "/api/rclone/remotes", "/api/rclone/providers", "/api/rclone/wizard",
+    # Backup/restore mexem no banco e no cache inteiros (ate sobrescrever o
+    # catalogo com um zip qualquer): sao decisao de administrador, como
+    # apontar as fontes.
+    "/api/backup", "/api/backup/local", "/api/backup/b2",
+    "/api/restore", "/api/restore/b2",
+    "/api/infantil/marcar", "/api/users/infantil",
+    "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
+    "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
+    "/api/generos/renomear",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

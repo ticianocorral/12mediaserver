@@ -1,10 +1,10 @@
 <div align="center">
   <h1>🎬 TicianoFlix</h1>
-  <p><strong>Netflix-style movie player for Google Drive, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
+  <p><strong>Netflix-style movie player for your cloud, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
   <p>
     <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
     <img src="https://img.shields.io/badge/rclone-1.60%2B-green" alt="rclone 1.60+">
-    <img src="https://img.shields.io/badge/version-1.6-red" alt="v1.6">
+    <img src="https://img.shields.io/badge/version-1.21-red" alt="v1.21">
     <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
   </p>
 </div>
@@ -13,70 +13,84 @@
 
 ## 📖 Sobre
 
-TicianoFlix é um servidor web auto-hospedado que transforma seu **Google Drive** — e também **HD externo, pendrive ou pastas do próprio computador** — num catálogo de filmes no estilo Netflix. Ele escaneia pastas organizadas por gênero, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
+TicianoFlix é um servidor web auto-hospedado que transforma **a sua nuvem** (qualquer remote do rclone: Backblaze B2, Google Drive, S3, SFTP...) — e também **HD externo, pendrive ou pastas do próprio computador** — num catálogo de filmes no estilo Netflix. Ele escaneia suas pastas de filmes, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
 
 ### ✨ Funcionalidades
 
 - **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
-- **👥 Painel de contas** — administradores adicionam, removem, promovem e redefinem senhas
+- **👥 Painel de contas** — administradores adicionam, removem, promovem, redefinem senhas e ativam o perfil infantil
+- **👶 Perfil infantil** — contas marcadas como infantis veem apenas os filmes que o administrador liberou: o filtro vale para o catálogo, a busca e até o streaming (por URL direta não passa). Os filmes são marcados na própria ficha, com um toque
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
 - **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
-- **📦 Baixados do Drive** — filmes da nuvem 100% cacheados ganham selo e seção própria na home (filmes de fonte local não entram: eles já estão no disco)
+- **📦 Baixados da nuvem** — filmes da nuvem 100% cacheados ganham selo e seção própria na home (filmes de fonte local não entram: eles já estão no disco)
 - **🧹 Limpar cache** — apaga os vídeos baixados, dentro do próprio gerenciador de cache
 - **🗺️ Navegação com histórico** — botões Voltar/Avançar do navegador funcionam dentro do app
-- **💾 Backup & Restore** — modal com opções: salvar backup, upload pro Drive, restaurar de arquivo ou do Drive
+- **💾 Backup & Restore** — modal com opções: salvar backup, enviar para a nuvem, restaurar de arquivo ou da nuvem
 - **🏷️ Metadados NFO** — suporte a posters, fanarts, sinopse, elenco, avaliação (formato Kodi / tinyMediaManager)
-- **🎞️ Metadados via TMDB** — editor embutido que substitui o tinyMediaManager: busca candidatos, uma pessoa escolhe o certo, grava no banco e (fonte local, sem sobrescrever nada) como `.nfo` + pôster
-- **🎬 Coleções** — Star Wars 1-6 e afins agrupados numa tela só, ordenados por ano. Vem da tag `<set>` do NFO (o tinyMediaManager grava sozinho): nenhuma pasta muda de lugar, os filmes continuam cada um no seu gênero. Capa própria opcional via `movieset-poster.jpg`; sem ela, usa o cartaz do filme mais antigo
+- **🎬 Coleções** — crie e edite coleções na própria interface (nome, descrição, filmes e capa a partir dos pôsteres dos escolhidos); coleções antigas da tag `<set>` do NFO são importadas uma única vez
+- **🏷️ Tags na interface** — crie tags na barra lateral e atribua filmes pela ficha ou pelo A-Z, sem depender da organização de pastas
+- **📺 Séries** — organize em `tv shows/Série (ano)/Season 1/S01E01...` e a série ganha página própria, com temporadas e episódios (com legenda); episódios entram no Continuar Assistindo
+- **🎥 Filmes soltos** — arquivo de vídeo avulso também vira filme no catálogo, com pôster opcional de mesmo nome
 - **🔍 Busca** por título com debounce
 - **📱 Responsivo de verdade** — no celular a barra lateral vira gaveta, os controles do player se reorganizam em duas faixas (nada de botão fora da tela) e tudo responde a toque
 - **🔄 Serviço systemd** — inicia automaticamente no login
 - **🎨 Fontes Roboto** — tipografia moderna via Google Fonts
 - **🚪 Modal de confirmação** ao sair do player (sem `confirm()` nativo)
-- **📺 Chromecast** — envio para a TV com URL assinada e legendas; a TV mostra pôster, ano e sinopse, e os controles do app comandam a transmissão (play, avançar, volume, legenda)
+- **📺 Chromecast** — envio para a TV com URL assinada e legendas; a TV mostra pôster, ano e sinopse, e os controles do app comandam a transmissão (play, avançar, volume, legenda — com tamanho e cor reguláveis na hora)
 - **📡 AirPlay** — no iPhone, onde o Chromecast não funciona (limitação da Apple, não do app), o botão de AirPlay aparece no lugar; usa a mesma URL assinada, direto do `<video>`, sem SDK
-- **🎨 Aparência configurável** — cada instalação escolhe seu próprio nome e cor em **⚙️ Ajustes › 🎨 Aparência**, refletido na tela de login, no menu, no ícone instalado no celular e no manifesto — sem afetar onde o acervo, as contas e o progresso ficam guardados
+- **🛠️ Preparo para TV** — MKV, áudios Dolby (AC3/E-AC3/DTS) e vídeo HEVC não tocam (ou tocam só com o som) no Chromecast e no AirPlay; em vez de recusar o filme, o servidor gera um MP4 H.264 com faixa AAC — em cache, então só a primeira transmissão de cada arquivo espera
+- **🎨 Aparência configurável** — o nome do app é escolhido na instalação e fica fixo depois (é também o nome da pasta da biblioteca); a cor pode ser trocada a qualquer momento em **⚙️ Ajustes › 🎨 Aparência**, refletida na tela de login, no menu, no ícone instalado no celular e no manifesto
 
 ---
 
 ## 🚀 Instalação Rápida
+
+### Instalador visual (Windows, macOS e Linux)
+
+Para quem prefere clicar a digitar, o projeto traz um instalador visual por plataforma, na raiz do repositório:
+
+| Arquivo | Como usar | O que faz |
+|---|---|---|
+| `Instalador-TicianoFlix-Windows.bat` | Duplo clique | Assistente gráfico (PowerShell/WinForms): verifica e instala Python e rclone, cria o atalho de execução, agenda o início com o Windows e abre o app |
+| `Instalador-TicianoFlix-macOS.command` | Duplo clique¹ | Diálogos nativos do macOS + a instalação rodando com a saída visível no Terminal; abre o navegador no final |
+| `Instalador-TicianoFlix-Linux.sh` | `bash Instalador-TicianoFlix-Linux.sh` | Diálogos gráficos (zenity no GNOME, kdialog no KDE) e a instalação numa janela de terminal; sem gráfico, funciona no terminal mesmo |
+
+¹ Se o macOS reclamar de permissão: clique com o direito > Abrir, ou `chmod +x Instalador-TicianoFlix-macOS.command`.
+
+Os três reaproveitam a mesma lógica do instalador de linha de comando (verificações, downloads oficiais, serviço persistente) — mudam só a embalagem. Requerem o projeto baixado ao lado (clone/zip); sem ele, tentam baixar do GitHub.
 
 ### Pré-requisitos
 
 - **Python 3.9+**
 - Linux (systemd) · macOS (LaunchAgent) · Windows — veja abaixo
 
-É só isso. O TicianoFlix funciona com filmes que já estão no seu computador, num
-HD externo ou num pendrive — veja [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador).
+É só isso. O instalador **instala o rclone sozinho** (baixa o binário oficial
+para `~/.local/bin`, sem precisar de sudo); se preferir, qualquer rclone já
+instalado no sistema é respeitado. O TicianoFlix funciona com filmes que já
+estão no seu computador, num HD externo ou num pendrive — veja
+[Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador).
 
-O **Google Drive é opcional** e entra depois, quando você quiser: precisa do
-rclone e de uma autorização no Google, e dá pra fazer tudo pelo próprio
-TicianoFlix, em **⚙️ Ajustes › ☁️ rclone**. Sem ele nada deixa de funcionar —
-o servidor sobe igual e nem tenta contato com o Drive.
+A **nuvem é opcional** e entra depois, quando você quiser: com o rclone já
+instalado, basta conectar qualquer remote em **⚙️ Ajustes › ☁️ Nuvem**. Sem ela
+nada deixa de funcionar — o servidor sobe igual e nem tenta contato com a nuvem.
 
-### 1. (Opcional) Configurar o Google Drive no rclone
+### 1. (Opcional) Conectar a nuvem (qualquer remote do rclone)
 
-```bash
-rclone config
-```
+A nuvem do TicianoFlix é **qualquer remote do rclone** — Backblaze B2, Google
+Drive, S3, Dropbox, SFTP, o que for. Em **⚙️ Ajustes › ☁️ Nuvem › Conectar
+nuvem**, o assistente oferece dois caminhos:
 
-Crie um remote chamado `gdrive:` com:
-- Tipo: `drive`
-- Escopo: **`drive.readonly`** — o TicianoFlix só lê
-- Autenticação via OAuth no navegador
+- **Usar um remote existente**: escolhe na lista do seu `rclone.conf`
+  (`rclone listremotes`), informa a pasta do acervo dentro dele e conecta;
+- **Criar um remote novo**: escolhe o tipo numa lista filtrável e o formulário
+  é gerado com os campos exatos daquela nuvem (o rclone mesmo descreve cada
+  um). O app cria, testa a conexão e conecta — sem terminal.
 
-> ⚠️ O assistente do rclone oferece `drive` como padrão, que dá **leitura e
-> escrita no seu Drive inteiro**. O TicianoFlix não precisa disso. Se você já
-> criou o remote assim, o instalador oferece corrigir — e o painel **☁️ rclone**
-> avisa enquanto estiver largo. Veja [Acesso ao Google Drive](#acesso-ao-google-drive).
-
-> 💡 Depois de instalado, dá pra configurar pelo próprio TicianoFlix:
-> **⚙️ Ajustes › ☁️ rclone** no menu lateral — ele mostra o status (instalado,
-> remote `gdrive:`, streaming, **acesso ao Drive**) e abre o configurador
-> oficial do rclone (web GUI) pra criar o remote sem usar o terminal.
+Desconectar não apaga nada: o remote e o acervo ficam intactos. O backup do
+catálogo vai para a pasta `TicianoFlix Backups/` na mesma nuvem.
 
 ### 2. Instalar
 
@@ -100,15 +114,19 @@ curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/inst
 
 O mesmo `install.sh` cuida de tudo, nos dois sistemas:
 - Verifica o Python (3.9+; instala pelo gerenciador de pacotes se faltar)
+- Instala o rclone (binário oficial em `~/.local/bin`, sem sudo; usa
+  Homebrew/apt/dnf/pacman como alternativa se o download falhar)
 - No Linux, cria o serviço systemd e ativa persistência sem login (`linger`)
 - No macOS, cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair)
 - Sobe o servidor, espera ele responder e **mostra o código de instalação na
   própria tela** — sem precisar abrir o log
 - Abre o navegador no endereço certo
 
-Não pede nada de Google Drive nem de rclone — isso é totalmente opcional, veja
-a seção [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador)
-e [Google Drive](#1-opcional-configurar-o-google-drive-no-rclone) acima.
+Não pede nenhuma credencial: a nuvem é 100% opcional e configurada depois pela
+interface (com o rclone já instalado). Veja
+[Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador)
+e [Conectar a nuvem](#1-opcional-conectar-a-nuvem-qualquer-remote-do-rclone)
+acima.
 
 **Windows:** baixe o projeto e rode `install-windows.bat` de dentro da pasta.
 
@@ -164,7 +182,7 @@ criar a conta inicial antes de você — quem não tem acesso ao terminal da má
 não passa dessa tela. Depois disso o código não vale mais: contas novas só pelo
 painel **⚙️ Ajustes › 👥 Contas**.
 
-Feito o login, clique em 🔄 para escanear seu Drive.
+Feito o login, clique em 🔄 para escanear sua nuvem.
 
 ### 4. Criar contas para a casa
 
@@ -195,27 +213,48 @@ systemctl --user restart ticianoflix
 systemctl --user stop ticianoflix
 ```
 
-### Estrutura do Google Drive
+### Estrutura da nuvem
 
-Organize seus filmes assim no Drive:
+Organize seus filmes assim na nuvem, dentro de uma pasta com o nome escolhido
+na instalação (aqui, `Mediaflix` é só um exemplo; se preferir, use a raiz da
+nuvem cadastrando a pasta em branco):
 
 ```
 Mediaflix/
-├── Acervo/
+├── movies/
 │   ├── Filme A (2024)/
 │   │   ├── Filme A (2024).mp4
 │   │   ├── poster.jpg
 │   │   └── Filme A (2024).nfo
-│   └── Filme B (2023)/
-├── Ficção Científica/
-├── Terror/
-├── Shows/
-└── Trash/
+│   ├── Filmes B e C/
+│   │   └── Filme B (2023)/    ← pastas intermediárias não importam
+│   └── Filme C.mp4            ← arquivo solto também vale (aparece no A-Z)
+└── tv shows/
+    └── Breaking Bad/
+        ├── poster.jpg          ← arte da série (opcional)
+        ├── S01/
+        │   ├── S01E01.mkv
+        │   └── S01E01.srt
+        └── S02/
+            └── Breaking Bad S02E01.mkv
+
+**movies/** funciona como sempre funcionou o acervo: filme = pasta com vídeo
+direto (qualquer profundidade), arquivo solto vale. Em **tv shows/**, cada
+pasta é uma série, as pastas dentro dela são as temporadas (S01, S02...) e os
+vídeos dentro das temporadas são os episódios. Séries também entram no A-Z,
+nos recentes e aceitam marcação de perfil infantil.
+
+Tags não vêm de pasta: você cria na interface (barra lateral › Tags) e
+atribui os filmes a elas pela ficha ou pelo A-Z, de qualquer fonte.
+
+> Fora de `movies/` e `tv shows/` a regra de filme vale igual — quem já tem
+> acervo solto na raiz continua funcionando sem mover nada. Os nomes dos
+> contêineres valem em maiúsculas ou minúsculas (`TV Shows` funciona igual).
 ```
 
 ### Fontes locais (HD externo, pendrive, pasta do computador)
 
-O Drive não precisa ser o único acervo. Em **⚙️ Ajustes › 💽 Fontes do acervo** (só para
+A nuvem não precisa ser o único acervo. Em **⚙️ Ajustes › 💽 Fontes do acervo** (só para
 administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
 
 - os **volumes conectados** aparecem prontos pra adicionar com um clique
@@ -223,32 +262,32 @@ administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
   Windows), e as pastas de mídia do usuário (`~/Movies`, `~/Videos`) também;
 - ou cole o caminho à mão, se preferir.
 
-A regra é **uma só, igual à do Drive: tem que existir uma pasta chamada
-`Mediaflix`**, com os gêneros dentro dela.
+A regra é **uma só, igual à da nuvem: tem que existir uma pasta com o nome
+escolhido na instalação** (`Mediaflix` no exemplo abaixo), com os filmes
+dentro dela — cada filme numa pasta com o vídeo, ou como arquivo solto.
 
 ```
 /Volumes/MeuHD/
-└── Mediaflix/               ← o nome é obrigatório
-    ├── Terror/
-    │   └── Alien (1979)/
-    │       ├── Alien (1979).mkv
-    │       ├── Alien (1979).nfo
-    │       └── poster.jpg
-    └── Ficção Científica/
+└── Mediaflix/               ← o nome é obrigatório (o escolhido na instalação)
+    └── Alien (1979)/
+        ├── Alien (1979).mkv
+        ├── Alien (1979).nfo
+        └── poster.jpg
 ```
 
 **Não precisa apontar exato.** O volume que você escolhe quase sempre fica acima
 do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
 `/Volumes/MeuHD/Filmes/Mediaflix/...`. O TicianoFlix procura essa pasta na
 raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
-encontrou. Maiúsculas não importam (`mediaflix` serve), e uma pasta já
-criada como `TicianoFlix` (o nome antigo) também é aceita.
+encontrou. Maiúsculas não importam, e uma pasta já criada com um nome genérico
+de versão anterior (`mediaflix` ou `ticianoflix`) também é sempre aceita.
 
 Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar —
 em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.
 No modal, os volumes detectados que já têm a pasta aparecem marcados com ✓.
 
-Cada fonte vira um grupo próprio na barra lateral, com os gêneros dela embaixo.
+Cada fonte vira um grupo próprio na barra lateral; as **Tags** do app ficam
+numa seção à parte, logo abaixo.
 
 Uma vez indexado, o filme local se comporta como qualquer outro: busca, A-Z,
 continuar assistindo, legendas, metadados NFO e Chromecast funcionam igual — só
@@ -259,7 +298,7 @@ que os bytes saem direto do disco, sem passar pelo rclone.
 | Situação | O que acontece |
 |---|---|
 | HD desconectado no momento do scan | A fonte é pulada e **o catálogo dela é preservado** — nada é apagado. Ela aparece marcada como *desconectada*. |
-| Filme numa fonte local | Ganha o selo **Local**. Não há o que baixar pro cache, e ele não entra em *Baixados do Drive* — nunca foi baixado. |
+| Filme numa fonte local | Ganha o selo **Local**. Não há o que baixar pro cache, e ele não entra em *Baixados da nuvem* — nunca foi baixado. |
 | Remover uma fonte | Sai do catálogo. **Os arquivos no disco não são tocados.** |
 | Backup restaurado de outra máquina | As fontes daquela máquina são podadas do catálogo no boot, já que os caminhos não existem aqui. |
 
@@ -309,29 +348,6 @@ O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 </movie>
 ```
 
-### Metadados automáticos (TMDB) — sem tinyMediaManager
-
-Quem não quiser organizar `.nfo` na mão pode preencher pelo próprio
-TicianoFlix, em **⚙️ Ajustes › 🏷️ Metadados**:
-
-1. Crie uma conta gratuita em [themoviedb.org](https://www.themoviedb.org/) e
-   gere uma **API Key (v3 auth)** em Configurações › API — cole no modal.
-2. O modal lista os filmes sem metadado. Clique em **Buscar**, escolha o
-   candidato certo entre os resultados do TMDB e clique em **Usar este**.
-
-O casamento **nunca é automático**: o TMDB só devolve candidatos, e uma
-pessoa escolhe qual é o filme certo — evita o erro clássico de scraper
-silencioso (o *Alien* de 1979 vs. o remake, vs. a franquia inteira).
-
-Os dados sempre vão pro banco (funciona com Drive e fonte local igual). Numa
-**fonte local**, se a pasta ainda não tiver `.nfo` nem pôster, o TicianoFlix
-também escreve `<pasta>.nfo` + `poster.jpg`/`fanart.jpg` ali — pra interoperar
-com Kodi/Plex depois. Isso **nunca sobrescreve** um `.nfo` ou pôster que já
-exista: pode ser curadoria manual de quem organizou o acervo antes.
-
-A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
-— nunca embutida no projeto nem enviada a lugar nenhum além do próprio TMDB.
-
 ---
 
 ## ⚙️ Arquitetura
@@ -345,8 +361,8 @@ A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
                          │          │                 │
                          ▼          ▼                 ▼
               ┌──────────────┐  ┌────────────┐  ┌──────────────────┐
-              │  SQLite      │  │ disco      │  │  Google Drive    │
-              │  (catálogo)  │  │ (Range)    │  │ pasta Mediaflix  │
+              │  SQLite      │  │ disco      │  │  nuvem (rclone)  │
+              │  (catálogo)  │  │ (Range)    │  │ pasta escolhida  │
               └──────────────┘  └─────┬──────┘  └──────────────────┘
                                       │
                                       ▼
@@ -356,8 +372,8 @@ A chave é sua, gratuita, e fica só no seu computador (`~/.cache/ticianoflix`)
                           └────────────────────────┘
 ```
 
-O catálogo é um só: o SQLite guarda caminhos lógicos (`/Mediaflix/...` para o
-Drive, `/Local/<fonte>/...` para as pastas locais) e cada requisição é roteada
+O catálogo é um só: o SQLite guarda caminhos lógicos (`/<nome do app>/...` para a
+nuvem, `/Local/<fonte>/...` para as pastas locais) e cada requisição é roteada
 para a fonte dona daquele caminho. Por isso busca, A-Z, continuar assistindo e
 Chromecast valem para as duas origens sem código duplicado.
 
@@ -367,7 +383,7 @@ Chromecast valem para as duas origens sem código duplicado.
 |--------|-----------|
 | **Backend** | Python 3 puro (`http.server.ThreadingHTTPServer`) |
 | **Frontend** | HTML + CSS + Vanilla JS (`cachedFetch` com TTL 2 min, `pushState` history) |
-| **Streaming** | Drive: `rclone serve http` (VFS cache full, chunk 4M, read-ahead 512M) · Local: leitura direta do disco com HTTP Range |
+| **Streaming** | Nuvem: `rclone serve http` (VFS cache full, chunk 4M, read-ahead 512M) · Local: leitura direta do disco com HTTP Range |
 | **Cache** | SQLite (browsing) + RAM (movie details) + VFS rclone (download offline) |
 | **Init** | systemd user service |
 
@@ -401,52 +417,22 @@ disso — mas nada nele responde sem autenticação.
   legenda devolvem `*` apenas quando não há header `Origin` (o caso do
   Chromecast, que busca o arquivo sozinho).
 - **Chromecast por URL assinada** — token HMAC de 12h válido só para aquele
-  arquivo, em vez de abrir as rotas de mídia.
+  arquivo, em vez de abrir as rotas de mídia; a versão convertida para TV
+  (`/api/prepared`) usa o mesmo token do arquivo original.
 - **`rclone serve` apenas em `127.0.0.1:18082`**, read-only e montado na pasta
-  `Mediaflix` — nunca na raiz do Drive. O TicianoFlix faz o proxy; nada
+  da biblioteca — nunca na raiz da nuvem. O TicianoFlix faz o proxy; nada
   externo alcança essa porta.
 - **Configurador do rclone desligado por padrão.** Habilite com
   `TICIANOFLIX_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
 
-### Acesso ao Google Drive
+### Acesso à nuvem
 
-Por padrão o `rclone config` cria um remote com escopo `drive`: **leitura e
-escrita no Drive inteiro**. O TicianoFlix não precisa de nada disso — ele só lê
-uma pasta.
-
-Você não precisa lembrar disso sozinho:
-
-- **Os instaladores perguntam.** Se o remote estiver mais largo que o
-  necessário, eles oferecem corrigir na hora.
-- **O painel avisa.** Em **⚙️ Ajustes › ☁️ rclone**, a linha *Acesso ao Google Drive* mostra
-  o nível atual e, quando está largo, explica o risco e dá o comando.
-
-Para rodar manualmente, a qualquer momento:
-
-```bash
-./setup-rclone-seguro.sh
-```
-
-| Remote | Escopo | Alcance |
-|--------|--------|---------|
-| `gdrive` | `drive.readonly` + `root_folder_id` | Só lê, e só enxerga a pasta `Mediaflix` |
-| `gdrive_backup` | `drive.file` | Só os arquivos que o próprio TicianoFlix criou |
-
-Depois disso, o resto do seu Drive fica fora de alcance mesmo que algo dê errado
-no servidor. Confira com:
-
-```bash
-rclone lsjson gdrive: --dirs-only        # deve listar só os gêneros do catálogo
-echo x | rclone rcat gdrive:probe.tmp    # deve falhar
-```
-
-> O escopo é aplicado pelo **Google**, não pelo rclone: editar o campo `scope`
-> no `rclone.conf` não rebaixa um token já emitido. O script roda
-> `rclone config reconnect`, que abre o navegador e pede um consentimento novo —
-> esse passo é o que realmente fecha a escrita.
-
-O código funciona com o remote escopado ou não: ele lê o `root_folder_id` do
-`rclone.conf` na inicialização e ajusta os caminhos sozinho.
+O app não guarda credencial nenhuma: tudo vive no `rclone.conf` do usuário
+(segredos obscurecidos pelo próprio rclone). O backup do catálogo é escrito na
+pasta `TicianoFlix Backups/` da nuvem conectada — o único lugar onde o app
+escreve. Vale a pena aplicar o mínimo privilégio na nuvem: credencial de
+leitura para o acervo e, se quiser, uma de escrita para os backups, cadastrada
+como remote separado no rclone.
 
 ### Superfície da aplicação
 
@@ -456,8 +442,9 @@ O código funciona com o remote escopado ou não: ele lê o `root_folder_id` do
   esperado antes de substituir o banco, com teto de tamanho.
 - **Metadados NFO escapados** na renderização, e arquivos com `<!ENTITY>`
   recusados (bomba XML).
-- **Zero hardcoded secrets** — OAuth do rclone fica em
-  `~/.config/rclone/rclone.conf`, fora do repositório.
+- **Zero hardcoded secrets** — as credenciais ficam no
+  `~/.config/rclone/rclone.conf` (obscurecidas pelo próprio rclone), fora do
+  repositório.
 - **SQL sempre parametrizado**, nenhum `shell=True`, nenhum caminho de usuário
   chegando ao shell.
 
@@ -472,6 +459,13 @@ O código funciona com o remote escopado ou não: ele lê o `root_folder_id` do
 > ⚠️ Pela porta **9187** a senha trafega em claro na sua rede. O servidor também
 > sobe em **HTTPS na 9443** — prefira esse endereço, ele aparece no banner de
 > inicialização.
+>
+> O certificado HTTPS cobre o IP da LAN **e** o nome Bonjour da máquina — no Mac,
+> `https://<nome-do-mac>.local:9443` (ex.: `https://Mac-mini-de-Ticiano.local:9443`).
+> O nome `.local` não muda quando o IP muda: o certificado se regenera sozinho ao
+> reiniciar o servidor. Em celulares e tablets, instale a CA para o navegador
+> aceitar sem aviso: baixe em `http://<servidor>:9187/ca.crt` (só o certificado
+> público; a chave nunca é servida).
 
 A porta é fixa: se a 9187 estiver ocupada por uma instância anterior do
 TicianoFlix, o servidor a encerra e assume a porta, em vez de migrar para outra.
@@ -486,6 +480,7 @@ TicianoFlix/
 ├── ticianoflix/           # O backend
 │   ├── config.py          #   constantes, caminhos, variáveis de ambiente
 │   ├── paths.py           #   fronteira de caminhos com o rclone
+│   ├── nuvem.py           #   wizard da nuvem (qualquer remote do rclone)
 │   ├── netsec.py          #   validação de Host e Origin
 │   ├── procutil.py        #   PIDs por porta (lsof/fuser)
 │   ├── netutil.py         #   IP local, cert self-signed, escolha de porta
@@ -509,9 +504,11 @@ TicianoFlix/
 │   └── vendor/            #   polyfill de spatial navigation do W3C (MIT)
 ├── tv/                    # App de Android TV (Kotlin) — veja tv/README.md
 ├── tools/check_names.py   # Detecta nomes usados mas não definidos
-├── setup-rclone-seguro.sh # Reduz o acesso ao Drive ao mínimo
 ├── install.sh             # Instalador único (Linux e macOS) — baixa, instala, sobe
 ├── install-windows.bat    # Instalador (Windows)
+├── Instalador-TicianoFlix-Windows.ps1/.bat  # Instalador visual (assistente gráfico)
+├── Instalador-TicianoFlix-macOS.command     # Instalador visual (diálogos nativos)
+├── Instalador-TicianoFlix-Linux.sh          # Instalador visual (zenity/kdialog)
 ├── bump-version.sh        # Versionamento SemVer
 ├── .gitignore             # Arquivos ignorados pelo Git
 ├── LICENSE                # Licença MIT
@@ -529,6 +526,7 @@ ticianoflix.db     # Catálogo (SQLite)
 auth.json          # Contas e hashes de senha  (600)
 sources.json       # Fontes locais cadastradas (600)
 secret.key         # Chave HMAC das sessões    (600)
+nuvem.json         # Remote e pasta da nuvem   (600)
 cert.pem / key.pem # Certificado HTTPS         (600)
 images/ · subs/    # Cache de pôsteres e legendas
 ```
@@ -669,9 +667,75 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
-### v1.20 — botão de voltar na ficha do filme + responsividade dos botões
+### v1.23 — ficha do filme: 'já assisti' que desmarca e Gêneros renomeados para Tags
 
-- botão de voltar na ficha do filme + responsividade dos botões
+- Botão 'Já assisti' na ficha vira interruptor: marca e desmarca, e o filme sai na hora de Continuar Assistindo
+
+- 'Gêneros' viram 'Tags' em todo o app (barra lateral, A-Z, modais e mensagens) — a ficha do filme mostra quantas tags ele tem
+
+- Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como 'Palavras-chave'
+
+
+### v1.22 — transmissão sem sustos: capa da série, próximo episódio e vídeo em toda TV
+
+- Transmissão: a capa da série aparece no painel e na TV ao transmitir um episódio (o arquivo não tem pôster próprio)
+
+- Transmissão: quando o episódio termina, o próximo da série entra sozinho — a TV não fica mais parada na tela final
+
+- Transmissão: vídeo HEVC é convertido para H.264 no preparo — era o HEVC 10-bit que deixava a TV com o som rolando e a proteção de tela ligada
+
+- AirPlay: a URL enviada à TV é reconstruída do zero — o token velho do player podia duplicar e derrubar a reprodução
+
+- Android: o painel não chama mais o aparelho de 'media receiver' — mostra o nome do Chromecast, ou nada quando o SDK não informa
+
+- Coleções e séries: a capa não duplica mais o caminho do arquivo (adeus, pôster 404)
+
+
+### v1.21 — coleções criadas e editadas no próprio app
+
+- Botão **Nova coleção**: nome, descrição, escolha dos filmes e da capa — sem NFO nem tinyMediaManager
+
+- **Editar coleção**: adicionar/remover filmes, trocar capa, nome e descrição
+
+- Coleções vindas de NFO (`<set>`) são importadas uma única vez, com os mesmos filmes
+
+- **Gêneros criados na interface**, independentes de pastas: atribua pela ficha do filme ou pelo A-Z
+
+- **Séries**: organize em `tv shows/Série/Temporada (S01, S02...)/episódios` — listagem própria em A-Z, página da série com temporadas e episódios em lista (com legenda)
+
+- Continuar assistindo: episódios de série aparecem como lista na home, com retomada no ponto exato
+
+- Perfil infantil vira interruptor claro na ficha e na série (marcar a série vale para todos os episódios)
+
+- Pasta `movies/` na raiz do acervo organiza os filmes (a regra de filme continua valendo fora dela também)
+
+- Perfil infantil: conta com modo criança que só vê (e só pode tocar) os filmes marcados — o resto bloqueia até por URL
+
+- **Chromecast**: tamanho e cor da legenda regulam na TV ao vivo (a escolha fica salva), e o painel de transmissão virou um controle remoto (play, ±10s, Aa, CC)
+
+- Instalador visual nas 3 plataformas: assistente gráfico no Windows, diálogos nativos no macOS e zenity/kdialog no Linux
+
+- Nuvem vira wizard: use qualquer remote do rclone (da lista) ou crie um novo com formulário guiado — B2, Drive, S3, SFTP...
+
+- **Gênero por pasta sai de vez**: filme é qualquer pasta com vídeo direto, na profundidade que for
+
+- **Filmes soltos** (arquivo avulso na pasta) viram filme no A-Z — clique toca direto
+
+- Um filme pode estar em várias coleções; quem sai do acervo sai das coleções e dos gêneros no scan
+
+- Tabelas novas `colecoes`, `colecoes_filmes`, `generos_app` e `generos_filmes` (as antigas `collections`/`movie_collections` ficam como histórico)
+
+### v1.20 — nuvem passa a ser Backblaze B2, configurada pelo próprio app
+
+- O Google Drive sai do código: a nuvem agora é um bucket **Backblaze B2** (rclone continua sendo o motor de streaming, scan e backup)
+
+- Cadastro pela interface, em **⚙️ Ajustes › ☁️ Nuvem**: keyID, applicationKey e bucket — sem OAuth, sem script no terminal, sem navegador
+
+- Backup e restauração vão para o mesmo bucket, com suporte a uma application key separada (só de escrita) para o mínimo privilégio
+
+- `setup-rclone-seguro.sh` sai do repositório: o `rclone.conf` agora é escrito pelo próprio app (`ticianoflix/b2setup.py`)
+
+- Streaming, cache VFS, scanner, fontes locais e banco de dados permanecem iguais — só o remote mudou (`gdrive:` → `b2:`)
 
 
 ### v1.19.2 — migração do prefixo de marca esquecia folders.parent
