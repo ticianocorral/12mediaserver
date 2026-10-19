@@ -174,7 +174,7 @@
       const name = item.Name || '';
       const filePath = item.Path ? '/' + item.Path : '';
       const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
-      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc);
+      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc, item.watched);
     });
 
     html += `</div></div>
@@ -433,6 +433,7 @@
         } else {
           html += '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
         }
+        html += _badgeAssistido(m);
         html += '<div class="movie-card-overlay"><div class="movie-card-title">' + escHtml(nameClean) + '</div>'
           + (m.is_file ? '<div class="movie-card-subtitle">arquivo solto</div>' : '')
           + '</div>';
@@ -574,6 +575,7 @@
           : 'showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)';
         html += '<div class="movie-card" onclick="' + cliqueRecente + '" title="' + escHtml(m.name) + '">'
           + '<div class="movie-card-poster-placeholder" style="display:flex"><svg class="icon-svg"><use href="#i-film"></use></svg></div>'
+          + _badgeAssistido(m)
           + '<div class="movie-card-overlay">'
           + '<div class="movie-card-title">' + escHtml(nameClean) + '</div>'
           + '</div></div>';
@@ -938,6 +940,7 @@
                 + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>'
               : '<div class="movie-card-poster-placeholder">'
                 + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>')
+          + _badgeAssistido(m)
           + '<div class="movie-card-overlay"><div class="movie-card-title">' + titulo + '</div>'
           + '<div class="movie-card-subtitle">' + (m.year ? escHtml(m.year) : 'Filme') + '</div>'
           + '</div></div>';
@@ -1378,13 +1381,35 @@
                 ? '<span class="episodio-assistido" onclick="event.stopPropagation();'
                   + 'limparProgressoEpisodio(decodeURIComponent(\'' + enc(ep.path) + '\'), this)" '
                   + 'title="Remove o progresso deste episódio">Já assisti</span>'
-                : '')
+                : (ep.watched
+                    // Selo do assistido: clicável para RETIRAR a marcação.
+                    ? '<span class="episodio-assistido episodio-visto" '
+                      + 'onclick="event.stopPropagation();'
+                      + '_desmarcarEpisodio(decodeURIComponent(\'' + enc(ep.path) + '\'), this)" '
+                      + 'title="Assistido — clique para retirar a marcação">✓ Assistido</span>'
+                    : ''))
             + '</button>';
         });
         html += '</div></div>';
       });
       container.innerHTML = html;
     });
+  }
+
+  // Retira a marcação "assistido" do episódio: apaga a linha de progresso
+  // (o /api/watched com on:false — a mesma tecla que o switch da ficha).
+  function _desmarcarEpisodio(epPath, el) {
+    fetch('/api/watched', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: epPath, on: false }),
+    }).then(r => r.json()).then(data => {
+      if (data && data.status === 'error') throw new Error(data.error || 'erro');
+      if (el) el.remove();
+      if (_serieAtual && _serieAtual.path) {
+        _invalidateCache('/api/serie?path=' + encodeURIComponent(_serieAtual.path));
+      }
+      showToast('✖ Fora de assistidos', 'success');
+    }).catch(() => showToast('Erro ao retirar a marcação', 'error'));
   }
 
   function limparProgressoEpisodio(epPath, el) {
@@ -1400,6 +1425,15 @@
         .forEach(x => x.remove());
       const play = linha.querySelector('.episodio-play use');
       if (play) play.setAttribute('href', '#i-play');
+      // Vira o selo "✓ Assistido" (com a mesma saída de marcação).
+      linha.insertAdjacentHTML('beforeend',
+        '<span class="episodio-assistido episodio-visto" '
+        + 'onclick="event.stopPropagation();'
+        + '_desmarcarEpisodio(decodeURIComponent(\'' + enc(epPath) + '\'), this)" '
+        + 'title="Assistido — clique para retirar a marcação">✓ Assistido</span>');
+      if (_serieAtual && _serieAtual.path) {
+        _invalidateCache('/api/serie?path=' + encodeURIComponent(_serieAtual.path));
+      }
       showToast('✔ Episódio marcado como assistido', 'success');
     }).catch(() => showToast('Erro ao limpar progresso', 'error'));
   }
@@ -1466,6 +1500,7 @@
                 + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>'
               : '<div class="movie-card-poster-placeholder" style="display:flex">'
                 + '<svg class="icon-svg"><use href="#i-film"></use></svg></div>')
+          + _badgeAssistido(m)
           + '<div class="movie-card-overlay"><div class="movie-card-title">' + titulo + '</div>'
           + '<div class="movie-card-subtitle">'
           + (m.is_file ? 'arquivo solto' : (m.year ? escHtml(m.year) : 'Filme'))
@@ -1740,6 +1775,16 @@
     if (nota) nota.textContent = on ? 'Fora do continuar' : 'Marcar como visto';
   }
 
+  // Selo "assistido" dos cards: verde no canto do poster. O estado vem do
+  // servidor (watch_progress encerrado) em todas as listagens — A-Z, home,
+  // coleções, TAGs e arquivos da ficha.
+  function _badgeAssistido(m) {
+    return (m && m.watched)
+      ? '<div class="movie-card-assistido" title="Já assistido">'
+        + '<svg class="icon-svg"><use href="#i-check"></use></svg></div>'
+      : '';
+  }
+
   // Tira o filme da fileira "Continuar Assistindo" sem esperar a home recarregar.
   function _removerDoContinueAssistindo(folderPath) {
     const cwSection = document.getElementById('continueWatchingSection');
@@ -1777,8 +1822,11 @@
           if (resumeBtn) resumeBtn.remove();
         }
         showToast(data.watched ? '✔ Marcado como assistido' : 'Fora de assistidos', 'success');
-        _invalidateCache('/api/continue-watching');
-        _invalidateCache('/api/movie-detail?path=' + encodeURIComponent(alvo));
+        // O selo de assistido aparece em TODAS as listagens (A-Z, home,
+        // coleções, TAGs, series) — invalida o cache inteiro na vez seguinte.
+        try {
+          for (var k in _frontCache) { delete _frontCache[k]; }
+        } catch (e) { /* _frontCache indisponivel */ }
         if (data.watched) _removerDoContinueAssistindo(alvo);
       } else {
         showToast('Erro: ' + (data.error || 'falha'), 'error');
@@ -1870,7 +1918,7 @@
     directVideos.forEach(video => {
       const name = video.Name || '';
       const filePath = (data.path ? data.path + '/' : '') + name;
-      html += renderMovieCardHtml(name, filePath, video.Size, video.poster ? posterUrl(data.path, video.poster) : null);
+      html += renderMovieCardHtml(name, filePath, video.Size, video.poster ? posterUrl(data.path, video.poster) : null, video.watched);
     });
 
     html += `</div></div>`;
@@ -1925,7 +1973,7 @@
       const name = video.Name || '';
       const filePath = (data.path ? data.path + '/' : '') + name;
       const posterSrc = video.poster ? posterUrl(data.path, video.poster) : null;
-      html += renderMovieCardHtml(name, filePath, video.Size, posterSrc);
+      html += renderMovieCardHtml(name, filePath, video.Size, posterSrc, video.watched);
     });
     html += `</div>`;
     container.innerHTML = html;
@@ -1966,7 +2014,7 @@
         const name = video.Name || '';
         const filePath = (data.path ? data.path + '/' : '') + name;
         const posterSrc = video.poster ? posterUrl(data.path, video.poster) : null;
-        html += renderMovieCardHtml(name, filePath, video.Size, posterSrc);
+        html += renderMovieCardHtml(name, filePath, video.Size, posterSrc, video.watched);
       });
       html += `</div></div>`;
     }
@@ -1985,7 +2033,7 @@
   }
 
   // ===== MOVIE CARD HTML =====
-  function renderMovieCardHtml(name, filePath, size, posterSrc) {
+  function renderMovieCardHtml(name, filePath, size, posterSrc, watched) {
     const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     // Use encodeURIComponent for safe embedding in onclick attributes
     // DecodeURIComponent in the handler reverses this safely
@@ -2003,6 +2051,7 @@
     } else {
       html += `<div class="movie-card-poster-placeholder">${fileIcon(name)}</div>`;
     }
+    html += _badgeAssistido({ watched: watched });
 
     html += `
         <div class="movie-card-overlay">
@@ -2575,6 +2624,9 @@
   // ou da temporada) e consumida quando a TV avisa que o episódio terminou.
   let _castPlaylist = null;          // { itens: [{path,title,sub,arte}], idx }
   let _castProximoArmado = false;    // vira "armado" quando algo esta tocando
+  let _castUltimoIdle = null;        // mediaSessionId do ultimo IDLE/finished —
+                                     // o ticker reavisa o estado a cada 1s e
+                                     // sem isso re-marcava "assistido" em laço.
   let _castAvancando = false;        // trava do carregamento do proximo
 
   function _startCastTicker() {
@@ -2600,13 +2652,19 @@
       if (cbtn) cbtn.innerHTML = icone;
       // Fim do episódio: o receiver avisa IDLE/"finished" — com a fila
       // montada, o próximo entra sozinho (sem isso a TV ficava parada).
+      // Marca o fim de propósito: a última passada de 30s acima podia ter
+      // ficado em 9x% e o episódio/filme ia embora sem virar "assistido".
       if (tocando) {
         _castProximoArmado = true;
-      } else if (_castProximoArmado
-                 && m.playerState === chrome.cast.media.PlayerState.IDLE
-                 && String(m.idleReason || '').toLowerCase() === 'finished') {
-        _castProximoArmado = false;
-        _castAvancarFila();
+      } else if (m.playerState === chrome.cast.media.PlayerState.IDLE
+                 && String(m.idleReason || '').toLowerCase() === 'finished'
+                 && _castUltimoIdle !== m.mediaSessionId) {
+        _castUltimoIdle = m.mediaSessionId;
+        _saveProgress(100, 100);
+        if (_castProximoArmado) {
+          _castProximoArmado = false;
+          _castAvancarFila();
+        }
       }
       // "Continuar assistindo" precisa do tempo da TV, nao do player parado.
       if (tocando && dur && (Date.now() - _castUltimoSave) > 30000) {
@@ -5400,6 +5458,8 @@
         'Botão \'Já assisti\' na ficha vira interruptor: marca e desmarca, e o filme sai na hora de Continuar Assistindo',
         '\'Gêneros\' viram \'Tags\' em todo o app (barra lateral, A-Z, modais e mensagens) — a ficha do filme mostra quantas tags ele tem',
         'Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como \'Palavras-chave\'',
+        'Assistidos aparecem nos cards: selo verde no A-Z, home, coleções, TAGs e arquivos da ficha — e na linha do episódio, com clique para retirar a marcação',
+        'Fim no Chromecast agora marca o episódio/filme como assistido (antes ficava em \'continuar\' para sempre)',
         'Fim do episódio emenda o próximo também fora do Chromecast: no AirPlay e assistindo no navegador a reprodução não para mais na tela final',
         'AirPlay: a TV anuncia o nome do filme/episódio (antes mostrava o nome do app) — vale também para a tela de bloqueio e a central de mídia',
         'AirPlay: a legenda do filme entra no MP4 preparado (mov_text, o formato que o receptor lê embutido) — aparece na TV, ativada pelo controle remoto do Apple TV; o botão CC do app continua mandando na legenda do Chromecast e do player local',

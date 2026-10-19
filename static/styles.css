@@ -590,6 +590,26 @@
   @media (hover: none) {
     .movie-card-genero { opacity: 1; width: 34px; height: 34px; }
   }
+  /* Selo "já assistido": verde no canto do poster (esquerda — a direita
+     fica com o botão de tags do admin on-hover). Não é clicável: o des-
+     marcar fica no switch da ficha e nas linhas de episódio. */
+  .movie-card-assistido {
+    position: absolute; top: 8px; left: 8px; z-index: 3;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1.5px solid #4caf50;
+    color: #a5d6a7;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+  }
+  .movie-card-assistido .icon-svg { width: 15px; height: 15px; }
+  /* Linha de episódio assistido: o chip verde herda o layout de
+     .episodio-assistido; o clique retira a marcação. */
+  .episodio-visto {
+    color: #a5d6a7; border-color: rgba(76,175,80,0.55);
+    background: rgba(76,175,80,0.14);
+  }
+  .episodio-visto:hover { background: rgba(76,175,80,0.08); }
   .confirm-input {
     width: 100%; box-sizing: border-box;
     padding: 10px 12px; margin-top: 4px;

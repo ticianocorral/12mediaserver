@@ -2866,6 +2866,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             # Pôster e título em lote (antes: uma conexão por filme da home).
             posters = _posters_de_pastas(conn, [r["path"] for r in movie_rows])
             titulos = _titulos_nfo_de_pastas(conn, [r["path"] for r in movie_rows])
+            assistidos = {r["folder_path"] for r in conn.execute(
+                "SELECT folder_path FROM watch_progress "
+                "WHERE position_seconds <= 0").fetchall()}
             conn.close()
 
             movies = []
@@ -2878,6 +2881,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     "poster": posters.get(movie_path),
                     "is_serie": row["tipo"] == "serie",
                     "title": titulos.get(movie_path) or None,
+                    "watched": movie_path in assistidos,
                 })
             self._send_json(movies)
             return

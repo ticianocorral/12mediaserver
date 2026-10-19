@@ -12,6 +12,19 @@ from .config import (
 from .db import get_db, like_prefix
 from .nfo import _fetch_nfo
 
+def _assistidos_alvo(conn):
+    """Conjunto de alvos com linha "assistida" (position_seconds <= 0).
+
+    Uma consulta so para a listagem inteira: a tabela e pequena (uma linha
+    por progresso) e as listagens renderizam dezenas de cards — consultas
+    por card sumiriam com a folga de resposta. O alvo e folder_path, que
+    para filme guardo a pasta do filme e para episodio o path do ARQUIVO.
+    """
+    return {r["folder_path"] for r in conn.execute(
+        "SELECT folder_path FROM watch_progress "
+        "WHERE position_seconds <= 0").fetchall()}
+
+
 def cached_list_directory(path, so_infantil=False):
     """List directory contents from cache.
 
@@ -77,6 +90,7 @@ def cached_list_directory(path, so_infantil=False):
     # conexão SQLite (e os PRAGMAs de WAL) por linha da listagem.
     posters = _posters_de_pastas(
         conn, [r["folder_path"] for r in file_rows if r["file_type"] == "video"])
+    assistidos = _assistidos_alvo(conn)
     conn.close()
 
     folders = []
@@ -93,6 +107,9 @@ def cached_list_directory(path, so_infantil=False):
             "ModTime": row["mod_time"],
             "IsDir": True,
             "has_video": bool(row["has_video"]),
+            # Selo do card: linha de progresso encerrada (posicao <= 0) — o
+            # mesmo estado que o switch da ficha mostra.
+            "watched": row["path"] in assistidos,
         })
 
     for row in file_rows:
@@ -106,6 +123,9 @@ def cached_list_directory(path, so_infantil=False):
         }
         ft = row["file_type"]
         if ft == "video":
+            # Episodio solto: o progresso dele fica na key do ARQUIVO.
+            entry["watched"] = (
+                row["folder_path"] + "/" + row["name"]) in assistidos
             poster = posters.get(row["folder_path"])
             if poster:
                 entry["poster"] = poster
@@ -396,6 +416,7 @@ def cached_all_movies(so_infantil=False):
         _poster_de_solto(conn, r["folder_path"], r["name"].rsplit(".", 1)[0])
         for r in soltos
     ]
+    assistidos = _assistidos_alvo(conn)
     conn.close()
 
     results = []
@@ -407,6 +428,7 @@ def cached_all_movies(so_infantil=False):
             "title": row["title"] or row["name"],
             "is_serie": row["tipo"] == "serie",
             "poster": posters.get(folder_path),
+            "watched": folder_path in assistidos,
         })
     for row, poster in zip(soltos, posters_soltos):
         results.append({
@@ -415,6 +437,7 @@ def cached_all_movies(so_infantil=False):
             "title": _titulo_de_arquivo(row["name"]),
             "poster": poster,
             "is_file": True,
+            "watched": (row["folder_path"] + "/" + row["name"]) in assistidos,
         })
     results.sort(key=lambda m: (m.get("title") or m.get("name") or "").lower())
 
@@ -544,6 +567,7 @@ def cached_collection_movies(key, so_infantil=False):
         # perfil infantil) e uma consulta por filme; agora é uma só, antes
         # do close.
         infantis = _alvos_infantis(conn, alvos) if so_infantil else set()
+        assistidos = _assistidos_alvo(conn)
     finally:
         conn.close()
 
@@ -558,6 +582,7 @@ def cached_collection_movies(key, so_infantil=False):
             "year": row["year"],
             "poster": posters.get(row["path"]),
             "is_serie": row["tipo"] == "serie",
+            "watched": row["path"] in assistidos,
         })
     return {"id": col["id"], "name": col["nome"], "overview": col["descricao"],
             "capa_path": col["capa"], "movies": filmes,
@@ -790,6 +815,10 @@ def cached_generos_de(alvo):
 
 def _entrada_de_filme(conn, alvo):
     """alvo -> card de filme (pasta ou arquivo solto), ou None se sumiu."""
+    visto = bool(conn.execute(
+        "SELECT 1 FROM watch_progress "
+        "WHERE folder_path=? AND position_seconds <= 0 LIMIT 1",
+        (alvo,)).fetchone())
     pasta = conn.execute(
         """SELECT f.path, f.name, m.title, m.year FROM folders f
            LEFT JOIN movie_meta m ON m.folder_path = f.path
@@ -799,7 +828,7 @@ def _entrada_de_filme(conn, alvo):
         return {"path": pasta["path"], "name": pasta["name"],
                 "title": pasta["title"] or pasta["name"], "year": pasta["year"],
                 "poster": _find_poster_cached(alvo, conn), "is_file": False,
-                "infantil": _e_infantil(conn, alvo)}
+                "infantil": _e_infantil(conn, alvo), "watched": visto}
     solto = conn.execute(
         """SELECT fi.folder_path, fi.name FROM files fi
            WHERE fi.folder_path || '/' || fi.name = ? AND fi.file_type = 'video'""",
@@ -810,7 +839,8 @@ def _entrada_de_filme(conn, alvo):
                 "name": solto["name"],
                 "title": _titulo_de_arquivo(solto["name"]), "year": None,
                 "poster": _poster_de_solto(conn, solto["folder_path"], stem),
-                "is_file": True, "infantil": _e_infantil(conn, alvo)}
+                "is_file": True, "infantil": _e_infantil(conn, alvo),
+                "watched": visto}
     return None
 
 
@@ -938,6 +968,8 @@ def cached_serie(serie_path, so_infantil=False):
                     "subtitle": (temp["path"] + "/" + leg["name"]) if leg else None,
                     "position": (prog["position_seconds"] if prog else 0),
                     "duration": (prog["duration_seconds"] if prog else 0),
+                    # Selo do episodio assistido: linha encerrada (pos <= 0).
+                    "watched": bool(prog) and prog["position_seconds"] <= 0,
                 })
             temporadas.append({"nome": temp["name"], "episodios": eps})
         temporadas.sort(key=lambda x: _ordem_temporada(x["nome"]))

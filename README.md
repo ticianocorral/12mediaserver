@@ -675,6 +675,10 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 - Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como 'Palavras-chave'
 
+- Assistidos aparecem nos cards: selo verde no A-Z, home, coleções, TAGs e arquivos da ficha — e na linha do episódio, com clique para retirar a marcação
+
+- Fim no Chromecast agora marca o episódio/filme como assistido (antes ficava em 'continuar' para sempre)
+
 - Fim do episódio emenda o próximo também fora do Chromecast: no AirPlay e assistindo no navegador a reprodução não para mais na tela final
 
 - AirPlay: a TV anuncia o nome do filme/episódio (antes mostrava o nome do app) — vale também para a tela de bloqueio e a central de mídia
