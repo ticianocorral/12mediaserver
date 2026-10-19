@@ -3225,6 +3225,28 @@
     });
   }
 
+  // Emenda o próximo episódio quando quem terminou foi o player do aparelho
+  // (assistindo no navegador ou pelo AirPlay). No Chromecast este caminho não
+  // roda: lá o ticker vê IDLE/"finished" e chama _castAvancarFila.
+  // playMovie remonta a ficha e a fila pelo novo arquivo, re-assina o token e
+  // troca a chave de progresso para o episódio que começa.
+  function _avancarFilaNoPlayer() {
+    if (!_castPlaylist || _castAvancando) return;
+    var proximo = _castPlaylist.itens[_castPlaylist.idx + 1];
+    if (!proximo) return;
+    _castAvancando = true;
+    showToast('▶ Próximo episódio: ' + proximo.title, 'info');
+    playMovie(proximo.path, proximo.title, proximo.sub || '', 0, proximo.path);
+    // AirPlay: o src nasce sem token (o <video> local usa o cookie da sessão)
+    // e o receptor busca a URL sozinho — sem assinar, ele leva 401 e fica
+    // preso no "carregando". É o mesmo remédio do seletor nativo do iOS.
+    var video = document.getElementById('videoPlayer');
+    if (video && video.webkitCurrentPlaybackTargetIsWireless) {
+      _airplayRepararSePreciso(video);
+    }
+    _castAvancando = false;
+  }
+
   // Vai preparando o próximo episódio da fila em segundo plano: quando ele
   // entrar (fim do atual), a conversão já estará pronta (ou quase) e o
   // usuário não fica olhando a tela final esperando o preparo terminar.
@@ -3417,6 +3439,30 @@
     _saveProgress(Number(posicao) || 0, Number(duracao) || 0);
   };
 
+  // O que o sistema mostra como "tocando agora" (AirPlay, tela de bloqueio,
+  // central de mídia): o título da página é a fonte clássica no WebKit — era
+  // ele que fazia a TV anunciar "TicianoFlix" — e o title do <video> cobre o
+  // widget do macOS. A Media Session, quando existe, fala a mesma língua.
+  function _publicarNomeNaTela(nome) {
+    const video = document.getElementById('videoPlayer');
+    document.title = nome || 'TicianoFlix';
+    if (video) video.title = nome || '';
+    try {
+      if (nome && window.MediaMetadata && 'mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: nome });
+      }
+    } catch (e) { /* sem Media Session: o título da página já resolve */ }
+  }
+
+  function _limparNomeNaTela() {
+    const video = document.getElementById('videoPlayer');
+    document.title = 'TicianoFlix';
+    if (video) video.title = '';
+    try {
+      if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+    } catch (e) {}
+  }
+
   function playMovie(filePath, movieName, subtitlePath, resumePosition, progressKey) {
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
@@ -3438,7 +3484,12 @@
       return;
     }
 
-    movieTitle.textContent = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
+    // Nome do vídeo na tela. No AirPlay quem anuncia é o sistema — pelo título
+    // da PÁGINA (e pelo title do <video>) — e o título da página era
+    // "TicianoFlix": a TV mostrava o nome do app no lugar do filme.
+    const nomeNaTela = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
+    movieTitle.textContent = nomeNaTela;
+    _publicarNomeNaTela(nomeNaTela);
     document.getElementById('playerFileSize').textContent = '';
 
     // Proactively load Cast SDK (non-blocking)
@@ -3656,6 +3707,17 @@
       document.getElementById('playBtn').innerHTML = '<svg class="icon-svg"><use href="#i-play"></use></svg>';
     };
     video.onvolumechange = updateMuteBtn;
+    // Fim do episódio tocando no próprio aparelho — é por aqui que o AirPlay
+    // passa (a TV é comandada pelo <video>). No Chromecast quem emenda é o
+    // ticker (IDLE/"finished"), e lá o <video> local fica pausado: o handler
+    // nem chega a disparar.
+    video.onended = function() {
+      if (_isCasting()) return;
+      // Fecha o episódio que acabou (pct > 95 vira "assistido"), antes de a
+      // chave de progresso passar para o próximo.
+      _saveProgress(video.duration, video.duration);
+      _avancarFilaNoPlayer();
+    };
 
     document.getElementById('seekBar').oninput = function() {
       const dur = _castDuration();
@@ -3804,6 +3866,7 @@
     video.onpause = null;
     video.onvolumechange = null;
     video.onloadeddata = null;
+    video.onended = null;
     // Stop background download
     _stopBgDownload();
     loading.style.display = 'none';
@@ -3812,6 +3875,8 @@
     document.body.style.overflow = '';
     _currentPlayFolder = null;
     _progressSaveTimer = null;
+    // O filme saiu do ar: devolve o título da página ao nome do app.
+    _limparNomeNaTela();
   }
 
   let subtitlesEnabled = true;
@@ -5330,11 +5395,13 @@
   const _CHANGELOG = [
     {
       version: '1.23.0',
-      title: 'ficha do filme: \'já assisti\' que desmarca e Gêneros renomeados para Tags',
+      title: 'ficha do filme: \'já assisti\' que desmarca, Gêneros viram Tags e o AirPlay emendando episódios',
       changes: [
         'Botão \'Já assisti\' na ficha vira interruptor: marca e desmarca, e o filme sai na hora de Continuar Assistindo',
         '\'Gêneros\' viram \'Tags\' em todo o app (barra lateral, A-Z, modais e mensagens) — a ficha do filme mostra quantas tags ele tem',
         'Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como \'Palavras-chave\'',
+        'Fim do episódio emenda o próximo também fora do Chromecast: no AirPlay e assistindo no navegador a reprodução não para mais na tela final',
+        'AirPlay: a TV anuncia o nome do filme/episódio (antes mostrava o nome do app) — vale também para a tela de bloqueio e a central de mídia',
       ],
     },
     {
