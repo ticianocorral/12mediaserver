@@ -24,6 +24,15 @@ A conversao roda em segundo plano, uma por vez, e o resultado fica em cache
 (~/.cache/ticianoflix/cast). So a primeira transmissao de cada arquivo
 espera; depois e instantaneo. Se o arquivo de origem mudar (mtime/tamanho),
 o cache vence sozinho e uma nova conversao acontece.
+
+Fonte de nuvem (B2 via 'rclone serve http'): o rclone nao expoe o arquivo
+como path de disco, entao o prepare baixa o original (e a legenda sidecar)
+para um arquivo de palco junto do cache, converte de la e apaga o palco no
+fim — o que persiste e so o MP4. A chave do cache soma a marca REMOTA do
+banco (tamanho/mod_time do arquivo listado); a baixa so acontece quando a
+conversao nao existe ou venceu. Sem ffprobe remota, a decisao de preparar
+usa a extensao do container (e a presenca de legenda); o codec real aparece
+depois da baixa e segue a mesma receita do local.
 """
 
 from __future__ import annotations
@@ -36,11 +45,13 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
+import urllib.request
 from collections import deque
 from pathlib import Path
 
 from . import keepawake
-from .config import CAST_CACHE_DIR
+from .config import CAST_CACHE_DIR, RCLONE_SERVE_PORT
 
 # O que os receptores leem sem conversao: container MP4/MOV + video H.264 +
 # faixa AAC/MP3 (sem faixa tambem vale — filme mudo). HEVC fica de fora de
@@ -55,30 +66,36 @@ _AUDIO_COPIavel = {"aac", "mp3"}
 _EXT_LEGENDA = (".srt", ".ass", ".ssa", ".vtt")
 
 
-def _legenda_de(src):
-    """Legenda sidecar do video (mesmo nome, mesma pasta), ou None.
+def escolhe_legenda(stem_video, nomes):
+    """Qual legenda sidecar usar, pela mesma regra no disco e na nuvem.
 
     O padrao do acervo e "Filme (2020).mkv" + "Filme (2020).srt"; um sufixo
     de idioma no meio ("Filme (2020).pt.srt") tambem vale. Prioridade: o
-    homonimo .srt, depois qualquer .srt do mesmo nome, depois os outros.
+    homonimo .srt, depois qualquer .srt do mesmo comeco, depois os demais
+    formatos texto. Recebe os NOMES; devolve um deles, ou None.
     """
+    cands = [n for n in nomes if Path(n).suffix.lower() in _EXT_LEGENDA]
+    if not cands:
+        return None
+    stem = (stem_video or "").lower()
+    prefixo = [n for n in cands if Path(n).stem.lower().startswith(stem)]
+    srt = [n for n in prefixo if Path(n).suffix.lower() == ".srt"]
+    homonimo = [n for n in srt if Path(n).stem.lower() == stem]
+    for grupo in (homonimo, srt, prefixo):
+        if grupo:
+            return sorted(grupo)[0]
+    return None
+
+
+def _legenda_de(src):
+    """Legenda sidecar do video local (mesmo nome, mesma pasta), ou None."""
     try:
         pasta = Path(src).parent
-        stem = Path(src).stem
-        candidatos = [p for p in pasta.iterdir()
-                      if p.is_file() and p.suffix.lower() in _EXT_LEGENDA]
+        nomes = [p.name for p in pasta.iterdir() if p.is_file()]
     except OSError:
         return None
-    if not candidatos:
-        return None
-    prefixo = [p for p in candidatos if p.stem.lower().startswith(stem.lower())]
-    srt = [p for p in prefixo if p.suffix.lower() == ".srt"]
-    homonimo = [p for p in srt if p.stem == stem]
-    if homonimo:
-        return sorted(homonimo)[0]
-    if srt:
-        return sorted(srt)[0]
-    return sorted(prefixo)[0] if prefixo else None
+    nome = escolhe_legenda(Path(src).stem, nomes)
+    return str(pasta / nome) if nome else None
 
 
 def _assinatura_legenda(sub):
@@ -198,55 +215,125 @@ def _precisa(info, path, sub=None):
 
 # ── Cache ────────────────────────────────────────────────────
 
-def _cache_paths(src):
-    """MP4 + meta do cache e a legenda do video.
+def _precisa_nuvem(attrs):
+    """True quando o arquivo remoto vale a baixa para converter.
 
-    A chave soma src + legenda (path/mtime/tamanho): trocar ou editar o .srt
-    invalida a conversao sem tocar no resto."""
-    sub = _legenda_de(src)
-    sig = _assinatura_legenda(sub)
-    texto = "%s\n%s" % (src, json.dumps(sig, sort_keys=True) if sig else "-")
-    chave = hashlib.sha1(texto.encode("utf-8")).hexdigest()
-    return (CAST_CACHE_DIR / (chave + ".mp4"),
-            CAST_CACHE_DIR / (chave + ".json"), sub)
+    Sem ffprobe de nada que ainda nao foi baixado, a decisao usa so a
+    extensao do container (e a presenca de legenda). O codec real aparece
+    na sondagem do arquivo de palco — de la em diante vale o _precisa do
+    local, entao um .mp4 estranho (HEVC, por exemplo) no fim da baixa
+    tambem acaba convertido em vez de servido cru.
+    """
+    if (attrs.get("sig") or {}).get("sub"):
+        return True
+    remoto = (attrs.get("sig") or {}).get("remoto") or ""
+    return Path(remoto).suffix.lower() not in _CONTAINERS_PRONTOS
 
 
-def prepared_file(path):
-    """Path do MP4 convertido, se ainda existir e corresponder a fonte.
+def _normaliza(fonte):
+    """Fonte (path local ou descriptor de nuvem) -> atributos para o cache.
 
-    Tambem confere a legenda: mudou o .srt, invalida sozinho. Um MP4 vindo
-    de conversao que descartou a legenda com erro (sub_erro no meta) fica
-    disponivel em modo degradado: melhor sem faixa de texto do que sem video."""
-    if not path:
+    Local: str com o path no disco. A legenda sidecar e procurada aqui
+    mesmo (mesmo nome; ver escolhe_legenda) e assinada com mtime/tamanho.
+
+    Nuvem: dict {kind: 'nuvem', remoto, size, mtime, sub: {...|None}} que o
+    handler monta a partir do banco (marca remota do arquivo listado). A
+    chave soma essa marca — mudou o arquivo na nuvem, o cache vence. Os
+    arquivos de palco da baixa nunca entram na chave: morrem no fim da
+    conversao; so o MP4 persiste.
+    """
+    if isinstance(fonte, str):
+        if not fonte:
+            return None
+        sub = _legenda_de(fonte)
+        sig_sub = _assinatura_legenda(sub)
+        texto = "%s\n%s" % (fonte,
+                            json.dumps(sig_sub, sort_keys=True) if sig_sub else "-")
+        return {
+            "kind": "local",
+            "path": fonte,
+            "sub": sub,
+            "chave": hashlib.sha1(texto.encode("utf-8")).hexdigest(),
+            "rotulo": Path(fonte).name,
+        }
+    if not isinstance(fonte, dict) or fonte.get("kind") != "nuvem":
         return None
-    mp4, meta, sub = _cache_paths(path)
-    sig = _assinatura_legenda(sub)
+    remoto = str(fonte.get("remoto") or "").strip("/")
+    if not remoto:
+        return None
+    sig = {"remoto": remoto,
+           "size": fonte.get("size"),
+           "mtime": fonte.get("mtime")}
+    sub = fonte.get("sub") or None
+    if sub:
+        sig["sub"] = {
+            "remoto": str(sub.get("remoto") or "").strip("/"),
+            "size": sub.get("size"),
+            "mtime": sub.get("mtime"),
+            "nome": sub.get("nome"),
+        }
+    texto = "nuvem\n" + json.dumps(sig, sort_keys=True)
+    return {
+        "kind": "nuvem",
+        "path": None,
+        "sig": sig,
+        "chave": hashlib.sha1(texto.encode("utf-8")).hexdigest(),
+        "rotulo": Path(remoto).name,
+    }
+
+
+# ── Cache ────────────────────────────────────────────────────
+
+def _cache_paths(fonte):
+    """MP4 + meta do cache e os atributos da fonte.
+
+    A chave de local soma path + assinatura da legenda; a de nuvem soma a
+    marca remota do banco. Trocar ou editar o .srt (de qualquer lado)
+    invalida a conversao sem tocar no resto do cache."""
+    attrs = _normaliza(fonte)
+    chave = attrs["chave"] if attrs else "invalido"
+    return (CAST_CACHE_DIR / (chave + ".mp4"),
+            CAST_CACHE_DIR / (chave + ".json"), attrs)
+
+
+def prepared_file(fonte):
+    """Path do MP4 convertido, se existir e corresponder a fonte.
+
+    Tambem confere a legenda: mudou o .srt, invalida sozinho. Um cache que
+    descartou a legenda com erro (sub_erro no meta) fica disponivel em
+    modo degradado: melhor sem faixa de texto do que sem video."""
+    if not fonte:
+        return None
+    mp4, meta, attrs = _cache_paths(fonte)
+    if attrs is None:
+        return None
     try:
         dados = json.loads(meta.read_text("utf-8"))
     except Exception:
         return None
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
     if dados.get("prep") != _PREP_VERSION:
         return None
-    if dados.get("mtime") != int(st.st_mtime) or dados.get("size") != st.st_size:
-        return None
-    gravado = dados.get("sub")
-    if gravado != sig:
-        return None
-    # sub_erro (quando existe) diz que a conversao descartou a legenda ruim:
-    # o MP4 vale, so nao tem faixa de texto. Trocar/editar o .srt muda a
-    # assinatura, invalida a meta e a proxima conversao tenta de novo.
+    if attrs["kind"] == "local":
+        try:
+            st = os.stat(attrs["path"])
+        except OSError:
+            return None
+        if (dados.get("mtime") != int(st.st_mtime)
+                or dados.get("size") != st.st_size):
+            return None
+        if dados.get("sub") != _assinatura_legenda(attrs["sub"]):
+            return None
+    else:
+        if dados.get("nuvem") != attrs["sig"]:
+            return None
     if not mp4.is_file():
         return None
     return mp4
 
 
-def mark_used(path):
+def mark_used(fonte):
     """Atualiza o mtime do cache: a limpeza LRU usa isso como 'uso'."""
-    mp4, _, _ = _cache_paths(path)
+    mp4, _, _ = _cache_paths(fonte)
     try:
         os.utime(mp4, None)
     except OSError:
@@ -261,30 +348,37 @@ def _publico(job):
             "error": job.get("error") or ""}
 
 
-def status(path, enqueue=False):
+def status(fonte, enqueue=False):
     """Estado do preparo para a TV.
 
-    needed=False  -> o original toca direto (ou nao ha como sondar); o
-                     chamador segue com /api/stream como sempre.
+    fonte e um path de disco local (str) ou descriptor de nuvem (dict — ver
+    _normaliza). needed=False -> o original toca direto (local) ou a baixa
+    nao vale a pena (nuvem: container pronto e sem legenda); o chamador
+    segue com /api/stream como sempre.
     state: 'none' | 'ready' | 'queued' | 'converting' | 'error' | 'idle'
     ('idle' = precisa converter mas nada agendado — o servidor reiniciou
     no meio; com enqueue=True isso nao acontece).
     """
-    if not path:
+    attrs = _normaliza(fonte)
+    if attrs is None:
         return {"needed": False, "state": "none"}
     with _lock:
-        job = _jobs.get(path)
+        job = _jobs.get(attrs["chave"])
         if job:
             if not (job["state"] == "error" and enqueue):
                 return _publico(job)
-            _jobs.pop(path, None)   # novo pedido = nova tentativa
+            _jobs.pop(attrs["chave"], None)   # novo pedido = nova tentativa
 
-    if prepared_file(path):
+    if prepared_file(fonte):
         return {"needed": True, "state": "ready", "percent": 100}
 
-    sub = _legenda_de(path)
-    info = _probe(path)
-    if info is None or not _precisa(info, path, sub):
+    if attrs["kind"] == "nuvem":
+        precisa = _precisa_nuvem(attrs)
+    else:
+        info = _probe(attrs["path"])
+        precisa = (info is not None
+                   and _precisa(info, attrs["path"], attrs["sub"]))
+    if not precisa:
         return {"needed": False, "state": "none"}
     # Sem ffmpeg na maquina o preparo nao existe: transmissao segue como
     # antes (arquivo original), sem travar o usuario.
@@ -292,32 +386,37 @@ def status(path, enqueue=False):
         return {"needed": False, "state": "none"}
 
     if enqueue:
-        _enqueue(path)
+        _enqueue(fonte)
         with _lock:
-            job = _jobs.get(path)
+            job = _jobs.get(attrs["chave"])
             return _publico(job) if job else {"needed": True, "state": "idle"}
     return {"needed": True, "state": "idle"}
 
 
 # ── Fila e worker ────────────────────────────────────────────
 
-def _enqueue(path):
+def _enqueue(fonte):
     global _worker_ligado
+    attrs = _normaliza(fonte)
+    if attrs is None:
+        return
+    chave = attrs["chave"]
     with _lock:
-        if path in _jobs or _fila_contem(path):
+        if chave in _jobs or _fila_contem(chave):
             return
-        _jobs[path] = {"state": "queued", "percent": 0, "error": ""}
-        _fila.append(path)
+        _jobs[chave] = {"state": "queued", "percent": 0, "error": "",
+                        "fonte": fonte, "rotulo": attrs["rotulo"]}
+        _fila.append(chave)
         if not _worker_ligado:
             _worker_ligado = True
             threading.Thread(target=_worker, name="ticianoflix-prepare",
                              daemon=True).start()
-    print("[TicianoFlix] Preparo para TV na fila: %s" % Path(path).name,
+    print("[TicianoFlix] Preparo para TV na fila: %s" % attrs["rotulo"],
           flush=True)
 
 
-def _fila_contem(path):
-    return any(p == path for p in _fila)
+def _fila_contem(chave):
+    return any(k == chave for k in _fila)
 
 
 def _worker():
@@ -327,50 +426,74 @@ def _worker():
             if not _fila:
                 _worker_ligado = False
                 return
-            path = _fila.popleft()
+            chave = _fila.popleft()
         try:
-            _convert(path)
+            _convert(chave)
         except Exception as e:   # o worker nunca morre com job preso
             with _lock:
-                job = _jobs.get(path)
+                job = _jobs.get(chave)
                 if job:
                     job.update(state="error", error=str(e)[:300])
             print("[TicianoFlix] Falha preparando %s: %s"
-                  % (Path(path).name, e), flush=True)
+                  % (job.get("rotulo", chave) if job else chave, e), flush=True)
 
 
-def _convert(path):
+def _convert(chave):
     with _lock:
-        job = _jobs.get(path)
+        job = _jobs.get(chave)
         if job is None:
             return
         job.update(state="converting", percent=0, error="")
+        fonte = job["fonte"]
+        rotulo = job.get("rotulo") or "?"
 
+    palco = None
     tmp = None
     try:
+        attrs = _normaliza(fonte)
+        if attrs["kind"] == "nuvem":
+            # Do rclone nao sai path de disco: baixa o original (e a
+            # legenda sidecar) para o palco e converte de la. O palco morre
+            # no fim — no sucesso e no erro; so o MP4 persiste. A baixa
+            # costuma ser a parte mais longa dela toda: dormirmos agora
+            # travaria o job, mesmo tratamento da conversao.
+            with keepawake.while_streaming():
+                palco = _palco_nuvem(attrs, chave)
+            if palco is None:
+                raise RuntimeError("baixa do arquivo da nuvem falhou")
+            path = str(palco["video"])
+            sub = palco.get("sub")
+            rotulo_base = attrs["rotulo"]
+        else:
+            path = attrs["path"]
+            sub = _legenda_de(path)  # atual na hora da conversao (nao a da fila)
+            rotulo_base = attrs["rotulo"]
+
         info = _probe(path)
-        sub = _legenda_de(path)       # atual na hora da conversao (nao a da fila)
         if info is None or not _precisa(info, path, sub):
             with _lock:
-                _jobs.pop(path, None)
+                _jobs.pop(chave, None)
             return
 
-        mp4, meta, _ = _cache_paths(path)
+        mp4, meta, _ = _cache_paths(fonte)
         # Nome único por processo: se duas conversões do mesmo arquivo
         # correrem juntas (servidor + uma sessão manual, por exemplo), cada
         # uma escreve no seu tmp e o os.replace() fica com a última — sem
         # uma sobrescrever o arquivo da outra no meio.
         tmp = mp4.with_name("%s.tmp.%d.mp4" % (mp4.name, os.getpid()))
-        cmd = _cmd(path, info, tmp, sub)
         print("[TicianoFlix] Preparando para TV: %s (video %s, audio %s%s)"
-              % (Path(path).name, info.get("v"), info.get("a") or "sem",
+              % (rotulo_base, info.get("v"), info.get("a") or "sem",
                  ", legenda %s" % Path(sub).name if sub else ""),
               flush=True)
 
         dur_us = (info.get("duration") or 0) * 1_000_000
+        # Nuvem: a baixa ja gastou 0-40 do percentual; o ffmpeg entra
+        # depois e preenche ate 99.
+        base = 40 if attrs["kind"] == "nuvem" else 0
         sub_erro = None
         with keepawake.while_streaming():
-            codigo, log_ultimo = _rodar(_cmd(path, info, tmp, sub), path, dur_us)
+            codigo, log_ultimo = _rodar(_cmd(path, info, tmp, sub), chave,
+                                        dur_us, base=base)
             if codigo != 0 and sub:
                 # Legenda ruim nao pode derrubar o filme: refaz sem a faixa
                 # de texto e marca sub_erro — o cache segue valendo.
@@ -378,33 +501,44 @@ def _convert(path):
                 print("[TicianoFlix] Legenda %s invalida, preparando sem ela"
                       % Path(sub).name, flush=True)
                 codigo, log_ultimo = _rodar(_cmd(path, info, tmp, None),
-                                            path, dur_us)
+                                            chave, dur_us, base=base)
 
         if codigo != 0:
             raise RuntimeError("ffmpeg falhou: "
                                + (log_ultimo or "codigo %d" % codigo))
 
-        st = os.stat(path)
         os.replace(tmp, mp4)
         dados_meta = {
             "path": path,
             "prep": _PREP_VERSION,
-            "mtime": int(st.st_mtime),
-            "size": st.st_size,
+            "mtime": 0,
+            "size": None,
             "v": info.get("v"),
             "a": info.get("a"),
             "created": int(time.time()),
             # "sub" e a legenda tentada (mesmo quando descartada); sub_erro
             # marca o discard — o MP4 sai sem faixa de texto mas continua
             # valendo (ver prepared_file).
-            "sub": _assinatura_legenda(sub),
+            "sub": None,
         }
+        if attrs["kind"] == "local":
+            try:
+                stl = os.stat(path)
+                dados_meta["mtime"] = int(stl.st_mtime)
+                dados_meta["size"] = stl.st_size
+            except OSError:
+                pass
+            dados_meta["sub"] = _assinatura_legenda(sub)
+        else:
+            dados_meta["path"] = attrs["sig"]["remoto"]
+            dados_meta["size"] = attrs["sig"]["size"]
+            dados_meta["nuvem"] = attrs["sig"]
         if sub_erro:
             dados_meta["sub_erro"] = sub_erro[:200]
         meta.write_text(json.dumps(dados_meta), "utf-8")
         with _lock:
-            _jobs.pop(path, None)
-        print("[TicianoFlix] Pronto para TV: %s" % Path(path).name, flush=True)
+            _jobs.pop(chave, None)
+        print("[TicianoFlix] Pronto para TV: %s" % rotulo_base, flush=True)
         _cleanup()
     except Exception as e:
         if tmp is not None:
@@ -413,38 +547,125 @@ def _convert(path):
             except OSError:
                 pass
         with _lock:
-            j = _jobs.get(path)
+            j = _jobs.get(chave)
             if j:
                 j.update(state="error", error=str(e)[:300])
-        print("[TicianoFlix] Falha preparando %s: %s"
-              % (Path(path).name, e), flush=True)
+        print("[TicianoFlix] Falha preparando %s: %s" % (rotulo, e), flush=True)
+    finally:
+        if palco is not None:
+            for arq in (palco.get("video"), palco.get("sub")):
+                if arq:
+                    try:
+                        Path(arq).unlink()
+                    except OSError:
+                        pass
 
 
-def _rodar(cmd, path, dur_us):
+def _rodar(cmd, chave, dur_us, base=0, teto=99):
     """Roda o ffmpeg lendo o progresso; devolve (codigo, ultima linha de erro).
 
     Separado de _convert porque a segunda tentativa (sem legenda) repete a
-    mesma leitura de progresso."""
+    mesma leitura de progresso. base/teto remapeiam o 0-100 do ffmpeg numa
+    fatia do percentual do job (na nuvem, a baixa ocupa o comeco)."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT)
     log = deque(maxlen=4)
     for linha in proc.stdout:
         texto = linha.decode("utf-8", "replace").strip()
-        chave, sep, valor = texto.partition("=")
+        parte, sep, valor = texto.partition("=")
         if sep:
-            if chave == "out_time_us" and dur_us:
+            if parte == "out_time_us" and dur_us:
                 try:
-                    pct = int(int(valor) * 100 / dur_us)
+                    pct = base + int(int(valor) * (teto - base) / dur_us)
                 except ValueError:
                     continue
                 with _lock:
-                    j = _jobs.get(path)
+                    j = _jobs.get(chave)
                     if j:
-                        j["percent"] = max(0, min(99, pct))
+                        j["percent"] = max(0, min(teto, pct))
             continue
         if texto:
             log.append(texto)
     return proc.wait(), (log[-1] if log else "")
+
+
+# ── Nuvem: baixa e palco ─────────────────────────────────────
+
+def _baixar_remoto(remoto, destino, chave, base=0, teto=40):
+    """Baixa um arquivo do 'rclone serve http' (localhost) para o disco.
+
+    O canal e o mesmo que o proxy do handler usa: o serve escuta so no
+    localhost, dentro da maquina. O progresso preenche a fatia base-teto
+    do percentual do job — na nuvem, a baixa costuma ser a parte mais
+    demorada de tudo."""
+    url = ("http://localhost:%d/%s"
+           % (RCLONE_SERVE_PORT, urllib.parse.quote(str(remoto).lstrip("/"),
+                                                    safe="/")))
+    try:
+        resp = urllib.request.urlopen(url, timeout=120)
+    except Exception as e:
+        print("[TicianoFlix] Baixa da nuvem falhou (%s): %s" % (remoto, e),
+              flush=True)
+        return False
+    try:
+        try:
+            total = int(resp.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        feito = 0
+        with open(destino, "wb") as saida:
+            while True:
+                pedaco = resp.read(1 << 22)          # 4 MiB por vez
+                if not pedaco:
+                    break
+                saida.write(pedaco)
+                feito += len(pedaco)
+                if total:
+                    pct = base + int((teto - base) * feito / total)
+                    with _lock:
+                        j = _jobs.get(chave)
+                        if j:
+                            j["percent"] = max(0, min(teto, pct))
+    except OSError as e:
+        print("[TicianoFlix] Baixa da nuvem interrompida (%s): %s"
+              % (remoto, e), flush=True)
+        return False
+    finally:
+        resp.close()
+    return total == 0 or feito == total
+
+
+def _palco_nuvem(attrs, chave):
+    """Baixa video + legenda da nuvem para o cache (copia de trabalho).
+
+    Devolve {'video': path, 'sub': path|None} para o _convert usar como se
+    fossem arquivos locais — o ffmpeg nao conversa com o rclone. O chamador
+    apaga esses arquivos no fim (sucesso ou erro); so o MP4 persiste."""
+    try:
+        CAST_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    video = CAST_CACHE_DIR / (attrs["chave"] + ".orig.video")
+    if not _baixar_remoto(attrs["sig"]["remoto"], video, chave, 0, 40):
+        try:
+            video.unlink()
+        except OSError:
+            pass
+        return None
+    sub = None
+    info_sub = (attrs.get("sig") or {}).get("sub")
+    if info_sub:
+        sub = (CAST_CACHE_DIR / ("%s.orig.legenda%s"
+                                 % (attrs["chave"],
+                                    Path(info_sub.get("nome") or "x")
+                                    .suffix or ".srt")))
+        if not _baixar_remoto(info_sub["remoto"], sub, chave, 40, 41):
+            try:
+                sub.unlink()
+            except OSError:
+                pass
+            sub = None
+    return {"video": video, "sub": sub}
 
 
 def _cmd(src, info, dest, sub):
@@ -523,6 +744,14 @@ def _cleanup():
         for orfao in CAST_CACHE_DIR.glob("*.tmp.mp4"):
             try:
                 if agora - orfao.stat().st_mtime > 3600:
+                    orfao.unlink()
+            except OSError:
+                pass
+        # Palcos de nuvem que sobraram de queda no meio de uma baixa
+        # (o _convert os apaga em qualquer saida normal).
+        for orfao in CAST_CACHE_DIR.glob("*.orig.*"):
+            try:
+                if agora - orfao.stat().st_mtime > 6 * 3600:
                     orfao.unlink()
             except OSError:
                 pass

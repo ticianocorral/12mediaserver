@@ -430,17 +430,83 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"status": "error",
                              "error": "Filme não disponível neste perfil"}, 403)
             return
-        # O prepare trabalha no arquivo de disco: o path logico
-        # (/Local/movies/...) precisa virar caminho real primeiro.
-        real = _sources.local_real_path(file_path)
-        if real is None:
-            # Nuvem/fonte remota: sem sonda local, fica como sempre foi —
+        # O prepare trabalha em fontes: local = path de disco; nuvem =
+        # descriptor remoto (o prepare baixa e converte; ver _fonte_de).
+        fonte = _fonte_de(file_path)
+        if fonte is None:
+            # Nuvem/fonte remota sem descriptor: fica como sempre foi —
             # o receptor recebe o arquivo original.
             self._send_json({"needed": False, "state": "none"})
             return
-        self._send_json(prepare.status(str(real), enqueue=True))
+        self._send_json(prepare.status(fonte, enqueue=True))
 
     # ── Painel de administracao ──────────────────────────────
+    def _fonte_de(self, file_path):
+        """Fonte do prepare para um path logico: path de disco ou nuvem.
+
+        Local: o path real do arquivo, como sempre. Nuvem (kind 'cloud'):
+        descriptor com a marca REMOTA do banco (size/mod_time) e a legenda
+        sidecar escolhida pela mesma regra do disco — o prepare baixa os
+        dois pelo 'rclone serve http', converte e apaga o palco. None =
+        path fora das fontes; o chamador responde como sempre.
+        """
+        if not file_path:
+            return None
+        if _sources.is_local(file_path):
+            real = _sources.local_real_path(file_path)
+            return str(real) if real is not None else None
+        try:
+            src = _sources.resolve(file_path)
+        except Exception:
+            src = None
+        if src is None or src.get("kind") != "cloud":
+            return None
+        return self._fonte_nuvem(file_path)
+
+    def _fonte_nuvem(self, file_path):
+        """Descriptor de prepare para um video da nuvem — video + legenda.
+
+        O rclone serve nao expoe o arquivo como path de disco: as marcas
+        (size/mod_time) que assinam o cache vem do banco, do mesmo
+        listamento que alimenta a ficha. A legenda e a mesma que a ficha
+        escolhe (prepare.escolhe_legenda). None = video nao esta no banco.
+        """
+        pasta, _, nome = str(file_path).rpartition("/")
+        if not nome:
+            return None
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT size, mod_time FROM files WHERE folder_path=? AND name=?",
+                (pasta, nome)).fetchone()
+            legs = [dict(l) for l in conn.execute(
+                "SELECT name, size, mod_time FROM files "
+                "WHERE folder_path=? AND file_type='subtitle'",
+                (pasta,)).fetchall()]
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        sub = None
+        nome_leg = prepare.escolhe_legenda(
+            Path(nome).stem, [l["name"] for l in legs])
+        if nome_leg:
+            l = next((l for l in legs if l["name"] == nome_leg), None)
+            if l:
+                sub = {
+                    "remoto": _serve_path(pasta + "/" + l["name"]),
+                    "size": l["size"],
+                    "mtime": l["mod_time"],
+                    "nome": l["name"],
+                }
+        return {
+            "kind": "nuvem",
+            "remoto": _serve_path(file_path),
+            "size": row["size"],
+            "mtime": row["mod_time"],
+            "sub": sub,
+        }
+
     def _handle_users_list(self):
         me = self._current_user() or {}
         self._send_json({"status": "ok", "me": me.get("username"),
@@ -801,13 +867,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         """Serve o MP4 gerado pelo prepare.py (cache de conversao para TV).
 
         O token do cast assina o path ORIGINAL — o receptor nao conhece o
-        arquivo convertido; o de-para original->cache mora no prepare.py."""
-        real = _sources.local_real_path(path)
-        mp4 = prepare.prepared_file(str(real)) if real is not None else None
+        arquivo convertido; o de-para original->cache mora no prepare.py.
+        Vale para fonte local e para nuvem (o descriptor vem do banco)."""
+        fonte = self._fonte_de(path)
+        mp4 = prepare.prepared_file(fonte) if fonte is not None else None
         if mp4 is None:
             self._send_error("Video ainda nao foi preparado", 404)
             return
-        prepare.mark_used(str(real))
+        prepare.mark_used(fonte)
         self._serve_real_file(mp4, "video/mp4")
 
     def _serve_real_file(self, real, mime, cache_imagem=False):
@@ -3118,11 +3185,11 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if self._so_infantil() and not self._permitido_infantil(file_path):
                 self._send_error("Filme não disponível neste perfil", 403)
                 return
-            real = _sources.local_real_path(file_path)
-            if real is None:
+            fonte = self._fonte_de(file_path)
+            if fonte is None:
                 self._send_json({"needed": False, "state": "none"})
                 return
-            self._send_json(prepare.status(str(real), enqueue=False))
+            self._send_json(prepare.status(fonte, enqueue=False))
             return
 
         # API: Subtitle (serve as WebVTT for browser)

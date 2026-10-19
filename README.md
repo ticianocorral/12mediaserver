@@ -681,6 +681,8 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 - AirPlay: a legenda do filme entra no MP4 preparado (mov_text, o formato que o receptor lê embutido) — aparece na TV, ativada pelo controle remoto do Apple TV; o botão CC do app continua mandando na legenda do Chromecast e do player local
 
+- Nuvem ensina a converter para a TV: o MKV/HEVC da B2 agora passa pelo mesmo preparo do disco local (e leva a legenda no AirPlay) — o servidor baixa por trás, converte uma vez e serve do cache; custa tráfego da nuvem na primeira vez de cada filete
+
 
 ### v1.22 — transmissão sem sustos: capa da série, próximo episódio e vídeo em toda TV
 
