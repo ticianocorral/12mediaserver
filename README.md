@@ -679,6 +679,8 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 - AirPlay: a TV anuncia o nome do filme/episódio (antes mostrava o nome do app) — vale também para a tela de bloqueio e a central de mídia
 
+- AirPlay: a legenda do filme entra no MP4 preparado (mov_text, o formato que o receptor lê embutido) — aparece na TV, ativada pelo controle remoto do Apple TV; o botão CC do app continua mandando na legenda do Chromecast e do player local
+
 
 ### v1.22 — transmissão sem sustos: capa da série, próximo episódio e vídeo em toda TV
 

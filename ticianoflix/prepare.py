@@ -10,6 +10,14 @@ Em vez de recusar o filme, o servidor gera uma copia MP4 do original:
     protecao de tela (Chromecast) ou ficava presa no "carregando"
     (AirPlay). H.264 e o unico formato que toca em todo mundo;
   - audio: copiado quando ja e AAC/MP3; convertido para AAC no resto;
+  - legenda: o .srt/.ass com o mesmo nome do video entra no MP4 como faixa
+    "timed text" (mov_text) — o único formato que o AirPlay leva para a TV.
+    Nota: arquivos WebVTT (<track>) sao renderizados pelo navegador do
+    envio e o receptor AirPlay nunca os ve: ele busca só o vídeo. Existe
+    só dentro do MP4 que a TV baixa. Na TV, a legenda liga no controle
+    remoto do Apple TV (o botao CC do app nao manda no receptor).
+    Dar erro na legenda nao mata o filme: refaz sem a faixa e marca
+    sub_erro no meta (o cache continua valendo, so sem legenda);
   - o MP4 sai com faststart (moov no inicio).
 
 A conversao roda em segundo plano, uma por vez, e o resultado fica em cache
@@ -42,14 +50,56 @@ _CONTAINERS_PRONTOS = {".mp4", ".m4v", ".mov"}
 _VIDEO_COPIavel = {"h264"}
 _AUDIO_COPIavel = {"aac", "mp3"}
 
+# Legenda sidecar que entra no MP4 (mov_text so aceita texto: .sup e bitmap
+# e fica de fora — esse caso segue sem legenda na TV).
+_EXT_LEGENDA = (".srt", ".ass", ".ssa", ".vtt")
+
+
+def _legenda_de(src):
+    """Legenda sidecar do video (mesmo nome, mesma pasta), ou None.
+
+    O padrao do acervo e "Filme (2020).mkv" + "Filme (2020).srt"; um sufixo
+    de idioma no meio ("Filme (2020).pt.srt") tambem vale. Prioridade: o
+    homonimo .srt, depois qualquer .srt do mesmo nome, depois os outros.
+    """
+    try:
+        pasta = Path(src).parent
+        stem = Path(src).stem
+        candidatos = [p for p in pasta.iterdir()
+                      if p.is_file() and p.suffix.lower() in _EXT_LEGENDA]
+    except OSError:
+        return None
+    if not candidatos:
+        return None
+    prefixo = [p for p in candidatos if p.stem.lower().startswith(stem.lower())]
+    srt = [p for p in prefixo if p.suffix.lower() == ".srt"]
+    homonimo = [p for p in srt if p.stem == stem]
+    if homonimo:
+        return sorted(homonimo)[0]
+    if srt:
+        return sorted(srt)[0]
+    return sorted(prefixo)[0] if prefixo else None
+
+
+def _assinatura_legenda(sub):
+    """Marca da legenda no cache: se o .srt mudar, o cache invalida sozinho."""
+    if not sub:
+        return None
+    try:
+        st = os.stat(sub)
+    except OSError:
+        return None
+    return {"path": str(sub), "mtime": int(st.st_mtime), "size": st.st_size}
+
 # Teto do cache de conversoes; ao estourar, o mais antigo sai primeiro.
 CAST_CACHE_MAX = 40 * 1024 ** 3
 
 # Versao da receita de conversao. Subiu para 2 quando o video HEVC passou a
-# ser convertido em H.264: cache sem esta marca e de uma receita que a TV
-# nao toca — vale menos que nada. Ao mudar o _cmd, suba este numero; as
-# conversoes antigas se invalidam sozinhas (e o _cleanup as recolhe).
-_PREP_VERSION = 2
+# ser convertido em H.264. Subiu para 3 quando a legenda sidecar entrou no
+# MP4 (mov_text): cache sem esta marca sofre para nada a TV — vale menos
+# que nada. Ao mudar o _cmd, suba este numero; as conversoes antigas se
+# invalidam sozinhas (e o _cleanup as recolhe).
+_PREP_VERSION = 3
 
 # O PATH do LaunchAgent e minimo (nao inclui /opt/homebrew/bin): procurar
 # nos lugares de sempre antes de desistir.
@@ -129,8 +179,13 @@ def _probe(path):
     }
 
 
-def _precisa(info, path):
-    """True quando o original nao toca direto nos receptores."""
+def _precisa(info, path, sub=None):
+    """True quando o original nao toca direto nos receptores.
+
+    Legenda sidecar tambem pede preparo: mov_text so existe dentro do MP4
+    remuxado (copia rápida quando o video/audio já servem)."""
+    if sub:
+        return True
     if Path(path).suffix.lower() not in _CONTAINERS_PRONTOS:
         return True
     if info.get("v") not in _VIDEO_COPIavel:
@@ -144,15 +199,28 @@ def _precisa(info, path):
 # ── Cache ────────────────────────────────────────────────────
 
 def _cache_paths(src):
-    chave = hashlib.sha1(src.encode("utf-8")).hexdigest()
-    return CAST_CACHE_DIR / (chave + ".mp4"), CAST_CACHE_DIR / (chave + ".json")
+    """MP4 + meta do cache e a legenda do video.
+
+    A chave soma src + legenda (path/mtime/tamanho): trocar ou editar o .srt
+    invalida a conversao sem tocar no resto."""
+    sub = _legenda_de(src)
+    sig = _assinatura_legenda(sub)
+    texto = "%s\n%s" % (src, json.dumps(sig, sort_keys=True) if sig else "-")
+    chave = hashlib.sha1(texto.encode("utf-8")).hexdigest()
+    return (CAST_CACHE_DIR / (chave + ".mp4"),
+            CAST_CACHE_DIR / (chave + ".json"), sub)
 
 
 def prepared_file(path):
-    """Path do MP4 convertido, se existir e ainda corresponder a fonte."""
+    """Path do MP4 convertido, se ainda existir e corresponder a fonte.
+
+    Tambem confere a legenda: mudou o .srt, invalida sozinho. Um MP4 vindo
+    de conversao que descartou a legenda com erro (sub_erro no meta) fica
+    disponivel em modo degradado: melhor sem faixa de texto do que sem video."""
     if not path:
         return None
-    mp4, meta = _cache_paths(path)
+    mp4, meta, sub = _cache_paths(path)
+    sig = _assinatura_legenda(sub)
     try:
         dados = json.loads(meta.read_text("utf-8"))
     except Exception:
@@ -165,6 +233,12 @@ def prepared_file(path):
         return None
     if dados.get("mtime") != int(st.st_mtime) or dados.get("size") != st.st_size:
         return None
+    gravado = dados.get("sub")
+    if gravado != sig:
+        return None
+    # sub_erro (quando existe) diz que a conversao descartou a legenda ruim:
+    # o MP4 vale, so nao tem faixa de texto. Trocar/editar o .srt muda a
+    # assinatura, invalida a meta e a proxima conversao tenta de novo.
     if not mp4.is_file():
         return None
     return mp4
@@ -172,7 +246,7 @@ def prepared_file(path):
 
 def mark_used(path):
     """Atualiza o mtime do cache: a limpeza LRU usa isso como 'uso'."""
-    mp4, _ = _cache_paths(path)
+    mp4, _, _ = _cache_paths(path)
     try:
         os.utime(mp4, None)
     except OSError:
@@ -208,8 +282,9 @@ def status(path, enqueue=False):
     if prepared_file(path):
         return {"needed": True, "state": "ready", "percent": 100}
 
+    sub = _legenda_de(path)
     info = _probe(path)
-    if info is None or not _precisa(info, path):
+    if info is None or not _precisa(info, path, sub):
         return {"needed": False, "state": "none"}
     # Sem ffmpeg na maquina o preparo nao existe: transmissao segue como
     # antes (arquivo original), sem travar o usuario.
@@ -272,54 +347,46 @@ def _convert(path):
         job.update(state="converting", percent=0, error="")
 
     tmp = None
-    log = deque(maxlen=4)
     try:
         info = _probe(path)
-        if info is None or not _precisa(info, path):
+        sub = _legenda_de(path)       # atual na hora da conversao (nao a da fila)
+        if info is None or not _precisa(info, path, sub):
             with _lock:
                 _jobs.pop(path, None)
             return
 
-        mp4, meta = _cache_paths(path)
+        mp4, meta, _ = _cache_paths(path)
         # Nome único por processo: se duas conversões do mesmo arquivo
         # correrem juntas (servidor + uma sessão manual, por exemplo), cada
         # uma escreve no seu tmp e o os.replace() fica com a última — sem
         # uma sobrescrever o arquivo da outra no meio.
         tmp = mp4.with_name("%s.tmp.%d.mp4" % (mp4.name, os.getpid()))
-        cmd = _cmd(path, info, tmp)
-        print("[TicianoFlix] Preparando para TV: %s (video %s, audio %s)"
-              % (Path(path).name, info.get("v"), info.get("a") or "sem"),
+        cmd = _cmd(path, info, tmp, sub)
+        print("[TicianoFlix] Preparando para TV: %s (video %s, audio %s%s)"
+              % (Path(path).name, info.get("v"), info.get("a") or "sem",
+                 ", legenda %s" % Path(sub).name if sub else ""),
               flush=True)
 
+        dur_us = (info.get("duration") or 0) * 1_000_000
+        sub_erro = None
         with keepawake.while_streaming():
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT)
-            dur_us = (info.get("duration") or 0) * 1_000_000
-            for linha in proc.stdout:
-                texto = linha.decode("utf-8", "replace").strip()
-                chave, sep, valor = texto.partition("=")
-                if sep:
-                    if chave == "out_time_us" and dur_us:
-                        try:
-                            pct = int(int(valor) * 100 / dur_us)
-                        except ValueError:
-                            continue
-                        with _lock:
-                            j = _jobs.get(path)
-                            if j:
-                                j["percent"] = max(0, min(99, pct))
-                    continue
-                if texto:
-                    log.append(texto)
-            codigo = proc.wait()
+            codigo, log_ultimo = _rodar(_cmd(path, info, tmp, sub), path, dur_us)
+            if codigo != 0 and sub:
+                # Legenda ruim nao pode derrubar o filme: refaz sem a faixa
+                # de texto e marca sub_erro — o cache segue valendo.
+                sub_erro = log_ultimo or ("codigo %d" % codigo)
+                print("[TicianoFlix] Legenda %s invalida, preparando sem ela"
+                      % Path(sub).name, flush=True)
+                codigo, log_ultimo = _rodar(_cmd(path, info, tmp, None),
+                                            path, dur_us)
 
         if codigo != 0:
             raise RuntimeError("ffmpeg falhou: "
-                               + (log[-1] if log else "codigo %d" % codigo))
+                               + (log_ultimo or "codigo %d" % codigo))
 
         st = os.stat(path)
         os.replace(tmp, mp4)
-        meta.write_text(json.dumps({
+        dados_meta = {
             "path": path,
             "prep": _PREP_VERSION,
             "mtime": int(st.st_mtime),
@@ -327,7 +394,14 @@ def _convert(path):
             "v": info.get("v"),
             "a": info.get("a"),
             "created": int(time.time()),
-        }), "utf-8")
+            # "sub" e a legenda tentada (mesmo quando descartada); sub_erro
+            # marca o discard — o MP4 sai sem faixa de texto mas continua
+            # valendo (ver prepared_file).
+            "sub": _assinatura_legenda(sub),
+        }
+        if sub_erro:
+            dados_meta["sub_erro"] = sub_erro[:200]
+        meta.write_text(json.dumps(dados_meta), "utf-8")
         with _lock:
             _jobs.pop(path, None)
         print("[TicianoFlix] Pronto para TV: %s" % Path(path).name, flush=True)
@@ -346,10 +420,44 @@ def _convert(path):
               % (Path(path).name, e), flush=True)
 
 
-def _cmd(src, info, dest):
+def _rodar(cmd, path, dur_us):
+    """Roda o ffmpeg lendo o progresso; devolve (codigo, ultima linha de erro).
+
+    Separado de _convert porque a segunda tentativa (sem legenda) repete a
+    mesma leitura de progresso."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
+    log = deque(maxlen=4)
+    for linha in proc.stdout:
+        texto = linha.decode("utf-8", "replace").strip()
+        chave, sep, valor = texto.partition("=")
+        if sep:
+            if chave == "out_time_us" and dur_us:
+                try:
+                    pct = int(int(valor) * 100 / dur_us)
+                except ValueError:
+                    continue
+                with _lock:
+                    j = _jobs.get(path)
+                    if j:
+                        j["percent"] = max(0, min(99, pct))
+            continue
+        if texto:
+            log.append(texto)
+    return proc.wait(), (log[-1] if log else "")
+
+
+def _cmd(src, info, dest, sub):
     ffmpeg = _ffmpeg_bin()
     cmd = [ffmpeg, "-nostdin", "-v", "error", "-progress", "pipe:1", "-y",
-           "-i", src, "-map", "0:%d" % info["vidx"]]
+           "-i", src]
+    if sub:
+        # Legenda sidecar como segundo input. Toda opcao de SAIDA vem depois
+        # de todos os inputs — colocada entre eles, o ffmpeg a le como opcao
+        # de input e barra arquivos.
+        cmd += ["-i", str(sub)]
+
+    cmd += ["-map", "0:%d" % info["vidx"]]
     if info.get("aidx") is not None:
         cmd += ["-map", "0:%d" % info["aidx"]]
 
@@ -369,10 +477,19 @@ def _cmd(src, info, dest):
         else:
             cmd += ["-c:a", "aac", "-b:a", "448k"]
 
-    # -sn: legendas embutidas nao vao (as do app sao arquivos .srt do lado).
+    if sub:
+        # Faixa "timed text" (mov_text) — o unico formato que o AVPlayer/
+        # AirPlay le embutido. default: o receptor ja considera pronta para
+        # ligar no menu do Apple TV.
+        cmd += ["-map", "1:0", "-c:s", "mov_text", "-disposition:s:0", "default"]
+    else:
+        # -sn: sem legenda sidecar, as embutidas do MKV tambem nao vao —
+        # receptores as ignoram de qualquer jeito.
+        cmd += ["-sn"]
+
     # +faststart: moov no inicio — receptores buscam o container antes do
     # primeiro quadro e nao gostam de esperar o final do arquivo.
-    cmd += ["-sn", "-movflags", "+faststart", str(dest)]
+    cmd += ["-movflags", "+faststart", str(dest)]
     return cmd
 
 

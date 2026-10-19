@@ -5402,6 +5402,7 @@
         'Chips de gênero da ficha ganham ícone, e as tags do metadado aparecem rotuladas como \'Palavras-chave\'',
         'Fim do episódio emenda o próximo também fora do Chromecast: no AirPlay e assistindo no navegador a reprodução não para mais na tela final',
         'AirPlay: a TV anuncia o nome do filme/episódio (antes mostrava o nome do app) — vale também para a tela de bloqueio e a central de mídia',
+        'AirPlay: a legenda do filme entra no MP4 preparado (mov_text, o formato que o receptor lê embutido) — aparece na TV, ativada pelo controle remoto do Apple TV; o botão CC do app continua mandando na legenda do Chromecast e do player local',
       ],
     },
     {
