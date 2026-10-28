@@ -5341,7 +5341,7 @@
         + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
         + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
         + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
-        + 'style="flex:1" placeholder="#e8282c">'
+        + 'style="flex:1" placeholder="#f02828">'
         + '</div>'
         + '</div>'
         + '<div class="rclone-help">O nome foi escolhido na instalação e não muda mais '
@@ -5368,7 +5368,7 @@
     const cor = (document.getElementById('brandCorTexto').value || '').trim();
     const msg = document.getElementById('brandingMsg');
     const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
-    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e8282c.', 'err'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #f02828.', 'err'); return; }
     try {
       const res = await fetch('/api/branding/set', {
         method: 'POST',

@@ -175,6 +175,22 @@ LOGIN_MAX_ATTEMPTS = 8
 LOGIN_WINDOW = 15 * 60
 
 
+def _mover_sem_sobrescrever(origem, destino, renomear=False):
+    """Move o conteudo de origem pra destino, mesclando pastas que ja existem
+    dos dois lados e deixando de lado o que ja estiver no destino. renomear
+    troca o prefixo ticianoflix. dos nomes de arquivo (so no nivel de cima)."""
+    destino.mkdir(parents=True, exist_ok=True)
+    for item in sorted(origem.iterdir()):
+        nome = item.name
+        if renomear and nome.startswith("ticianoflix."):
+            nome = "media-server." + nome[len("ticianoflix."):]
+        alvo = destino / nome
+        if item.is_dir() and not item.is_symlink() and alvo.is_dir():
+            _mover_sem_sobrescrever(item, alvo)
+        elif not alvo.exists():
+            shutil.move(str(item), str(alvo))
+
+
 def _migrar_cache_legado():
     """Traz a pasta de cache de antes da troca de nome (~/.cache/ticianoflix)
     pra pasta nova, sem sobrescrever nada que ja exista nela: banco, login,
@@ -189,13 +205,13 @@ def _migrar_cache_legado():
         copia = CACHE_DIR / "media-server.db.pre-renomeacao.bak"
         if banco.is_file() and not copia.exists():
             shutil.copy2(banco, copia)
-        for item in sorted(CACHE_DIR_LEGADO.iterdir()):
-            nome = item.name
-            if nome.startswith("ticianoflix."):
-                nome = "media-server." + nome[len("ticianoflix."):]
-            destino = CACHE_DIR / nome
-            if not destino.exists():
-                shutil.move(str(item), str(destino))
+        _mover_sem_sobrescrever(CACHE_DIR_LEGADO, CACHE_DIR, renomear=True)
+        for sub in sorted(CACHE_DIR_LEGADO.rglob("*"), reverse=True):
+            if sub.is_dir():
+                try:
+                    sub.rmdir()   # so as que ficaram vazias
+                except OSError:
+                    pass
         try:
             CACHE_DIR_LEGADO.rmdir()
         except OSError:

@@ -23,7 +23,11 @@ from pathlib import Path
 from .config import BRANDING_PATH, CACHE_DIR
 
 NOME_PADRAO = "12:00 Media Server"
-COR_PADRAO = "#e8282c"
+COR_PADRAO = "#f02828"
+# Vermelhos que ja foram o padrao (ou o mais usado) antes do logo novo: quem os
+# tem gravado passa a usar o COR_PADRAO atual, senao a cor antiga sobrepoe a
+# paleta nova em todo o app (ver get()).
+CORES_LEGADO = ("#e50914", "#e60a0a", "#e8282c")
 # Nome padrao de antes da troca de nome do app. Quem o tem gravado no
 # branding.json passa a usar o NOME_PADRAO novo (ver get()).
 NOME_LEGADO = "TicianoFlix"
@@ -83,6 +87,9 @@ def get():
                         _gravar_sem_lock(dados)
                 if _cor_valida(bruto.get("cor")):
                     dados["cor"] = bruto["cor"].lower()
+                    if dados["cor"] in CORES_LEGADO:
+                        dados["cor"] = COR_PADRAO
+                        _gravar_sem_lock(dados)
         except (OSError, ValueError):
             pass
         _cache = dados
@@ -105,7 +112,7 @@ def set(nome=None, cor=None):
         return False, ("O nome precisa ter entre 1 e 40 caracteres e nao "
                        'pode conter \\ / : * ? " < > |')
     if cor is not None and not _cor_valida(novo_cor):
-        return False, "A cor precisa ser hexadecimal, por exemplo #e8282c"
+        return False, "A cor precisa ser hexadecimal, por exemplo #f02828"
     dados = {"nome": novo_nome, "cor": novo_cor.lower()}
     tmp = BRANDING_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
