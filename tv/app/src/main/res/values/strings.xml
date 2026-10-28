@@ -6,4 +6,9 @@
     <string name="endereco_manual">Endereco (ex.: 192.168.0.10)</string>
     <string name="conectar">Conectar</string>
     <string name="procurar_de_novo">Procurar de novo</string>
+    <string name="desconectado_titulo">TicianoFlix desconectado</string>
+    <string name="desconectado_msg">Nao foi possivel falar com o servidor. Confira se o
+        computador esta ligado e na mesma rede.</string>
+    <string name="atualizar">Atualizar</string>
+    <string name="atualizando">Procurando o servidor…</string>
 </resources>

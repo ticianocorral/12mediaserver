@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.C
@@ -50,7 +51,22 @@ class PlayerActivity : AppCompatActivity() {
         }.build()
 
         player = ExoPlayer.Builder(this).build().also { p ->
-            findViewById<PlayerView>(R.id.player).player = p
+            val view = findViewById<PlayerView>(R.id.player)
+            view.player = p
+            estiloAppleTv(view)
+            // Sem isto todo erro de reproducao e uma tela preta muda: nem o
+            // log mostra o motivo. O Toast e o minimo para o dono da TV saber
+            // que o app ouviu o comando e foi o servidor/codec que recusou.
+            p.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    Log.e("TicianoFlixPlayer", "erro de reproducao: $error")
+                    android.widget.Toast.makeText(
+                        this@PlayerActivity,
+                        "Falha ao tocar: ${error.errorCodeName}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            })
             p.setMediaItem(item)
             if (posicao > 0) p.seekTo(posicao * 1000L)
             p.prepare()
@@ -58,8 +74,27 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    /** Legenda no estilo da Apple TV: branca, sans medio, caixa preta translucida (40%). */
+    private fun estiloAppleTv(view: PlayerView) {
+        val sv = view.subtitleView ?: return
+        sv.setApplyEmbeddedStyles(false)
+        sv.setApplyEmbeddedFontSizes(false)
+        sv.setStyle(
+            androidx.media3.ui.CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                0x66000000.toInt(),
+                android.graphics.Color.TRANSPARENT,
+                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            )
+        )
+        sv.setFractionalTextSize(0.04f)
+        sv.setBottomPaddingFraction(0.05f)
+    }
+
     /**
-     * Sair do filme e a unica hora em que sabemos a posicao final, entao o
+     *Sair do filme e a unica hora em que sabemos a posicao final, entao o
      * resultado sai daqui e nao do onDestroy — que pode nem rodar a tempo.
      */
     override fun finish() {

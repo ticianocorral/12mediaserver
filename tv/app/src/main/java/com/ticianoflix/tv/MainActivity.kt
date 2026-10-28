@@ -4,12 +4,20 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.view.View
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.widget.Button
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
@@ -23,13 +31,14 @@ import org.json.JSONObject
 class MainActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
+    private lateinit var aviso: View
+    private lateinit var botaoAtualizar: Button
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val base = Servidor.salvo(this)
-        if (base == null) {
+        val base = Servidor.salvo(this) ?: run {
             startActivity(Intent(this, SetupActivity::class.java))
             finish()
             return
@@ -42,6 +51,11 @@ class MainActivity : AppCompatActivity() {
         // O app usa localStorage; sem isto ele falha calado.
         web.settings.domStorageEnabled = true
 
+        // A WebView herda o tamanho de fonte do sistema ("textZoom"); com a
+        // fonte da TV em um nivel alto a pagina inteira estufa como se tivesse
+        // recebido 125%. Travar em 100 deixa a escala nas maos do viewport.
+        web.settings.textZoom = 100
+
         // O cookie de sessao vale 90 dias, mas so sobrevive a fechar o app se
         // for gravado em disco. Sem o flush do onPause, cada abertura do app
         // pediria login de novo — com o teclado da TV, no controle remoto.
@@ -51,8 +65,36 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(Ponte(), "TicianoFlixTV")
         // WebViewClient padrao para a navegacao ficar dentro do app em vez de
         // abrir o navegador do sistema.
-        web.webViewClient = WebViewClient()
+        aviso = findViewById(R.id.desconectado)
+        botaoAtualizar = findViewById(R.id.atualizar)
+        botaoAtualizar.setOnClickListener { atualizar(base) }
+
+        web.webViewClient = object : WebViewClient() {
+            // So a pagina principal: falha de imagem ou de outro recurso nao
+            // pode derrubar a interface inteira.
+            override fun onReceivedError(
+                view: WebView, request: WebResourceRequest, error: WebResourceError
+            ) {
+                if (request.isForMainFrame) mostrarAviso()
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView, request: WebResourceRequest, resposta: WebResourceResponse
+            ) {
+                if (request.isForMainFrame && resposta.statusCode >= 500) mostrarAviso()
+            }
+        }
         web.loadUrl("$base/?tv=1")
+
+        // Endereco salvo pode ter ficado velho (o roteador troca o IP do Mac) ou
+        // o servidor estar desligado: em vez de tela escura, mostra o aviso com
+        // o botao Atualizar, que tambem re-escaneia a rede.
+        lifecycleScope.launch {
+            if (!Servidor.responde(base)) {
+                Log.w("TicianoFlix", "servidor salvo $base nao responde")
+                mostrarAviso()
+            }
+        }
 
         // O Voltar do controle anda no historico da pagina (a navegacao e
         // pushState) e so sai do app quando nao ha mais para onde voltar.
@@ -61,6 +103,35 @@ class MainActivity : AppCompatActivity() {
                 if (web.canGoBack()) web.goBack() else finish()
             }
         })
+    }
+
+    private fun mostrarAviso() {
+        aviso.visibility = View.VISIBLE
+        botaoAtualizar.requestFocus()
+    }
+
+    /**
+     * Tenta o endereco salvo; se morreu, varre a rede (o IP pode ter mudado).
+     * Achando, recarrega a pagina e some com o aviso.
+     */
+    private fun atualizar(base: String) {
+        botaoAtualizar.isEnabled = false
+        botaoAtualizar.setText(R.string.atualizando)
+        lifecycleScope.launch {
+            var destino: String? = if (Servidor.responde(base)) base else null
+            if (destino == null) {
+                destino = Servidor.procurar().firstOrNull()
+                if (destino != null) Servidor.salvar(this@MainActivity, destino)
+            }
+            botaoAtualizar.isEnabled = true
+            botaoAtualizar.setText(R.string.atualizar)
+            if (destino != null) {
+                aviso.visibility = View.GONE
+                web.loadUrl("$destino/?tv=1")
+            } else {
+                botaoAtualizar.requestFocus()
+            }
+        }
     }
 
     override fun onPause() {
@@ -81,8 +152,10 @@ class MainActivity : AppCompatActivity() {
             val dados = try {
                 JSONObject(json)
             } catch (e: Exception) {
+                Log.w("TicianoFlix", "play(): json invalido: $json")
                 return
             }
+            Log.i("TicianoFlix", "play(): url=${dados.optString("url")} legenda=${dados.optString("legenda")} posicao=${dados.optLong("posicao", 0L)}")
             val i = Intent(this@MainActivity, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_URL, dados.optString("url"))
                 .putExtra(PlayerActivity.EXTRA_LEGENDA, dados.optString("legenda"))
