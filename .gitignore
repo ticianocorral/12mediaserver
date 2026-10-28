@@ -19,7 +19,6 @@ build/
 
 # ⚙️ Wrapper nativo macOS (compilado via build-macos.sh)
 media-server
-ticianoflix-server
 zaparoo-watchdog
 
 # ⚙️ Virtualenv

@@ -11,8 +11,8 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
-REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
+REPO="${MEDIA_SERVER_REPO:-ticianocorral/TicianoFlix}"
+REF="${MEDIA_SERVER_REF:-main}"
 
 aviso() {
     osascript -e "display dialog \"$1\" with title \"12:00 Media Server\" buttons {\"Continuar\"} default button 1 with icon note" >/dev/null

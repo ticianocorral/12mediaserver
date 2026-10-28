@@ -99,8 +99,6 @@ if errorlevel 1 (
 )
 
 REM ─── 4. Diretórios de cache ────────────────────────────
-if exist "%DIR%TicianoFlix.bat" del "%DIR%TicianoFlix.bat"
-schtasks /Delete /TN "TicianoFlix" /F >nul 2>&1
 if not exist "%USERPROFILE%\.cache\media-server\images" mkdir "%USERPROFILE%\.cache\media-server\images"
 if not exist "%USERPROFILE%\.cache\media-server\subs" mkdir "%USERPROFILE%\.cache\media-server\subs"
 if not exist "%USERPROFILE%\.cache\rclone" mkdir "%USERPROFILE%\.cache\rclone"
