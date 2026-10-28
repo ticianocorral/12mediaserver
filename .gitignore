@@ -71,6 +71,7 @@ config.local.*
 # 🔧 IDE / Editor
 .vscode/
 .idea/
+.zcode/
 *.swp
 *.swo
 *~

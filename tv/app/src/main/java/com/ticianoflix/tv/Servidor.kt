@@ -1,15 +1,21 @@
 package com.ticianoflix.tv
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
+import kotlin.coroutines.resume
 
 /**
  * Onde mora o TicianoFlix e como achar.
@@ -107,5 +113,54 @@ object Servidor {
             achados += sondas.awaitAll().filterNotNull()
         }
         achados
+    }
+
+    /**
+     * Acha o servidor pelo anuncio Bonjour/mDNS que o Mac publica
+     * (_ticianoflix._tcp, via dns-sd). E o caminho que sobrevive a troca de
+     * IP: nomes .local o Android so resolve nativamente a partir do 12, mas o
+     * NsdManager funciona desde as versoes antigas.
+     */
+    @SuppressLint("ServiceCast")
+    suspend fun procurarViaBonjour(ctx: Context): String? = withTimeoutOrNull(8_000L) {
+        suspendCancellableCoroutine { cont ->
+            val nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
+            var encerrado = false
+            var resolvendo = false
+            var listener: NsdManager.DiscoveryListener? = null
+
+            fun terminar(base: String?) {
+                if (encerrado) return
+                encerrado = true
+                listener?.let { try { nsd.stopServiceDiscovery(it) } catch (_: Exception) {} }
+                if (cont.isActive) cont.resume(base)
+            }
+
+            listener = object : NsdManager.DiscoveryListener {
+                override fun onDiscoveryStarted(tipo: String) {}
+                override fun onDiscoveryStopped(tipo: String) {}
+                override fun onStartDiscoveryFailed(tipo: String, erro: Int) = terminar(null)
+                override fun onStopDiscoveryFailed(tipo: String, erro: Int) {}
+                override fun onServiceLost(info: NsdServiceInfo) {}
+
+                override fun onServiceFound(info: NsdServiceInfo) {
+                    if (encerrado || resolvendo) return
+                    if (!info.serviceName.contains("ticianoflix", ignoreCase = true)) return
+                    resolvendo = true
+                    nsd.resolveService(info, object : NsdManager.ResolveListener {
+                        override fun onResolveFailed(i: NsdServiceInfo, erro: Int) {
+                            resolvendo = false
+                        }
+
+                        override fun onServiceResolved(i: NsdServiceInfo) {
+                            val host = i.host?.hostAddress
+                            if (host == null) terminar(null)
+                            else terminar("http://$host:${i.port}")
+                        }
+                    })
+                }
+            }
+            nsd.discoverServices("_ticianoflix._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
+        }
     }
 }

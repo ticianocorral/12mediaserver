@@ -3,6 +3,8 @@
 import http.server
 import json
 import os
+import socket
+import ssl
 import subprocess
 import urllib.parse
 import urllib.request
@@ -20,8 +22,6 @@ from pathlib import Path
 from .config import (
     PROJECT_ROOT,
     PORT,
-    LOGICAL_ROOT,
-    RCLONE_BACKUP_REMOTE,
     BACKUP_FOLDER,
     RCLONE_SERVE_PORT,
     FRONTEND_PATH,
@@ -43,7 +43,12 @@ from .netsec import (
     host_allowed as _host_allowed,
     origin_allowed as _origin_allowed,
 )
-from .paths import rc_remote as _rc_remote, serve_path as _serve_path
+from .paths import (
+    destino_backup, rc_remote as _rc_remote, remote_configurado,
+    serve_path as _serve_path,
+)
+from . import keepawake
+from . import prepare
 from .db import (
     get_db,
     get_cache_time,
@@ -72,7 +77,9 @@ from .auth import (
     _clear_login_failures,
 )
 from .templates import _login_page
-from .netutil import _get_local_ip
+from .netutil import (
+    _get_local_ip, mkcert_root_ca_path, _primary_local_hostname, active_https_port,
+)
 from .rclone import (
     run_rclone_cmd,
     _vfs_segment_match,
@@ -87,15 +94,20 @@ from .rclone import (
 )
 from . import scanner as _scanner
 from . import sources as _sources
-from . import scraper as _scraper
 from . import branding as _branding
+from . import nuvem as _nuvem
+from . import thumbs as _thumbs
 from .branding import NOME_PADRAO
-from .nfo import _fetch_nfo_from_db
+from .nfo import _titulos_nfo_de_pastas
 from .queries import (
     cached_list_directory, cached_movie_detail, cached_get_file_info,
     cached_search_files, cached_all_movies, cached_source_counts,
     cached_all_collections, cached_collection_movies,
-    _find_poster_cached,
+    cached_generos, cached_generos_de, cached_genero_filmes,
+    cached_movie_infantil, cached_algum_infantil,
+    cached_serie, cached_series_list,
+    cached_movie_count, cached_series_count,
+    _posters_de_pastas,
 )
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
@@ -104,6 +116,11 @@ _UNSET = object()
 # Progresso de download pro cache VFS: video_path -> {percent, status, ...}
 _download_progress = {}
 _download_progress_lock = threading.Lock()
+
+# Buffer do streaming: 64 KB fazia o loop Python de _serve_real_file rodar
+# ~3000 vezes por filme; 1 MB corta o mesmo trajeto em ~64x menos laços e
+# syscalls, sem inflar a memoria por conexao (so 1 MB a mais por stream).
+_STREAM_BUFFER = 1024 * 1024
 
 
 # O mimetypes do Python nao conhece .webmanifest, e sem o tipo certo o
@@ -129,16 +146,70 @@ def _bust_asset_cache(html):
     return html
 
 
+def _zip_member_ok(z, name):
+    """Membro de imagem/legenda dentro do teto do restore: um zip de poucos
+    KB pode expandir pra gigabytes (zip-bomb) e derrubar a maquina aqui."""
+    try:
+        return z.getinfo(name).file_size <= MAX_RESTORE_BYTES
+    except (KeyError, zipfile.BadZipFile):
+        return False
+
+
 class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
+    # HTTP/1.1 liga o keep-alive: sem isso o navegador abria conexao nova (e
+    # handshake TLS completo) a cada requisicao — a home dispara dezenas. Em
+    # troca, TODA resposta precisa delimitar o corpo com Content-Length, senao
+    # o cliente fica preso esperando o fim: ver _send_json/_send_html, os 303
+    # e os caminhos que escrevem direto no wfile.
+    protocol_version = "HTTP/1.1"
+
+    def version_string(self):
+        # Nao anuncia Python/BaseHTTP: e a primeira coisa que um scanner de
+        # rede le e nao ajuda ninguem que usa o app.
+        return "TicianoFlix"
+
+    def handle_one_request(self):
+        """Queda de cliente no meio do stream e rotina, nao bug: TV desligada,
+        celular fora do Wi-Fi, player abortando o Range. As excecoes que sobravam
+        disso (BrokenPipe, ConnectionReset, SSLError, o ValueError de "I/O
+        operation on closed file" do wfile) viravam traceback inteiro no log —
+        225 BrokenPipe + 22 SSL + 10 reset ate agora — afogando os erros de
+        verdade. Aqui viram uma linha e a conexao fecha."""
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError,
+                TimeoutError, ssl.SSLError, socket.timeout) as e:
+            self.close_connection = True
+            sys.stderr.write("[TicianoFlix] conexao encerrada pelo cliente "
+                             "(%s) em %s\n"
+                             % (type(e).__name__, getattr(self, "path", "?")))
+        except ValueError as e:
+            if "closed file" not in str(e):
+                raise
+            self.close_connection = True
 
     def log_message(self, format, *args):
-        sys.stderr.write(f"[TicianoFlix] {args[0]} {args[1]} {args[2]}\n")
+        # O http.server chama isto com aridades diferentes: log_request manda
+        # 3 argumentos, send_error manda 2. O acesso fixo a args[2] estourava
+        # IndexError dentro do proprio tratamento de erro — a resposta nunca
+        # saia e o cliente ficava com a conexao fechada, sem nada. Era o que
+        # acontecia com qualquer HEAD (nao existia do_HEAD).
+        try:
+            sys.stderr.write("[TicianoFlix] " + " ".join(str(a) for a in args) + "\n")
+        except Exception:
+            pass
 
     def _reset_request_state(self):
         """A instancia do handler e reaproveitada em conexoes keep-alive —
         sem isso, cookies e usuario vazariam de uma requisicao para a seguinte."""
         self._pending_cookies = []
         self._user_cache = _UNSET
+        # HEAD roda os mesmos caminhos do GET; esta flag e o que impede os
+        # corpos de sairem (ver do_HEAD).
+        self._head_only = False
+        # Quanto do corpo do POST ja foi lido por esta rota — o que sobrar e
+        # drenado no fim (ver _sobra_do_corpo).
+        self._body_lido = 0
 
     def _cookies(self):
         jar = {}
@@ -160,6 +231,15 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         user = self._current_user()
         return bool(user and user.get("role") == "admin")
 
+    def _so_infantil(self):
+        """True quando a sessão é de um perfil infantil.
+
+        Perfil infantil não vê nem por URL direta o que não foi marcado:
+        catálogo, detalhe e até o streaming são filtrados por isso.
+        """
+        user = self._current_user()
+        return bool(user and user.get("infantil"))
+
     def _wants_html(self):
         return "text/html" in (self.headers.get("Accept") or "")
 
@@ -169,10 +249,17 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
     def _queue_cookie(self, value):
         self._pending_cookies = list(getattr(self, "_pending_cookies", [])) + [value]
 
+    def _cookie_secure(self):
+        """Secure so em HTTPS: o acesso principal e HTTP na LAN
+        (http://ip:9187), e um cookie Secure nunca voltaria por ele — o login
+        daria certo e a sessao sumiria na requisicao seguinte."""
+        return "; Secure" if isinstance(self.request, ssl.SSLSocket) else ""
+
     def _start_session(self, username):
         self._user_cache = _UNSET
-        self._queue_cookie("%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax"
-                           % (SESSION_COOKIE, _issue_session(username), SESSION_MAX_AGE))
+        self._queue_cookie("%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s"
+                           % (SESSION_COOKIE, _issue_session(username),
+                              SESSION_MAX_AGE, self._cookie_secure()))
 
     def _auth_gate(self, path, params):
         """Decide quem entra. O Chromecast nao manda cookie — para ele o acesso
@@ -213,7 +300,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if length <= 0 or length > MAX_JSON_BODY_BYTES:
             return None
         try:
-            return json.loads(self.rfile.read(length))
+            raw = self.rfile.read(length)
+            self._body_lido += length
+            return json.loads(raw)
         except Exception:
             return None
 
@@ -237,11 +326,22 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                              "Codigo de instalacao incorreto. Ele aparece no "
                              "terminal onde o TicianoFlix esta rodando."}, 403)
             return
+        # O nome vira pasta real na nuvem/HD/pendrive (branding.pasta_biblioteca)
+        # e fica fixo depois deste momento — set() nunca mais recebe nome
+        # depois da instalacao (ver _handle_branding_set). Validado antes de
+        # criar o usuario pra nunca deixar a instalacao com admin mas sem nome.
+        nome = str(body.get("nome", "")).strip()
+        if not _branding._nome_valido(nome):
+            self._send_json({"status": "error", "error":
+                             "Nome do app invalido: use de 1 a 40 caracteres, "
+                             'sem \\ / : * ? " < > |'}, 400)
+            return
         username = str(body.get("username", ""))
         problem = _create_user(username, str(body.get("password", "")), role="admin")
         if problem:
             self._send_json({"status": "error", "error": problem}, 400)
             return
+        _branding.set(nome=nome)
         _clear_login_failures(ip)
         self._start_session(username)
         print("[TicianoFlix] Administrador '%s' criado." % _norm_username(username),
@@ -271,9 +371,16 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_auth_logout(self, everywhere=False):
         if everywhere:
+            # "Sair de todos os aparelhos" derruba as sessoes de TODAS as
+            # contas — inclusive a do administrador. Qualquer conta logada
+            # podia deslogar a casa inteira; agora e so admin.
+            if not self._is_admin():
+                self._send_json({"status": "error", "error":
+                                 "Apenas o administrador pode encerrar todas as sessões"}, 403)
+                return
             _revoke_all_sessions()
-        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-                           % SESSION_COOKIE)
+        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s"
+                           % (SESSION_COOKIE, self._cookie_secure()))
         self._send_json({"status": "ok"})
 
     def _handle_cast_token(self):
@@ -283,20 +390,123 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         if not media_path:
             self._send_json({"status": "error", "error": "Missing path"}, 400)
             return
-        out = {"status": "ok", "t": _issue_media_token(media_path)}
         subtitle = str(body.get("subtitle", ""))
-        if subtitle:
-            out["sub"] = _issue_media_token(subtitle)
         # Poster e fanart tambem saem por /api/stream, entao a TV precisa de um
         # token para cada um — senao a tela do Chromecast fica sem a arte.
         # Teto de 4: sao poster e fanart, nao uma galeria.
         extras = body.get("images")
-        if isinstance(extras, list) and extras:
-            out["imgs"] = {str(p): _issue_media_token(str(p))
-                           for p in extras[:4] if p}
+        imgs = ([str(p) for p in extras[:4] if p]
+                if isinstance(extras, list) else [])
+        # Perfil infantil: o token e a credencial da TV e vale SEM sessao —
+        # por isso o filtro tem que acontecer aqui na emissao. Checar so no
+        # /api/stream nao adianta: quando quem pede e o Chromecast nao ha
+        # cookie, e a sessao infantil nunca chega la.
+        if self._so_infantil():
+            alvos = [media_path] + ([subtitle] if subtitle else []) + imgs
+            for alvo in alvos:
+                if not self._permitido_infantil(alvo):
+                    self._send_json({"status": "error",
+                                     "error": "Filme não disponível neste perfil"}, 403)
+                    return
+        out = {"status": "ok", "t": _issue_media_token(media_path)}
+        if subtitle:
+            out["sub"] = _issue_media_token(subtitle)
+        if imgs:
+            out["imgs"] = {p: _issue_media_token(p) for p in imgs}
         self._send_json(out)
 
+    def _handle_prepare(self):
+        """Prepara um video para a TV (remux MP4/AAC — ver prepare.py).
+
+        Idempotente e chamado a cada tentativa de cast: se ja existe cache
+        da conversao, responde 'ready' na hora; senao agenda e devolve o
+        estado para a UI acompanhar em /api/prepare-status."""
+        body = self._read_json_body() or {}
+        file_path = str(body.get("path", ""))
+        if not file_path:
+            self._send_json({"status": "error", "error": "Missing path"}, 400)
+            return
+        if self._so_infantil() and not self._permitido_infantil(file_path):
+            self._send_json({"status": "error",
+                             "error": "Filme não disponível neste perfil"}, 403)
+            return
+        # O prepare trabalha em fontes: local = path de disco; nuvem =
+        # descriptor remoto (o prepare baixa e converte; ver _fonte_de).
+        fonte = _fonte_de(file_path)
+        if fonte is None:
+            # Nuvem/fonte remota sem descriptor: fica como sempre foi —
+            # o receptor recebe o arquivo original.
+            self._send_json({"needed": False, "state": "none"})
+            return
+        self._send_json(prepare.status(fonte, enqueue=True))
+
     # ── Painel de administracao ──────────────────────────────
+    def _fonte_de(self, file_path):
+        """Fonte do prepare para um path logico: path de disco ou nuvem.
+
+        Local: o path real do arquivo, como sempre. Nuvem (kind 'cloud'):
+        descriptor com a marca REMOTA do banco (size/mod_time) e a legenda
+        sidecar escolhida pela mesma regra do disco — o prepare baixa os
+        dois pelo 'rclone serve http', converte e apaga o palco. None =
+        path fora das fontes; o chamador responde como sempre.
+        """
+        if not file_path:
+            return None
+        if _sources.is_local(file_path):
+            real = _sources.local_real_path(file_path)
+            return str(real) if real is not None else None
+        try:
+            src = _sources.resolve(file_path)
+        except Exception:
+            src = None
+        if src is None or src.get("kind") != "cloud":
+            return None
+        return self._fonte_nuvem(file_path)
+
+    def _fonte_nuvem(self, file_path):
+        """Descriptor de prepare para um video da nuvem — video + legenda.
+
+        O rclone serve nao expoe o arquivo como path de disco: as marcas
+        (size/mod_time) que assinam o cache vem do banco, do mesmo
+        listamento que alimenta a ficha. A legenda e a mesma que a ficha
+        escolhe (prepare.escolhe_legenda). None = video nao esta no banco.
+        """
+        pasta, _, nome = str(file_path).rpartition("/")
+        if not nome:
+            return None
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT size, mod_time FROM files WHERE folder_path=? AND name=?",
+                (pasta, nome)).fetchone()
+            legs = [dict(l) for l in conn.execute(
+                "SELECT name, size, mod_time FROM files "
+                "WHERE folder_path=? AND file_type='subtitle'",
+                (pasta,)).fetchall()]
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        sub = None
+        nome_leg = prepare.escolhe_legenda(
+            Path(nome).stem, [l["name"] for l in legs])
+        if nome_leg:
+            l = next((l for l in legs if l["name"] == nome_leg), None)
+            if l:
+                sub = {
+                    "remoto": _serve_path(pasta + "/" + l["name"]),
+                    "size": l["size"],
+                    "mtime": l["mod_time"],
+                    "nome": l["name"],
+                }
+        return {
+            "kind": "nuvem",
+            "remoto": _serve_path(file_path),
+            "size": row["size"],
+            "mtime": row["mod_time"],
+            "sub": sub,
+        }
+
     def _handle_users_list(self):
         me = self._current_user() or {}
         self._send_json({"status": "ok", "me": me.get("username"),
@@ -306,7 +516,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         body = self._read_json_body() or {}
         problem = _create_user(str(body.get("username", "")),
                                str(body.get("password", "")),
-                               role=str(body.get("role", "user")))
+                               role=str(body.get("role", "user")),
+                               infantil=bool(body.get("infantil")))
         if problem:
             self._send_json({"status": "error", "error": problem}, 400)
             return
@@ -407,6 +618,85 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def do_HEAD(self):
+        """Sonda de cabecalhos: e como players e receivers (Chromecast, e o
+        AirPlay do Roku) perguntam tipo, tamanho e suporte a Range antes de
+        baixar a midia. Sem este metodo o http.server respondia 501, o
+        log_message customizado quebrava no meio do send_error e a conexao
+        morria sem resposta nenhuma — a TV ficava presa em "conectando" e o
+        filme nunca comecava.
+
+        Roda os mesmos caminhos do GET: os corpos nao saem por causa de
+        self._head_only (ver os guards espalhados pelo arquivo)."""
+        self._reset_request_state()
+        self._head_only = True
+        if not self._security_gate():
+            return
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+
+        if not self._auth_gate(path, params):
+            return
+
+        if path == "/api/stream":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Filme não disponível neste perfil", 403)
+                return
+            self._stream_file(file_path)
+            return
+
+        if path == "/api/prepared":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Filme não disponível neste perfil", 403)
+                return
+            self._serve_prepared(file_path)
+            return
+
+        if path == "/api/subtitle":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Legenda não disponível neste perfil", 403)
+                return
+            self._serve_subtitle(file_path)
+            return
+
+        if path == "/login":
+            if self._has_session():
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self._send_html(_login_page(setup=not _auth_configured()))
+            return
+
+        if path == "/" or path == "/index.html":
+            self._send_html(self._index_html())
+            return
+
+        if path == "/favicon.ico" or path == "/favicon.svg":
+            self._serve_file(path)
+            return
+
+        if path.startswith("/static/"):
+            self._serve_file(path)
+            return
+
+        # Mesma resposta do GET para caminho desconhecido (sem corpo).
+        self._send_error("Not found", 404)
+
     def _require_write_origin(self):
         """Operacoes que alteram estado exigem Origin local explicito — e o que
         impede CSRF disparado por <img> ou <form> a partir de qualquer site."""
@@ -442,27 +732,65 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self._send_json({"status": "error", "error": "Erro interno — veja o log do servidor"}, status)
 
     def _send_json(self, data, status=200):
+        # Corpo montado antes dos cabecalhos: com HTTP/1.1 o Content-Length
+        # e obrigatorio (ver protocol_version no topo da classe).
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-cache")
         for cookie in getattr(self, "_pending_cookies", ()):
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+        if not self._head_only:
+            self.wfile.write(body)
 
     def _send_html(self, content, status=200):
+        body = content.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         for cookie in getattr(self, "_pending_cookies", ()):
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
-        self.wfile.write(content.encode("utf-8"))
+        if not self._head_only:
+            self.wfile.write(body)
 
     def _send_error(self, msg, status=500):
         self._send_json({"error": msg}, status)
+
+    def _index_html(self):
+        """Monta o HTML da raiz do app. GET e HEAD usam o mesmo conteudo."""
+        html_content = FRONTEND_PATH.read_text(encoding="utf-8") if FRONTEND_PATH.exists() else "<h1>TicianoFlix</h1><p>Frontend not found.</p>"
+        # Troca o nome de exibicao antes de servir: fazer isso por
+        # JavaScript depois piscaria "TicianoFlix" por um instante a cada
+        # carregamento, em qualquer instalacao que tenha escolhido outro
+        # nome. So esse texto muda — CACHE_DIR, nome do banco e do
+        # servico continuam fixos, de proposito (ver branding.py).
+        html_content = html_content.replace(NOME_PADRAO, _branding.get()["nome"])
+        # Inject HTTP base URL for Chromecast media streaming
+        # (Chromecast doesn't trust self-signed certs, so media must use HTTP)
+        local_ip = _get_local_ip()
+        # Dados de rede das instrucoes "Instalar no celular" (Ajustes): o nome
+        # .local que o certificado cobre, o IP de reserva e as portas reais.
+        # So entram no HTML autenticado — a tela de login nao recebe nada disto.
+        net_info = {
+            "host": _primary_local_hostname(),
+            "ip": local_ip,
+            "httpPort": PORT,
+            "httpsPort": active_https_port(),
+        }
+        html_content = html_content.replace(
+            "</head>",
+            f"<script>window.__HTTP_BASE__='http://{local_ip}:{PORT}';"
+            f"window.__LOGICAL_ROOT__={json.dumps(_branding.logical_root())};"
+            f"window.__NET__={json.dumps(net_info)};</script></head>",
+            1
+        )
+        return _bust_asset_cache(html_content)
 
     def _stream_file(self, path):
         """Stream a file, escolhendo o caminho pela fonte dona do path."""
@@ -519,17 +847,42 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         return start, min(end, size - 1)
 
     def _stream_local(self, path):
-        """Serve um arquivo do disco com suporte a Range.
-
-        O Range e o que faz o <video> conseguir pular no meio do filme: sem
-        206 + Content-Range o player so consegue tocar do inicio.
-        """
+        """Serve do disco um arquivo de fonte local (com Range)."""
         real = _sources.local_real_path(path)
         if real is None:
             # Path fora da raiz da fonte (ou fonte inexistente). Nunca detalhar
             # o motivo: isso viraria uma sonda do sistema de arquivos.
             self._send_error("Forbidden", 403)
             return
+        ext = Path(path).suffix.lower()
+        if ext in IMAGE_EXTENSIONS and not self._quer_full():
+            # Miniatura para o grid; a ficha e o fanart continuam no original.
+            mini = _thumbs.miniatura_para(real, self._tipo_de_imagem(path))
+            if mini is not None:
+                real = mini
+        self._serve_real_file(real, self._guess_mime(path),
+                              cache_imagem=ext in IMAGE_EXTENSIONS)
+
+    def _serve_prepared(self, path):
+        """Serve o MP4 gerado pelo prepare.py (cache de conversao para TV).
+
+        O token do cast assina o path ORIGINAL — o receptor nao conhece o
+        arquivo convertido; o de-para original->cache mora no prepare.py.
+        Vale para fonte local e para nuvem (o descriptor vem do banco)."""
+        fonte = self._fonte_de(path)
+        mp4 = prepare.prepared_file(fonte) if fonte is not None else None
+        if mp4 is None:
+            self._send_error("Video ainda nao foi preparado", 404)
+            return
+        prepare.mark_used(fonte)
+        self._serve_real_file(mp4, "video/mp4")
+
+    def _serve_real_file(self, real, mime, cache_imagem=False):
+        """Serve um arquivo real do disco com suporte a Range.
+
+        O Range e o que faz o <video> conseguir pular no meio do filme: sem
+        206 + Content-Range o player so consegue tocar do inicio.
+        """
         try:
             if not real.is_file():
                 raise FileNotFoundError
@@ -538,8 +891,6 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._send_error("Arquivo indisponivel — a fonte esta conectada?", 404)
             return
 
-        ext = Path(path).suffix.lower()
-        mime = self._guess_mime(path)
         range_header = self.headers.get("Range")
         start, end = 0, max(size - 1, 0)
         partial = False
@@ -564,25 +915,82 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(length))
         self.send_header("Content-Type", mime)
         self.send_header("Accept-Ranges", "bytes")
-        if ext in IMAGE_EXTENSIONS:
+        if cache_imagem:
             self.send_header("Cache-Control", "max-age=86400")
         self._send_media_cors()
         self.end_headers()
 
+        if self._head_only:
+            return
+
         try:
-            with open(real, "rb") as f:
-                f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    buf = f.read(min(65536, remaining))
-                    if not buf:
-                        break
-                    self.wfile.write(buf)
-                    remaining -= len(buf)
+            # Enquanto os bytes do video saem daqui, o Mac nao pode dormir.
+            with keepawake.while_streaming():
+                with open(real, "rb") as f:
+                    f.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        buf = f.read(min(_STREAM_BUFFER, remaining))
+                        if not buf:
+                            break
+                        self.wfile.write(buf)
+                        remaining -= len(buf)
         except (BrokenPipeError, ConnectionResetError):
             pass   # o player fechou ou pulou pra outro trecho
         except OSError as e:
             sys.stderr.write(f"[TicianoFlix] Falha lendo arquivo local: {e}\n")
+
+    def _quer_full(self):
+        """?full=1 pede a imagem original — miniatura e o padrao do grid."""
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        return q.get("full", ["0"])[0] == "1"
+
+    @staticmethod
+    def _tipo_de_imagem(path):
+        """file_type da imagem no catalogo ('' quando nao consta).
+
+        So fanart escapa da miniatura: ele e o fundo de tela em tamanho
+        cheio, onde 640 px apareceria serrilhado num monitor grande.
+        """
+        partes = path.strip("/").split("/")
+        if len(partes) < 2:
+            return ""
+        try:
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT file_type FROM files WHERE folder_path=? AND name=?",
+                    ("/" + "/".join(partes[:-1]), partes[-1])).fetchone()
+            finally:
+                conn.close()
+        except Exception:
+            return ""
+        return row["file_type"] if row else ""
+
+    def _serve_imagem_do_cache(self, cache_path, path):
+        """Serve a imagem do cache local, em miniatura quando valer a pena.
+
+        O grid pede dezenas de posteres em cartoes de ~300 px; servir o
+        original de 1-2 MB em cada um era o maior desperdicio da home. A
+        chave da miniatura embute mtime+tamanho do original, entao gerar
+        acontece uma vez por versao da imagem."""
+        serve = cache_path
+        if not self._quer_full():
+            mini = _thumbs.miniatura_para(cache_path, self._tipo_de_imagem(path))
+            if mini is not None:
+                serve = mini
+        mime, _ = mimetypes.guess_type(str(serve))
+        if mime is None:
+            mime = "image/jpeg"
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(serve.stat().st_size))
+        self.send_header("Cache-Control", "max-age=86400")
+        self._send_media_cors()
+        self.end_headers()
+        if not self._head_only:
+            with open(serve, "rb") as f:
+                shutil.copyfileobj(f, self.wfile, _STREAM_BUFFER)
 
     def _stream_image_cached(self, path):
         """Stream an image file, caching it locally on first access."""
@@ -591,17 +999,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # Serve from local cache if available
         if cache_path.exists():
-            mime, _ = mimetypes.guess_type(str(cache_path))
-            if mime is None:
-                mime = "image/jpeg"
-            self.send_response(200)
-            self.send_header("Content-Type", mime)
-            self.send_header("Content-Length", str(cache_path.stat().st_size))
-            self.send_header("Cache-Control", "max-age=86400")
-            self._send_media_cors()
-            self.end_headers()
-            with open(cache_path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+            self._serve_imagem_do_cache(cache_path, path)
+            return
+
+        # Sonda (HEAD): nao vale baixar a imagem inteira so pra responder
+        # cabecalho — o caminho direto pelo rclone ja devolve tipo e tamanho.
+        if self._head_only:
+            self._stream_video_direct(path)
             return
 
         # Not cached yet — download via rclone proxy with retry
@@ -625,6 +1029,12 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     sys.stderr.write(f"[TicianoFlix] Cached image: {cache_key} ({len(data)}B)\n")
                 except Exception as e:
                     sys.stderr.write(f"[TicianoFlix] Cache write failed: {e}\n")
+
+                if cache_path.exists():
+                    # Gravado no cache: serve pelo caminho comum, que ja
+                    # aplica a miniatura na primeira visita.
+                    self._serve_imagem_do_cache(cache_path, path)
+                    return
 
                 self.send_response(200)
                 self.send_header("Content-Type", mime)
@@ -679,13 +1089,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
             if cl:
                 self.send_header("Content-Length", cl)
+            else:
+                # Sem tamanho nao da pra delimitar o corpo em keep-alive:
+                # fecha a conexao no fim, como era antes do HTTP/1.1.
+                self.send_header("Connection", "close")
             self.send_header("Content-Type", mime)
             self.send_header("Accept-Ranges", "bytes")
             self._send_media_cors()
             self.end_headers()
 
+            if self._head_only:
+                resp.close()
+                conn.close()
+                return
+
             # Stream direto do socket do rclone pro socket do browser
-            shutil.copyfileobj(resp, self.wfile, 65536)
+            with keepawake.while_streaming():
+                shutil.copyfileobj(resp, self.wfile, _STREAM_BUFFER)
             resp.close()
             conn.close()
 
@@ -758,15 +1178,19 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", mime)
             self.end_headers()
 
+        if self._head_only:
+            return
+
         try:
             proc = subprocess.Popen(cat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            remaining = chunk_size
-            while remaining > 0:
-                buf = proc.stdout.read(min(65536, remaining))
-                if not buf:
-                    break
-                self.wfile.write(buf)
-                remaining -= len(buf)
+            with keepawake.while_streaming():
+                remaining = chunk_size
+                while remaining > 0:
+                    buf = proc.stdout.read(min(65536, remaining))
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+                    remaining -= len(buf)
             proc.stdout.close()
             proc.wait(timeout=10)
             # If range covers the last byte of the file, the whole file is cached by rclone
@@ -787,7 +1211,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         """Texto bruto da legenda, buscado na fonte dona do path.
 
         Legenda de fonte local vem direto do disco — nao faz sentido copiar pro
-        cache um arquivo que ja e local. A do Drive continua no rclone cat com
+        cache um arquivo que ja e local. A da nuvem continua no rclone cat com
         cache em disco.
         """
         if _sources.is_local(path):
@@ -866,7 +1290,8 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self._send_media_cors()
         self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
-        self.wfile.write(payload)
+        if not self._head_only:
+            self.wfile.write(payload)
 
     def _guess_mime(self, path):
         """Guess MIME type for a file."""
@@ -925,8 +1350,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(requested.stat().st_size))
         self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
-        with open(requested, "rb") as f:
-            shutil.copyfileobj(f, self.wfile)
+        if not self._head_only:
+            with open(requested, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
 
     def _generate_backup_zip(self):
         """Generate backup zip to a temporary file. Returns path to temp file."""
@@ -979,17 +1405,16 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-    def _backup_to_drive(self):
-        """Gera o zip e sobe pro Drive usando o remote de escrita.
+    def _backup_to_cloud(self):
+        """Gera o zip e sobe pro remote da nuvem conectada.
 
-        O remote principal e somente-leitura; so este caminho escreve, e ele
-        usa um token com scope drive.file — que enxerga exclusivamente os
-        arquivos criados pelo proprio TicianoFlix."""
+        Escreve na pasta de backups do próprio remote cadastrado em
+        Ajustes > Nuvem."""
         zip_path = None
         try:
             zip_path = self._generate_backup_zip()
             filename = f"ticianoflix-backup-{time.strftime('%Y-%m-%d')}.zip"
-            remote_path = f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}/{filename}"
+            remote_path = destino_backup() + "/" + filename
 
             with open(zip_path, "rb") as f:
                 data = f.read()
@@ -1005,7 +1430,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 if "didn't find section in config file" in err:
                     return {"ok": False, "error":
                             "O remote de backup nao esta configurado. "
-                            "Rode: ./setup-rclone-seguro.sh"}
+                            "Cadastre a nuvem em Ajustes > Nuvem."}
                 return {"ok": False, "error": f"rclone failed: {err}"}
 
             return {"ok": True, "path": f"{BACKUP_FOLDER}/{filename}"}
@@ -1018,35 +1443,44 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-    def _handle_restore_from_drive(self):
-        """Find latest backup zip in Drive, download and restore."""
+    def _handle_restore_from_cloud(self):
+        """Baixa o backup .zip mais recente da nuvem e restaura."""
         try:
-            # Lista pelo remote de backup: com scope drive.file ele so enxerga
-            # os arquivos que o proprio TicianoFlix criou.
+            # Lista pelo remote de backup: com uma key so de escrita restrita,
+            # ele so enxerga os arquivos que o proprio TicianoFlix criou.
             result = run_rclone_cmd(
-                ["lsjson", f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}"])
+                ["lsjson", destino_backup()])
             if not isinstance(result, list):
                 self._send_error(
                     "Nao foi possivel listar os backups. O remote de backup "
-                    "esta configurado? Rode: ./setup-rclone-seguro.sh")
+                    "esta configurado? Veja Ajustes > Nuvem.")
                 return
 
             zips = [f for f in result if f.get("Name", "").startswith("ticianoflix-backup-") and f.get("Name", "").endswith(".zip")]
             if not zips:
-                self._send_error("Nenhum backup encontrado no Google Drive")
+                self._send_error("Nenhum backup encontrado na nuvem")
                 return
 
             # Get most recent by ModTime
             zips.sort(key=lambda f: f.get("ModTime", ""), reverse=True)
             latest = zips[0]
             name = latest["Name"]
+            # Teto ANTES de baixar: o zip inteiro entra em memoria no rclone
+            # cat — um arquivo gigante (ou trocado na nuvem) derrubava o
+            # servidor antes de qualquer validacao.
+            if (latest.get("Size") or 0) > MAX_RESTORE_BYTES:
+                self._send_error(
+                    "O backup mais recente e grande demais (%d MB; limite %d MB)"
+                    % (latest["Size"] // (1024 * 1024),
+                       MAX_RESTORE_BYTES // (1024 * 1024)), 413)
+                return
 
             self._send_json({"status": "downloading", "file": name})
 
             # Download in background thread
             def _do_restore():
                 try:
-                    remote = f"{RCLONE_BACKUP_REMOTE}{BACKUP_FOLDER}/{name}"
+                    remote = destino_backup() + "/" + name
                     proc = subprocess.run(
                         ["rclone", "cat", remote],
                         capture_output=True, timeout=120
@@ -1055,6 +1489,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                         msg = f"Falha ao baixar backup: {proc.stderr.decode(errors='replace')}"
                         print(f"[TicianoFlix] {msg}", flush=True)
                         # Log to DB for user to see on next refresh
+                        _log_notification("error", msg)
+                        return
+                    # Teto tambem no que chegou: o Size do lsjson pode faltar
+                    # (ou mentir) em backend exotico.
+                    if len(proc.stdout) > MAX_RESTORE_BYTES:
+                        msg = "Backup baixado grande demais para restaurar"
+                        print(f"[TicianoFlix] {msg}", flush=True)
                         _log_notification("error", msg)
                         return
 
@@ -1066,34 +1507,49 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                             print(f"[TicianoFlix] {msg}", flush=True)
                             _log_notification("error", msg)
                             return
+                        if z.getinfo("ticianoflix.db").file_size > MAX_RESTORE_BYTES:
+                            msg = "O banco do backup e grande demais"
+                            print(f"[TicianoFlix] {msg}", flush=True)
+                            _log_notification("error", msg)
+                            return
+                        db_bytes = z.read("ticianoflix.db")
+                        # Mesma checagem do restore por upload: sem isso, um zip
+                        # qualquer (ou corrompido) sobrescrevia o banco vivo.
+                        if not _looks_like_ticianoflix_db(db_bytes):
+                            msg = "O banco do backup nao parece ser do TicianoFlix"
+                            print(f"[TicianoFlix] {msg}", flush=True)
+                            _log_notification("error", msg)
+                            return
                         db_path = Path(DB_PATH)
                         if db_path.exists():
                             shutil.copy2(db_path, db_path.with_suffix(".db.bak"))
-                        db_path.write_bytes(z.read("ticianoflix.db"))
+                        db_path.write_bytes(db_bytes)
                         img_dir = Path(IMAGE_CACHE_DIR)
                         img_dir.mkdir(exist_ok=True)
                         for n in names:
                             if n.startswith("images/") and not n.endswith("/"):
-                                (img_dir / Path(n).name).write_bytes(z.read(n))
+                                if _zip_member_ok(z, n):
+                                    (img_dir / Path(n).name).write_bytes(z.read(n))
                         subs_dir = Path(SUBS_CACHE_DIR)
                         subs_dir.mkdir(exist_ok=True)
                         for n in names:
                             if n.startswith("subs/") and not n.endswith("/"):
-                                (subs_dir / Path(n).name).write_bytes(z.read(n))
+                                if _zip_member_ok(z, n):
+                                    (subs_dir / Path(n).name).write_bytes(z.read(n))
                     msg = f"Backup restaurado com sucesso: {name}"
                     print(f"[TicianoFlix] {msg}", flush=True)
                     _log_notification("success", msg)
                 except Exception as e:
-                    msg = f"Falha ao restaurar do Drive: {e}"
+                    msg = f"Falha ao restaurar da nuvem: {e}"
                     print(f"[TicianoFlix] {msg}", flush=True)
                     _log_notification("error", msg)
 
             threading.Thread(target=_do_restore, daemon=True).start()
 
         except Exception as e:
-            self._send_error(f"Falha ao restaurar do Drive: {e}")
+            self._send_error(f"Falha ao restaurar da nuvem: {e}")
 
-    # ── Fontes do catalogo (Drive + pastas locais) ──────────────
+    # ── Fontes do catalogo (nuvem + pastas locais) ──────────────
 
     def _source_payload(self, source):
         counts = cached_source_counts(source["mount"])
@@ -1165,38 +1621,448 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             conn.close()
         self._send_json({"status": "ok"})
 
-    def _handle_scrape_apply(self):
+    # ── Nuvem (wizard) ────────────────────────────────────────
+
+    # ── Coleções do app ────────────────────────────────────────
+
+    @staticmethod
+    def _valida_colecao(body, conn, id_atual=None):
+        """Valida o corpo de create/update. Devolve (dados, erro).
+
+        `dados` vem pronto pro banco: nome, descricao, capa, filmes[]. A capa
+        precisa ser um dos filmes (ou vazia — aí cai no primeiro); filme que
+        não existe no catálogo é recusado, senão a coleção nasceria órfã.
+        """
+        nome = str(body.get("nome") or "").strip()
+        descricao = str(body.get("descricao") or "").strip()
+        filmes = body.get("filmes") or []
+        capa = str(body.get("capa") or "").strip()
+        if not nome:
+            return None, "Dê um nome à coleção."
+        if len(nome) > 80:
+            return None, "Nome longo demais (máximo 80 caracteres)."
+        dup = conn.execute(
+            "SELECT id FROM colecoes WHERE nome = ? COLLATE NOCASE AND id != ?",
+            (nome, id_atual if id_atual else -1)).fetchone()
+        if dup:
+            return None, f'Já existe uma coleção chamada "{nome}".'
+        if not isinstance(filmes, list) or not filmes:
+            return None, "Escolha pelo menos um filme para a coleção."
+        if len(filmes) > 500:
+            return None, "Coleção grande demais (máximo 500 filmes)."
+        limpos = []
+        for f in filmes:
+            f = str(f).strip()
+            if f and f not in limpos:
+                limpos.append(f)
+        for f in limpos:
+            row = conn.execute(
+                "SELECT path FROM folders WHERE path=? AND has_video=1", (f,)).fetchone()
+            if not row:
+                return None, f"Filme não encontrado no catálogo: {f}"
+        if capa and capa not in limpos:
+            return None, "A capa precisa ser de um dos filmes da coleção."
+        return {"nome": nome, "descricao": descricao,
+                "capa": capa or limpos[0], "filmes": limpos}, None
+
+    # ── Tags do app ────────────────────────────────────────────
+
+    def _handle_genero_create(self):
         body = self._read_json_body() or {}
-        folder_path = str(body.get("path", "")).strip()
-        tmdb_id = body.get("tmdb_id")
-        if not folder_path or not tmdb_id:
-            self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
+        nome = str(body.get("nome") or "").strip()
+        if not nome:
+            self._send_json({"status": "error", "error": "Dê um nome à tag."}, 400)
+            return
+        if len(nome) > 40:
+            self._send_json({"status": "error",
+                             "error": "Nome longo demais (máximo 40 caracteres)."}, 400)
+            return
+        conn = get_db()
+        try:
+            dup = conn.execute(
+                "SELECT id FROM generos_app WHERE nome = ? COLLATE NOCASE",
+                (nome,)).fetchone()
+            if dup:
+                # Idempotente: criar o que existe devolve o id dele.
+                self._send_json({"status": "ok", "id": dup["id"],
+                                 "ja_existia": True,
+                                 "message": f'Tag "{nome}" já existia.'})
+                return
+            cur = conn.execute(
+                "INSERT INTO generos_app (nome, created_at) VALUES (?, ?)",
+                (nome, time.time()))
+            conn.commit()
+            novo_id = cur.lastrowid
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "id": novo_id,
+                         "message": f'Tag "{nome}" criada.'})
+
+    def _handle_genero_renomear(self):
+        body = self._read_json_body() or {}
+        nome = str(body.get("nome") or "").strip()
+        if not nome:
+            self._send_json({"status": "error", "error": "Dê um nome à tag."}, 400)
+            return
+        if len(nome) > 40:
+            self._send_json({"status": "error",
+                             "error": "Nome longo demais (máximo 40 caracteres)."}, 400)
             return
         try:
-            tmdb_id = int(tmdb_id)
+            gid = int(body.get("id"))
         except (TypeError, ValueError):
-            self._send_json({"status": "error", "error": "tmdb_id invalido"}, 400)
+            self._send_json({"status": "error", "error": "Tag inválida."}, 400)
             return
-        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
-        if not ok:
-            self._send_json({"status": "error", "error": erro}, 502)
+        conn = get_db()
+        try:
+            if not conn.execute("SELECT id FROM generos_app WHERE id=?",
+                                (gid,)).fetchone():
+                self._send_json({"status": "error",
+                                 "error": "Tag não encontrada."}, 404)
+                return
+            dup = conn.execute(
+                "SELECT id FROM generos_app WHERE nome = ? COLLATE NOCASE AND id != ?",
+                (nome, gid)).fetchone()
+            if dup:
+                self._send_json({"status": "error",
+                                 "error": f'Já existe uma tag "{nome}".'}, 400)
+                return
+            conn.execute("UPDATE generos_app SET nome=? WHERE id=?", (nome, gid))
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "message": f'Gênero renomeado para "{nome}".'})
+
+    def _handle_genero_delete(self):
+        body = self._read_json_body() or {}
+        try:
+            gid = int(body.get("id"))
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "Tag inválida."}, 400)
             return
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT nome FROM generos_app WHERE id=?", (gid,)).fetchone()
+            if not row:
+                self._send_json({"status": "error",
+                                 "error": "Tag não encontrada."}, 404)
+                return
+            conn.execute("DELETE FROM generos_app WHERE id=?", (gid,))
+            conn.execute("DELETE FROM generos_filmes WHERE genero_id=?", (gid,))
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok",
+                         "message": f'Tag "{row["nome"]}" excluída.'})
+
+    def _handle_genero_atribuir(self):
+        """Define as tags de um filme: substitui o conjunto por inteiro.
+
+        O alvo é o folder_path (filme em pasta) ou o path completo do arquivo
+        (filme solto). Filme que não existe mais no catálogo é recusado — sem
+        isso a atribuição criaria vínculo órfão invisível.
+        """
+        body = self._read_json_body() or {}
+        alvo = str(body.get("alvo") or "").strip()
+        ids = body.get("generos") or []
+        if not alvo:
+            self._send_json({"status": "error", "error": "Filme não informado."}, 400)
+            return
+        if not isinstance(ids, list):
+            self._send_json({"status": "error", "error": "Tags inválidas."}, 400)
+            return
+        conn = get_db()
+        try:
+            existe = conn.execute(
+                "SELECT 1 FROM folders WHERE path=? AND has_video=1 AND depth>0",
+                (alvo,)).fetchone()
+            if not existe:
+                existe = conn.execute(
+                    """SELECT 1 FROM files WHERE folder_path || '/' || name = ?
+                       AND file_type = 'video'""", (alvo,)).fetchone()
+            if not existe:
+                self._send_json({"status": "error",
+                                 "error": "Filme não encontrado no catálogo."}, 404)
+                return
+            limpos = []
+            for i in ids:
+                try:
+                    i = int(i)
+                except (TypeError, ValueError):
+                    continue
+                if conn.execute("SELECT 1 FROM generos_app WHERE id=?",
+                                (i,)).fetchone() and i not in limpos:
+                    limpos.append(i)
+            conn.execute("DELETE FROM generos_filmes WHERE alvo=?", (alvo,))
+            conn.executemany(
+                "INSERT OR IGNORE INTO generos_filmes (genero_id, alvo) VALUES (?, ?)",
+                [(i, alvo) for i in limpos])
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "generos": limpos,
+                         "message": "Tags atualizadas."})
+
+    def _handle_watched(self):
+        """Marcar/desmarcar um filme como assistido (interruptor da ficha).
+
+        Reaproveita watch_progress: "marcar" grava posicao 0 (a mesma
+        convencao de quem assiste ate o fim), "desmarcar" apaga a linha — o
+        filme sai de assistido e tambem do Continuar Assistindo.
+        """
+        body = self._read_json_body() or {}
+        alvo = str(body.get("path") or "").strip()
+        if not alvo:
+            self._send_json({"status": "error", "error": "Filme não informado."}, 400)
+            return
+        on = bool(body.get("on"))
+        conn = get_db()
+        try:
+            if on:
+                conn.execute(
+                    "INSERT OR REPLACE INTO watch_progress "
+                    "(folder_path, position_seconds, duration_seconds, updated_at) "
+                    "VALUES (?, 0, 0, ?)", (alvo, time.time()))
+            else:
+                conn.execute(
+                    "DELETE FROM watch_progress WHERE folder_path=?", (alvo,))
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "watched": on})
+
+    def _handle_colecao_create(self):
+        body = self._read_json_body() or {}
+        conn = get_db()
+        try:
+            dados, err = self._valida_colecao(body, conn)
+            if err:
+                self._send_json({"status": "error", "error": err}, 400)
+                return
+            cur = conn.execute(
+                "INSERT INTO colecoes (nome, descricao, capa, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (dados["nome"], dados["descricao"], dados["capa"], time.time()))
+            nova_id = cur.lastrowid
+            conn.executemany(
+                "INSERT OR IGNORE INTO colecoes_filmes (colecao_id, folder_path) "
+                "VALUES (?, ?)",
+                [(nova_id, f) for f in dados["filmes"]])
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "id": nova_id,
+                         "message": f'Coleção "{dados["nome"]}" criada.'})
+
+    def _handle_colecao_update(self):
+        body = self._read_json_body() or {}
+        try:
+            col_id = int(body.get("id"))
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "Coleção inválida."}, 400)
+            return
+        conn = get_db()
+        try:
+            if not conn.execute(
+                    "SELECT id FROM colecoes WHERE id=?", (col_id,)).fetchone():
+                self._send_json({"status": "error",
+                                 "error": "Coleção não encontrada."}, 404)
+                return
+            dados, err = self._valida_colecao(body, conn, id_atual=col_id)
+            if err:
+                self._send_json({"status": "error", "error": err}, 400)
+                return
+            conn.execute(
+                "UPDATE colecoes SET nome=?, descricao=?, capa=? WHERE id=?",
+                (dados["nome"], dados["descricao"], dados["capa"], col_id))
+            # Vínculos são substituídos por inteiro: a tela manda a lista final.
+            conn.execute("DELETE FROM colecoes_filmes WHERE colecao_id=?", (col_id,))
+            conn.executemany(
+                "INSERT OR IGNORE INTO colecoes_filmes (colecao_id, folder_path) "
+                "VALUES (?, ?)",
+                [(col_id, f) for f in dados["filmes"]])
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok",
+                         "message": f'Coleção "{dados["nome"]}" salva.'})
+
+    def _handle_colecao_delete(self):
+        body = self._read_json_body() or {}
+        try:
+            col_id = int(body.get("id"))
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "Coleção inválida."}, 400)
+            return
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT nome FROM colecoes WHERE id=?", (col_id,)).fetchone()
+            if not row:
+                self._send_json({"status": "error",
+                                 "error": "Coleção não encontrada."}, 404)
+                return
+            conn.execute("DELETE FROM colecoes WHERE id=?", (col_id,))
+            conn.execute("DELETE FROM colecoes_filmes WHERE colecao_id=?", (col_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok",
+                         "message": f'Coleção "{row["nome"]}" excluída.'})
+
+    def _permitido_infantil(self, caminho_midia):
+        """Para sessão infantil: o arquivo só pode tocar se ele mesmo ou
+        alguma pasta acima dele estiver marcada.
+
+        Cobre os três casos: arquivo solto (marcado direto), filme (a pasta
+        dele) e episódio de série (a pasta da série, acima da temporada) —
+        marcar a série vale para todos os episódios. Aceita o path com ou sem
+        a barra inicial do namespace lógico."""
+        caminho = "/" + str(caminho_midia or "").strip("/")
+        alvos = [caminho]
+        pasta = caminho.rsplit("/", 1)[0]
+        while pasta and pasta != "/":
+            alvos.append(pasta)
+            pasta = pasta.rsplit("/", 1)[0]
+        return cached_algum_infantil(alvos)
+
+    def _handle_infantil_marcar(self):
+        """Marca/desmarca um filme para o perfil infantil (admin)."""
+        body = self._read_json_body() or {}
+        alvo = "/" + str(body.get("alvo") or "").strip("/")
+        if alvo == "/":
+            self._send_json({"status": "error", "error": "Filme não informado."}, 400)
+            return
+        conn = get_db()
+        try:
+            existe = conn.execute(
+                "SELECT 1 FROM folders WHERE path=? AND has_video=1 AND depth>0",
+                (alvo,)).fetchone()
+            if not existe:
+                existe = conn.execute(
+                    """SELECT 1 FROM files WHERE folder_path || '/' || name = ?
+                       AND file_type = 'video'""", (alvo,)).fetchone()
+            if not existe:
+                self._send_json({"status": "error",
+                                 "error": "Filme não encontrado no catálogo."}, 404)
+                return
+            on = bool(body.get("on"))
+            if on:
+                conn.execute("INSERT OR IGNORE INTO infantil_filmes (alvo) VALUES (?)",
+                             (alvo,))
+            else:
+                conn.execute("DELETE FROM infantil_filmes WHERE alvo=?", (alvo,))
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"status": "ok", "on": on,
+                         "message": ("Marcado para o perfil infantil."
+                                     if on else "Desmarcado do perfil infantil.")})
+
+    def _handle_user_infantil(self):
+        body = self._read_json_body() or {}
+        me = (self._current_user() or {}).get("username", "")
+        problem = _set_user_infantil(str(body.get("username", "")),
+                                     bool(body.get("infantil")), me)
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        self._send_json({"status": "ok", "users": _list_users()})
+
+    # ── Nuvem (qualquer remote rclone, via wizard) ─────────────
+
+    def _handle_nuvem_status(self):
+        try:
+            self._send_json(_nuvem.status())
+        except Exception as e:
+            self._send_exception(e)
+
+    def _handle_nuvem_conectar(self):
+        body = self._read_json_body() or {}
+        result, err = _nuvem.conectar(body.get("remote", ""),
+                                      body.get("pasta", ""))
+        if err:
+            self._send_json({"status": "error", "error": err}, 400)
+            return
+        # Remote novo em uso: reinicia o serve para montar nele.
+        serve = restart_rclone_serve()
+        self._send_json({"status": "ok", "remote": result["remote"],
+                         "pasta": result["pasta"], "serve": serve})
+
+    def _handle_nuvem_desconectar(self):
+        _nuvem.desconectar()
+        # O catalogo da nuvem sai junto — sem isso a home continuaria listando
+        # filmes que nao existem mais em lugar nenhum, com play que falha.
+        try:
+            _scanner.prune_unconfigured_cloud()
+        except Exception as e:
+            print(f"[TicianoFlix] Falha ao podar catalogo da nuvem: {e}",
+                  flush=True)
         self._send_json({"status": "ok"})
 
-    def _handle_scrape_key_set(self):
+    def _handle_rclone_remotes(self):
+        remotes, err = _nuvem.listar_remotes()
+        if err:
+            self._send_json({"status": "error", "error": err}, 500)
+            return
+        self._send_json(remotes)
+
+    def _handle_rclone_providers(self):
+        providers, err = _nuvem.providers()
+        if err:
+            self._send_json({"status": "error", "error": err}, 500)
+            return
+        self._send_json(providers)
+
+    def _handle_rclone_wizard(self):
         body = self._read_json_body() or {}
-        _scraper.set_api_key(str(body.get("api_key", "")))
-        self._send_json({"status": "ok", "configurado": _scraper.configurado()})
+        result, err = _nuvem.criar_remote(body.get("nome", ""),
+                                          body.get("tipo", ""),
+                                          body.get("parametros") or {})
+        if err:
+            self._send_json({"status": "error", "error": err}, 400)
+            return
+        self._send_json({"status": "ok", **result})
 
     def _handle_branding_set(self):
         body = self._read_json_body() or {}
-        ok, err = _branding.set(body.get("nome", ""), body.get("cor", ""))
+        # So a cor: o nome e escolhido na instalacao (_handle_auth_setup) e
+        # fica fixo depois disso — ver branding.set().
+        ok, err = _branding.set(cor=body.get("cor", ""))
         if not ok:
             self._send_json({"status": "error", "error": err}, 400)
             return
         self._send_json({"status": "ok", "branding": _branding.get()})
 
     def do_POST(self):
+        try:
+            self._rota_do_post()
+        finally:
+            self._sobra_do_corpo()
+
+    def _sobra_do_corpo(self):
+        """Corpo do POST que a rota nao leu (403/404 respondem antes do parse)
+        fica no socket e, em keep-alive, seria lido como a PROXIMA requisicao:
+        um 400 disparado pelo proprio corpo que o cliente acabou de mandar.
+        Drena restos pequenos; resto grande fecha a conexao, como era antes
+        do HTTP/1.1."""
+        try:
+            restante = int(self.headers.get("Content-Length", 0) or 0) - \
+                getattr(self, "_body_lido", 0)
+        except (TypeError, ValueError):
+            restante = 0
+        if restante <= 0:
+            return
+        if restante <= 65536:
+            try:
+                self.rfile.read(restante)
+                return
+            except Exception:
+                pass
+        self.close_connection = True
+
+    def _rota_do_post(self):
         self._reset_request_state()
         if not self._security_gate():
             return
@@ -1227,6 +2093,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._handle_cast_token()
             return
 
+        if path == "/api/prepare":
+            self._handle_prepare()
+            return
+
         if path == "/api/users/add":
             self._handle_user_add()
             return
@@ -1237,6 +2107,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/users/role":
             self._handle_user_role()
+            return
+
+        if path == "/api/users/infantil":
+            self._handle_user_infantil()
             return
 
         if path == "/api/users/password":
@@ -1267,6 +2141,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     self._send_json({"status": "error", "error": "Corpo grande demais"}, 413)
                     return
                 raw = self.rfile.read(content_len)
+                self._body_lido += content_len
                 body = json.loads(raw)
                 folder_path = body.get("path", "").strip()
                 position = float(body.get("position", 0))
@@ -1311,6 +2186,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("Backup grande demais", 413)
                 return
             data = self.rfile.read(content_len)
+            self._body_lido += content_len
             buf = io.BytesIO(data)
             with zipfile.ZipFile(buf, "r") as z:
                 names = z.namelist()
@@ -1333,12 +2209,14 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 img_dir.mkdir(exist_ok=True)
                 for name in names:
                     if name.startswith("images/") and not name.endswith("/"):
-                        (img_dir / Path(name).name).write_bytes(z.read(name))
+                        if _zip_member_ok(z, name):
+                            (img_dir / Path(name).name).write_bytes(z.read(name))
                 subs_dir = Path(SUBS_CACHE_DIR)
                 subs_dir.mkdir(exist_ok=True)
                 for name in names:
                     if name.startswith("subs/") and not name.endswith("/"):
-                        (subs_dir / Path(name).name).write_bytes(z.read(name))
+                        if _zip_member_ok(z, name):
+                            (subs_dir / Path(name).name).write_bytes(z.read(name))
             self._send_json({"status": "ok", "message": "Backup restaurado com sucesso"})
         except Exception as e:
             sys.stderr.write("[TicianoFlix] restore falhou: %r\n" % (e,))
@@ -1359,6 +2237,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if self._has_session():
                 self.send_response(303)
                 self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
             self._send_html(_login_page(setup=not _auth_configured()))
@@ -1383,23 +2262,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # Serve frontend
         if path == "/" or path == "/index.html":
-            html_content = FRONTEND_PATH.read_text(encoding="utf-8") if FRONTEND_PATH.exists() else "<h1>TicianoFlix</h1><p>Frontend not found.</p>"
-            # Troca o nome de exibicao antes de servir: fazer isso por
-            # JavaScript depois piscaria "TicianoFlix" por um instante a cada
-            # carregamento, em qualquer instalacao que tenha escolhido outro
-            # nome. So esse texto muda — CACHE_DIR, nome do banco e do
-            # servico continuam fixos, de proposito (ver branding.py).
-            html_content = html_content.replace(NOME_PADRAO, _branding.get()["nome"])
-            # Inject HTTP base URL for Chromecast media streaming
-            # (Chromecast doesn't trust self-signed certs, so media must use HTTP)
-            html_content = html_content.replace(
-                "</head>",
-                f"<script>window.__HTTP_BASE__='http://{_get_local_ip()}:{PORT}';"
-                f"window.__LOGICAL_ROOT__={json.dumps(LOGICAL_ROOT)};</script></head>",
-                1
-            )
-            html_content = _bust_asset_cache(html_content)
-            self._send_html(html_content)
+            self._send_html(self._index_html())
             return
 
         # Favicon (serve from project root)
@@ -1416,19 +2279,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
         # escolhidos. Publicos (ver PUBLIC_PATHS) porque o navegador os busca
         # fora da navegacao normal, sem cookie — inclusive antes do login.
         if path == "/manifest.webmanifest":
+            payload = _branding.manifest_json().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/manifest+json")
+            self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            self.wfile.write(_branding.manifest_json().encode("utf-8"))
+            self.wfile.write(payload)
             return
 
         if path == "/branding.css":
+            payload = _branding.css().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            self.wfile.write(_branding.css().encode("utf-8"))
+            self.wfile.write(payload)
             return
 
         if path.startswith("/icone-") and path.endswith(".png"):
@@ -1439,9 +2306,36 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(dados)))
             # A cor entra no nome do arquivo em cache (branding.py); um icone
             # nunca fica desatualizado atras deste cache, so muda de URL.
             self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(dados)
+            return
+
+        # A CA local (mkcert) que assina o HTTPS do proprio app. Celular novo
+        # baixa este arquivo pelo http:// (sem aviso de certificado) e
+        # instala como certificado de CA — depois o https:// aparece como
+        # seguro e o Chrome oferece "Instalar app". So o certificado publico
+        # sai daqui; a chave da CA (rootCA-key.pem) nunca e servida.
+        if path == "/ca.crt":
+            ca = mkcert_root_ca_path()
+            dados = None
+            if ca is not None:
+                try:
+                    dados = ca.read_bytes()
+                except OSError:
+                    dados = None
+            if not dados:
+                self._send_error("Sem certificado local do mkcert para baixar", 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-x509-ca-cert")
+            self.send_header("Content-Length", str(len(dados)))
+            self.send_header("Content-Disposition",
+                             'attachment; filename="ticianoflix-ca.crt"')
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(dados)
             return
@@ -1478,34 +2372,29 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._handle_source_remove()
             return
 
-        # API: Metadados via TMDB (editor que substitui o tinyMediaManager)
-        if path == "/api/scrape/status":
-            pendentes, total = _scraper.listar_pendentes(limite=1)
-            self._send_json({"configurado": _scraper.configurado(), "pendentes": total})
+        # Nuvem (qualquer remote rclone, via wizard)
+        if path == "/api/nuvem/status":
+            self._handle_nuvem_status()
             return
 
-        if path == "/api/scrape/pendentes":
-            pendentes, total = _scraper.listar_pendentes()
-            self._send_json({"pendentes": pendentes, "total": total})
+        if path == "/api/nuvem/conectar":
+            self._handle_nuvem_conectar()
             return
 
-        if path == "/api/scrape/search":
-            folder_path = params.get("path", [""])[0]
-            query = params.get("q", [""])[0].strip() or None
-            if not folder_path:
-                self._send_error("Missing 'path' parameter", 400)
-                return
-            nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
-            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
-            self._send_json({"candidatos": candidatos, "erro": erro})
+        if path == "/api/nuvem/desconectar":
+            self._handle_nuvem_desconectar()
             return
 
-        if path == "/api/scrape/apply":
-            self._handle_scrape_apply()
+        if path == "/api/rclone/remotes":
+            self._handle_rclone_remotes()
             return
 
-        if path == "/api/scrape/key/set":
-            self._handle_scrape_key_set()
+        if path == "/api/rclone/providers":
+            self._handle_rclone_providers()
+            return
+
+        if path == "/api/rclone/wizard":
+            self._handle_rclone_wizard()
             return
 
         # API: Scan progress
@@ -1518,7 +2407,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             self._serve_backup()
             return
 
-        # API: Backup to Drive (salva em ~/Downloads/ + serve)
+        # API: Backup local (salva em ~/Downloads/ + serve)
         if path == "/api/backup/local":
             db_path = DB_PATH
             if not db_path.exists():
@@ -1549,24 +2438,32 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(f.read())
             return
 
-        # API: Backup to Google Drive
-        if path == "/api/backup/drive":
-            result = self._backup_to_drive()
+        # API: Backup para a nuvem
+        if path == "/api/backup/b2":
+            if not remote_configurado():
+                self._send_error(
+                    "Nuvem nao configurada — conecte em Ajustes > Nuvem.", 400)
+                return
+            result = self._backup_to_cloud()
             if result["ok"]:
                 self._send_json({"status": "ok", "path": result["path"]})
             else:
                 self._send_json({"status": "error", "error": result["error"]}, 500)
             return
 
-        # API: Restore backup from Google Drive
-        if path == "/api/restore/drive":
-            self._handle_restore_from_drive()
+        # API: Restore do backup da nuvem
+        if path == "/api/restore/b2":
+            if not remote_configurado():
+                self._send_error(
+                    "Nuvem nao configurada — conecte em Ajustes > Nuvem.", 400)
+                return
+            self._handle_restore_from_cloud()
             return
 
         # API: Cache manager — returns all movies with cached status
         if path == "/api/cache-manager":
             try:
-                movies = cached_all_movies()
+                movies = cached_all_movies(so_infantil=self._so_infantil())
                 result = []
                 for m in movies:
                     folder_path = m["path"]
@@ -1832,7 +2729,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
                 if vfs_cache.exists():
                     removed = 0
-                    # rclone VFS cache stores files under gdrive{hash}/<full remote path>
+                    # rclone VFS cache stores files under <remote>{hash}/<full remote path>
                     # Search recursively for any file/dir containing the folder path
                     folder_stripped = folder_path.strip("/")
                     for entry in vfs_cache.rglob("*"):
@@ -1878,9 +2775,9 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             cache_time = get_cache_time()
             stale = is_cache_stale()
             usage = get_cache_usage()
+            so_infantil = self._so_infantil()
             conn = get_db()
-            genres = conn.execute("SELECT COUNT(*) as c FROM folders WHERE depth=1").fetchone()["c"]
-            movies = conn.execute("SELECT COUNT(*) as c FROM folders WHERE has_video=1 AND depth=2").fetchone()["c"]
+            genres = 0  # gênero por pasta deixou de existir
             files = conn.execute("SELECT COUNT(*) as c FROM files").fetchone()["c"]
             conn.close()
             self._send_json({
@@ -1888,7 +2785,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 "last_updated": cache_time,
                 "stale": stale,
                 "genres": genres,
-                "movies": movies,
+                # Contagens com a mesma definição das páginas A-Z e Séries —
+                # a home espelha exatamente o que o usuário vê ao clicar.
+                "movies": cached_movie_count(so_infantil),
+                "series": cached_series_count(so_infantil),
                 "files": files,
                 "usage": usage,
             })
@@ -1896,10 +2796,11 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: List genres with content (from cache)
         if path == "/api/genres":
+            # A resposta também traz "app": os gêneros criados na interface.
             wanted = params.get("source", [""])[0].strip()
             conn = get_db()
             genre_rows = conn.execute(
-                "SELECT * FROM folders WHERE depth=1 AND has_video=1 ORDER BY name"
+                "SELECT * FROM folders WHERE 0 ORDER BY name"
             ).fetchall()
             conn.close()
 
@@ -1921,7 +2822,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     "source": source_id,
                 })
             data = {
-                "path": LOGICAL_ROOT,
+                "path": _branding.logical_root(),
                 "folders": folders,
                 # A home monta uma secao por fonte a partir daqui, numa
                 # requisicao so — por isso as fontes vem junto dos generos.
@@ -1931,6 +2832,10 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                     for s in all_sources
                     if not wanted or s["id"] == wanted
                 ],
+                # Gêneros criados na interface — a barra lateral lista depois
+                # dos gêneros de pasta. Filtrado como todo o resto: sessão
+                # infantil não vê (nem de nome) gênero sem filme marcado.
+                "app": cached_generos(so_infantil=self._so_infantil()),
                 "videos": [],
                 "subtitles": [],
                 "images": [],
@@ -1946,29 +2851,37 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 limit = min(int(params.get("limit", ["50"])[0]), 200)
             except (ValueError, IndexError):
                 pass
+            filtro_inf = ""
+            if self._so_infantil():
+                filtro_inf = (" AND EXISTS (SELECT 1 FROM infantil_filmes ii "
+                              "WHERE ii.alvo = folders.path)")
             movie_rows = conn.execute(
-                """SELECT * FROM folders
-                   WHERE depth=2 AND has_video=1
+                f"""SELECT * FROM folders
+                   WHERE has_video=1 AND depth>0
+                     AND tipo IN ('filme', 'serie'){filtro_inf}
                    ORDER BY mod_time DESC, name ASC
                    LIMIT ?""",
                 (limit,)
             ).fetchall()
+            # Pôster e título em lote (antes: uma conexão por filme da home).
+            posters = _posters_de_pastas(conn, [r["path"] for r in movie_rows])
+            titulos = _titulos_nfo_de_pastas(conn, [r["path"] for r in movie_rows])
+            assistidos = {r["folder_path"] for r in conn.execute(
+                "SELECT folder_path FROM watch_progress "
+                "WHERE position_seconds <= 0").fetchall()}
             conn.close()
 
             movies = []
             for row in movie_rows:
                 movie_path = row["path"]
-                poster = _find_poster_cached(movie_path)
-                nfo = _fetch_nfo_from_db(movie_path)
-                title = None
-                if nfo and nfo.get("title"):
-                    title = nfo["title"]
                 movies.append({
                     "path": movie_path,
                     "name": row["name"],
                     "mod_time": row["mod_time"],
-                    "poster": poster,
-                    "title": title,
+                    "poster": posters.get(movie_path),
+                    "is_serie": row["tipo"] == "serie",
+                    "title": titulos.get(movie_path) or None,
+                    "watched": movie_path in assistidos,
                 })
             self._send_json(movies)
             return
@@ -1983,23 +2896,83 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                    ORDER BY p.updated_at DESC
                    LIMIT 20"""
             ).fetchall()
-            conn.close()
+            # Pôster e título de filme em lote, na mesma conexão do laço.
+            posters = _posters_de_pastas(conn, [r["folder_path"] for r in rows])
+            titulos = _titulos_nfo_de_pastas(conn, [r["folder_path"] for r in rows])
             result = []
+            so_infantil = self._so_infantil()
+
+            def _titulo_limpo(nome_arquivo):
+                base = nome_arquivo.rsplit(".", 1)[0]
+                for sep in (".", "_"):
+                    base = base.replace(sep, " ")
+                return base.strip()
+
             for row in rows:
-                folder_path = row["folder_path"]
-                poster = _find_poster_cached(folder_path)
-                nfo = _fetch_nfo_from_db(folder_path)
-                title = None
-                if nfo and nfo.get("title"):
-                    title = nfo["title"]
-                result.append({
-                    "path": folder_path,
-                    "name": row["name"] or folder_path.strip("/").split("/")[-1],
-                    "position": row["position_seconds"],
-                    "duration": row["duration_seconds"],
-                    "poster": poster,
-                    "title": title,
-                })
+                p_path = row["folder_path"]
+                # Perfil infantil: a home nao mostra progresso de fora do
+                # perfil (mesma regra que o /api/stream aplica pra tocar).
+                if so_infantil and not self._permitido_infantil(p_path):
+                    continue
+                pasta = conn.execute(
+                    "SELECT path, name, tipo, parent FROM folders WHERE path=?",
+                    (p_path,)).fetchone()
+
+                if pasta and pasta["tipo"] == "filme":
+                    # Filme em pasta: poster card, como sempre.
+                    result.append({
+                        "tipo": "filme", "path": p_path,
+                        "name": row["name"] or p_path.strip("/").split("/")[-1],
+                        "position": row["position_seconds"],
+                        "duration": row["duration_seconds"],
+                        "poster": posters.get(p_path),
+                        "title": titulos.get(p_path) or None,
+                    })
+                    continue
+
+                # Sem pasta de filme: o progresso é de um ARQUIVO — episódio
+                # de série ou filme solto. Ambos viram linha na home.
+                fi = conn.execute(
+                    """SELECT name, folder_path FROM files
+                       WHERE folder_path || '/' || name = ?
+                       AND file_type = 'video'""", (p_path,)).fetchone()
+                if not fi:
+                    continue  # progresso órfão (arquivo saiu do acervo)
+                titulo = _titulo_limpo(fi["name"])
+                pasta_row = conn.execute(
+                    "SELECT name, tipo, parent FROM folders WHERE path=?",
+                    (fi["folder_path"],)).fetchone()
+                legenda = conn.execute(
+                    """SELECT folder_path || '/' || name AS arquivo FROM files
+                       WHERE folder_path=? AND name LIKE ?
+                       AND file_type='subtitle' LIMIT 1""",
+                    (fi["folder_path"], fi["name"].rsplit(".", 1)[0] + "%")
+                ).fetchone()
+                if pasta_row and pasta_row["tipo"] == "temporada":
+                    serie_row = conn.execute(
+                        "SELECT name FROM folders WHERE path=?",
+                        (pasta_row["parent"],)).fetchone()
+                    serie_meta = conn.execute(
+                        "SELECT title FROM movie_meta WHERE folder_path=?",
+                        (pasta_row["parent"],)).fetchone()
+                    result.append({
+                        "tipo": "episodio", "path": p_path,
+                        "serie": (serie_meta["title"] if serie_meta and serie_meta["title"]
+                                  else serie_row["name"]),
+                        "temporada": pasta_row["name"],
+                        "episodio": titulo,
+                        "position": row["position_seconds"],
+                        "duration": row["duration_seconds"],
+                        "subtitle": legenda["arquivo"] if legenda else None,
+                    })
+                else:
+                    result.append({
+                        "tipo": "solto", "path": p_path,
+                        "name": titulo,
+                        "position": row["position_seconds"],
+                        "duration": row["duration_seconds"],
+                    })
+            conn.close()
             self._send_json(result)
             return
 
@@ -2019,20 +2992,23 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({
                     "position": row["position_seconds"],
                     "duration": row["duration_seconds"],
+                    # Linha zerada = marcado como assistido (mesma convencao
+                    # do interruptor da ficha). Sem linha = nunca visto.
+                    "watched": row["position_seconds"] <= 0,
                 })
             else:
-                self._send_json({"position": 0, "duration": 0})
+                self._send_json({"position": 0, "duration": 0, "watched": False})
             return
 
         # API: List directory (from cache)
         if path == "/api/list":
             dir_path = params.get("path", [""])[0]
 
-            # Raiz -> raiz do Drive, sem depender do nome fixo em texto.
+            # Raiz -> raiz do remote, sem depender do nome fixo em texto.
             if dir_path == "" or dir_path == "/":
-                dir_path = LOGICAL_ROOT
+                dir_path = _branding.logical_root()
 
-            data = cached_list_directory(dir_path)
+            data = cached_list_directory(dir_path, so_infantil=self._so_infantil())
             if data is None:
                 self._send_error("Path not found in cache", 404)
                 return
@@ -2051,28 +3027,114 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
 
         # API: Colecoes (Star Wars 1-6 e afins)
         if path == "/api/collections":
-            self._send_json(cached_all_collections())
+            self._send_json(cached_all_collections(so_infantil=self._so_infantil()))
             return
 
         if path == "/api/collection":
-            nome = params.get("name", [""])[0]
-            if not nome:
-                self._send_error("Missing 'name' parameter", 400)
+            key = params.get("key", [""])[0] or params.get("name", [""])[0]
+            if not key:
+                self._send_error("Missing 'key' parameter", 400)
                 return
-            data = cached_collection_movies(nome)
+            data = cached_collection_movies(key, so_infantil=self._so_infantil())
             if data is None:
                 self._send_error("Colecao nao encontrada", 404)
                 return
             self._send_json(data)
             return
 
+        # Gêneros do app (criados na interface, independentes de pasta).
+        if path == "/api/generos":
+            self._send_json(cached_generos(so_infantil=self._so_infantil()))
+            return
+
+        if path == "/api/genero":
+            try:
+                gid = int(params.get("id", [""])[0])
+            except ValueError:
+                self._send_error("Missing 'id' parameter", 400)
+                return
+            data = cached_genero_filmes(gid, so_infantil=self._so_infantil())
+            if data is None:
+                self._send_error("Genero nao encontrado", 404)
+                return
+            self._send_json(data)
+            return
+
+        if path == "/api/generos/de":
+            alvo = params.get("alvo", [""])[0]
+            if not alvo:
+                self._send_error("Missing 'alvo' parameter", 400)
+                return
+            self._send_json({"ids": cached_generos_de(alvo)})
+            return
+
+        # Coleções do app: criar, editar e excluir (admin).
+        if path == "/api/infantil/marcar":
+            self._handle_infantil_marcar()
+            return
+
+        if path == "/api/colecoes/create":
+            self._handle_colecao_create()
+            return
+
+        if path == "/api/colecoes/update":
+            self._handle_colecao_update()
+            return
+
+        if path == "/api/colecoes/delete":
+            self._handle_colecao_delete()
+            return
+
+        # Tags do app: criar, excluir e atribuir (admin).
+        if path == "/api/generos/create":
+            self._handle_genero_create()
+            return
+
+        if path == "/api/generos/delete":
+            self._handle_genero_delete()
+            return
+
+        if path == "/api/generos/atribuir":
+            self._handle_genero_atribuir()
+            return
+
+        if path == "/api/generos/renomear":
+            self._handle_genero_renomear()
+            return
+
+        # Interruptor "Já assisti" da ficha do filme.
+        if path == "/api/watched":
+            self._handle_watched()
+            return
+
         # API: Movie detail (from cache)
+        # API: Lista de séries (listagem própria, separada dos filmes)
+        if path == "/api/series":
+            self._send_json(cached_series_list(so_infantil=self._so_infantil()))
+            return
+
+        # API: Uma série (temporadas + episódios)
+        if path == "/api/serie":
+            serie_path = params.get("path", [""])[0]
+            if not serie_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            data = cached_serie(serie_path, so_infantil=self._so_infantil())
+            if data is None:
+                self._send_error("Serie nao encontrada", 404)
+                return
+            self._send_json(data)
+            return
+
         if path == "/api/movie-detail":
             folder_path = params.get("path", [""])[0]
             if not folder_path:
                 self._send_error("Missing 'path' parameter", 400)
                 return
 
+            if self._so_infantil() and not cached_movie_infantil(folder_path):
+                self._send_error("Filme não disponível neste perfil", 404)
+                return
             data = cached_movie_detail(folder_path)
             self._send_json(data)
             return
@@ -2083,13 +3145,13 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if not query:
                 self._send_error("Missing 'q' parameter", 400)
                 return
-            results = cached_search_files(query)
+            results = cached_search_files(query, so_infantil=self._so_infantil())
             self._send_json({"results": results})
             return
 
         # API: All movies A-Z (from cache)
         if path == "/api/all-movies":
-            results = cached_all_movies()
+            results = cached_all_movies(so_infantil=self._so_infantil())
             self._send_json(results)
             return
 
@@ -2099,10 +3161,48 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
             if not file_path:
                 self._send_error("Missing 'path' parameter", 400)
                 return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Filme não disponível neste perfil", 403)
+                return
             self._stream_file(file_path)
             return
 
+        # API: Video preparado para a TV (MP4/AAC gerado pelo prepare.py).
+        # O token assinado e o do path original — ver prepare.py.
+        if path == "/api/prepared":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Filme não disponível neste perfil", 403)
+                return
+            self._serve_prepared(file_path)
+            return
+
+        # API: Progresso do preparo para a TV
+        if path == "/api/prepare-status":
+            file_path = params.get("path", [""])[0]
+            if not file_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("Filme não disponível neste perfil", 403)
+                return
+            fonte = self._fonte_de(file_path)
+            if fonte is None:
+                self._send_json({"needed": False, "state": "none"})
+                return
+            self._send_json(prepare.status(fonte, enqueue=False))
+            return
+
         # API: Subtitle (serve as WebVTT for browser)
+        if path == "/api/subtitle" and self._so_infantil() \
+                and not self._permitido_infantil(
+                    params.get("path", [""])[0]):
+            self._send_error("Legenda não disponível neste perfil", 403)
+            return
+
         if path == "/api/subtitle":
             file_path = params.get("path", [""])[0]
             if not file_path:
@@ -2124,7 +3224,7 @@ class TicianoFlixHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("File not found", 404)
             return
 
-        # API: rclone status (instalação, remote gdrive, streaming, web UI)
+        # API: rclone status (instalação, remote da nuvem, streaming, web UI)
         if path == "/api/rclone/status":
             self._send_json(get_rclone_status())
             return

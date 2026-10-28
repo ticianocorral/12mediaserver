@@ -6,7 +6,7 @@ title TicianoFlix - Instalador Windows
 echo.
 echo  ================================================
 echo   TicianoFlix - Instalador (Windows)
-echo   Netflix-style player para Google Drive
+echo   Netflix-style player para suas nuvens e HDs
 echo  ================================================
 echo.
 
@@ -86,17 +86,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ─── 3. Remote gdrive: ─────────────────────────────────
+REM ─── 3. Nuvem (qualquer remote do rclone) ───────────────
 echo.
-echo  Verificando remote gdrive:...
-rclone listremotes 2>nul | findstr /b "gdrive:" >nul
+echo  Verificando conexao com a nuvem...
+rclone listremotes 2>nul | findstr /r "^[a-zA-Z0-9]" >nul
 if errorlevel 1 (
-    echo  [AVISO] Remote 'gdrive:' nao configurado.
-    echo  Configure depois pelo botao [rclone] dentro do TicianoFlix
-    echo  (ou rode 'rclone config' no terminal).
+    echo  [AVISO] Nuvem ainda nao configurada.
+    echo  Configure depois em Ajustes ^> Nuvem, dentro do TicianoFlix:
+    echo  use um remote que ja exista no rclone ou crie um novo pelo assistente.
 ) else (
-    echo  [OK] Remote gdrive: ja configurado
-    call :checar_acesso_drive
+    echo  [OK] rclone pronto (conecte a nuvem em Ajustes ^> Nuvem)
 )
 
 REM ─── 4. Diretórios de cache ────────────────────────────
@@ -146,29 +145,3 @@ echo  ================================================
 echo.
 pause
 
-REM ─── Acesso ao Drive (privilegio minimo) ───────────────
-REM O setup-rclone-seguro.sh e um script bash; no Windows orientamos o
-REM ajuste manual, que sao os mesmos dois comandos do rclone.
-:checar_acesso_drive
-set "TF_SCOPE="
-for /f "tokens=1,* delims== " %%A in ('rclone config show gdrive 2^>nul ^| findstr /b "scope"') do set "TF_SCOPE=%%B"
-set "TF_ROOT="
-for /f "tokens=1,* delims== " %%A in ('rclone config show gdrive 2^>nul ^| findstr /b "root_folder_id"') do set "TF_ROOT=%%B"
-if /i "%TF_SCOPE%"=="drive.readonly" if not "%TF_ROOT%"=="" (
-    echo  [OK] Acesso ao Drive ja esta no minimo
-    goto :eof
-)
-echo.
-echo  [AVISO] O remote 'gdrive:' alcanca MAIS do que o TicianoFlix precisa.
-echo          Escopo atual: %TF_SCOPE%
-echo          Isso permite ler e apagar arquivos em todo o seu Google Drive.
-echo.
-echo  Para reduzir ao minimo, rode no terminal:
-echo.
-echo    rclone config update gdrive scope drive.readonly --non-interactive
-echo    rclone config reconnect gdrive:
-echo.
-echo  O segundo comando abre o navegador para reautorizar.
-echo  Detalhes na secao "Acesso ao Google Drive" do README.
-echo.
-goto :eof

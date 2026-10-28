@@ -74,7 +74,7 @@ cd "$DIR"
 # ─── 3. Python 3.9+ ──────────────────────────────────────
 info "Verificando Python..."
 PYTHON=""
-for cand in python3 python3.13 python3.12 python3.11 python3.10 python3.9; do
+for cand in python3 python3.14 python3.13 python3.12 python3.11 python3.10 python3.9; do
     if command -v "$cand" >/dev/null 2>&1; then
         if "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
             PYTHON="$(command -v "$cand")"
@@ -117,18 +117,100 @@ fi
 PYVER="$($PYTHON --version 2>&1 | awk '{print $2}')"
 ok "python3 encontrado: $PYTHON ($PYVER)"
 
-# Google Drive e as fontes locais (HD externo, pendrive, pasta do computador)
-# sao 100% opcionais e configuraveis pela propria interface, em Ajustes — nao
-# ha nada para preparar aqui. O rclone so entra se e quando voce quiser o
-# Drive; sem ele o servidor sobe igual.
+# A nuvem (qualquer remote do rclone) e as fontes locais (HD externo,
+# pendrive, pasta do computador) sao 100% opcionais e configuraveis pela
+# propria interface, em Ajustes.
 
-# ─── 4. Diretórios de cache ──────────────────────────────
+# ─── 4. rclone (motor da nuvem) ──────────────────────────
+# O rclone e o que faz a nuvem funcionar. Instalar aqui deixa o
+# botao "Conectar" de Ajustes > Nuvem pronto para uso. Sem sudo: baixa o
+# binario oficial para ~/.local/bin, que o usuario enxerga sem senha. So cai no
+# gerenciador de pacotes (com sudo) se o download direto falhar.
+LOCAL_BIN="$HOME/.local/bin"
+RCLONE_BIN="$(command -v rclone 2>/dev/null || true)"
+if [ -z "$RCLONE_BIN" ] && [ -x "$LOCAL_BIN/rclone" ]; then
+    RCLONE_BIN="$LOCAL_BIN/rclone"
+fi
+
+if [ -n "$RCLONE_BIN" ]; then
+    ok "rclone ja instalado ($("$RCLONE_BIN" version 2>/dev/null | head -1 | awk '{print $2}' || echo '?'))"
+else
+    info "Instalando o rclone (motor da nuvem)..."
+    case "$(uname -m)" in
+        x86_64|amd64)  RCLONE_ARCH="amd64" ;;
+        arm64|aarch64) RCLONE_ARCH="arm64" ;;
+        armv7l|armv6l) RCLONE_ARCH="arm-v7" ;;
+        *)             RCLONE_ARCH="" ;;
+    esac
+    if [ "$PLATAFORMA" = "macos" ]; then RCLONE_OS="osx"; else RCLONE_OS="linux"; fi
+    # Base configuravel: mirrors e proxies de empresa nao precisam de sed no script.
+    RCLONE_BASE="${TICIANOFLIX_RCLONE_BASE:-https://downloads.rclone.org}"
+
+    if [ -n "$RCLONE_ARCH" ]; then
+        TMP_RCLONE="$(mktemp -d)"
+        if curl -fsSL "${RCLONE_BASE}/rclone-current-${RCLONE_OS}-${RCLONE_ARCH}.zip" \
+                -o "$TMP_RCLONE/rclone.zip" 2>/dev/null; then
+            mkdir -p "$LOCAL_BIN"
+            # unzip nem sempre existe (Linux minimo). O zipfile do Python — que
+            # ja foi verificado no passo anterior — da conta sem dependencia nova.
+            if "$PYTHON" - "$TMP_RCLONE/rclone.zip" "$LOCAL_BIN/rclone" <<'PYRCLONE' 2>/dev/null
+import os, shutil, sys, zipfile
+zf = zipfile.ZipFile(sys.argv[1])
+dest = sys.argv[2]
+for nome in zf.namelist():
+    if nome.endswith("/rclone") and nome.count("/") == 1:
+        with zf.open(nome) as origem, open(dest, "wb") as saida:
+            shutil.copyfileobj(origem, saida)
+        os.chmod(dest, 0o755)
+        sys.exit(0)
+sys.exit(1)
+PYRCLONE
+            then
+                RCLONE_BIN="$LOCAL_BIN/rclone"
+            fi
+        fi
+        rm -rf "${TMP_RCLONE:-}"
+    fi
+
+    if [ -z "$RCLONE_BIN" ]; then
+        aviso "Download direto do rclone nao deu certo — tentando o gerenciador de pacotes."
+        if [ "$PLATAFORMA" = "macos" ] && command -v brew >/dev/null 2>&1; then
+            brew install rclone || true
+        elif command -v apt >/dev/null 2>&1; then
+            sudo apt update && sudo apt install -y rclone || true
+        elif command -v dnf >/dev/null 2>&1; then
+            sudo dnf install -y rclone || true
+        elif command -v pacman >/dev/null 2>&1; then
+            sudo pacman -S --noconfirm rclone || true
+        fi
+        RCLONE_BIN="$(command -v rclone 2>/dev/null || true)"
+    fi
+
+    if [ -n "$RCLONE_BIN" ]; then
+        ok "rclone instalado: $("$RCLONE_BIN" version 2>/dev/null | head -1 | awk '{print $2}' || echo '?') ($RCLONE_BIN)"
+        # So avisa do PATH quando o binario foi para ~/.local/bin: um rclone
+        # vindo do brew/apt ja esta no PATH do terminal por definicao.
+        if [ "$RCLONE_BIN" = "$LOCAL_BIN/rclone" ]; then
+            case ":$PATH:" in
+                *":$LOCAL_BIN:"*) : ;;
+                *) aviso "Para o comando 'rclone' funcionar no seu terminal, adicione ~/.local/bin ao PATH."
+                   aviso "O TicianoFlix ja enxerga o rclone sem isso — e so a linha de comando." ;;
+            esac
+        fi
+    else
+        aviso "Nao consegui instalar o rclone agora. A nuvem fica"
+        aviso "indisponivel ate instalar — veja https://rclone.org/install/"
+        aviso "Fontes locais (HD, pendrive, pastas) funcionam normalmente."
+    fi
+fi
+
+# ─── 5. Diretórios de cache ──────────────────────────────
 mkdir -p "$HOME/.cache/ticianoflix/images"
 mkdir -p "$HOME/.cache/ticianoflix/subs"
 ok "Diretórios de cache prontos (~/.cache/ticianoflix)"
 
 if [ "$PLATAFORMA" = "macos" ]; then
-    # ─── 5a. Wrapper nativo (nome legível no Activity Monitor) ──
+    # ─── 6a. Wrapper nativo (nome legível no Activity Monitor) ──
     WRAPPER="$DIR/ticianoflix-server"
     if command -v clang >/dev/null 2>&1; then
         if [ ! -x "$WRAPPER" ] || [ "$DIR/ticianoflix-server.c" -nt "$WRAPPER" ]; then
@@ -143,14 +225,15 @@ if [ "$PLATAFORMA" = "macos" ]; then
         aviso "clang não encontrado — usará python3 direto (sem nome legível)"
     fi
 
-    # PATH completo para o rclone funcionar dentro do LaunchAgent, se e quando
-    # voce configurar o Drive depois.
+    # PATH do serviço: o rclone tanto pode estar num prefixo do Homebrew quanto
+    # no ~/.local/bin do passo 4 — os dois precisam estar aqui, senão o
+    # LaunchAgent sobe sem enxergar o binário.
     BREW_PREFIX=""
     command -v brew >/dev/null 2>&1 && BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
     if [ -n "$BREW_PREFIX" ]; then
-        LAUNCH_PATH="$BREW_PREFIX/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        LAUNCH_PATH="$HOME/.local/bin:$BREW_PREFIX/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     else
-        LAUNCH_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        LAUNCH_PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     fi
 
     if [ -x "$WRAPPER" ]; then
@@ -207,7 +290,7 @@ PLIST_EOF
         aviso "Serviço não carregou. Veja o log: tail -50 ~/.cache/ticianoflix/ticianoflix.log"
     fi
 else
-    # ─── 5b. systemd (Linux) ─────────────────────────────
+    # ─── 6b. systemd (Linux) ─────────────────────────────
     SERVICE_DIR="$HOME/.config/systemd/user"
     SERVICE_FILE="$SERVICE_DIR/ticianoflix.service"
     mkdir -p "$SERVICE_DIR"
@@ -222,6 +305,9 @@ Wants=network-online.target
 Type=simple
 ExecStart=$PYTHON server.py
 WorkingDirectory=$DIR
+# O rclone vem do ~/.local/bin (passo 4) ou do sistema; sem isto o PATH do
+# serviço pode não incluir o ~/.local/bin e a nuvem ficaria invisível.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -232,6 +318,10 @@ ProtectHome=read-only
 PrivateTmp=true
 ReadWritePaths=%h/.cache/ticianoflix
 ReadWritePaths=%h/.cache/rclone
+# O cadastro da nuvem (Ajustes > Nuvem) grava os remotes no rclone.conf via
+# "rclone config create" — sem esta linha a gravação falharia com o home
+# somente-leitura acima.
+ReadWritePaths=%h/.config/rclone
 
 [Install]
 WantedBy=default.target
@@ -251,7 +341,7 @@ UNIT
     fi
 fi
 
-# ─── 6. Esperar o servidor e mostrar o código de instalação ──
+# ─── 7. Esperar o servidor e mostrar o código de instalação ──
 info "Aguardando o servidor responder em localhost:${PORTA}..."
 RESPONDEU=""
 for _ in $(seq 1 30); do
@@ -322,7 +412,7 @@ if [ "$PLATAFORMA" = "macos" ]; then
     aviso "Se o macOS perguntar sobre conexões de entrada, permita — é o servidor na rede local."
 fi
 
-# ─── 7. Abrir o navegador ────────────────────────────────
+# ─── 8. Abrir o navegador ────────────────────────────────
 if [ -n "$RESPONDEU" ]; then
     if [ "$PLATAFORMA" = "macos" ]; then
         open "$URL" >/dev/null 2>&1 || true

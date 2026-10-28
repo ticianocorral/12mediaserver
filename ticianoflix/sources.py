@@ -1,10 +1,10 @@
-"""Registro das fontes do catalogo: o Drive e as pastas locais.
+"""Registro das fontes do catalogo: a nuvem (qualquer remote do rclone) e as pastas locais.
 
-O Drive deixou de ser "a" fonte e passou a ser "uma" fonte. Cada fonte tem um
-ponto de montagem no namespace logico que o DB e o frontend ja usam:
+A nuvem deixou de ser "o Google Drive" e passou a ser "uma" fonte. Cada fonte
+tem um ponto de montagem no namespace logico que o DB e o frontend ja usam:
 
-    Drive          /TicianoFlix/Terror/O Iluminado (1980)/filme.mkv
-    HD externo     /Local/hd-externo/Terror/Alien (1979)/filme.mkv
+    Nuvem         /TicianoFlix/Terror/O Iluminado (1980)/filme.mkv
+    HD externo    /Local/hd-externo/Terror/Alien (1979)/filme.mkv
 
 O registro mora num JSON ao lado do auth.json, e nao no SQLite: fonte e
 configuracao, nao cache — restaurar um backup feito em outra maquina nao pode
@@ -21,10 +21,12 @@ import threading
 import time
 from pathlib import Path
 
-from .config import LOCAL_ROOT, LOGICAL_ROOT, RCLONE_REMOTE, SOURCES_PATH
+from .config import LOCAL_ROOT, SOURCES_PATH
+from .paths import remote_atual as _remote_atual
 from . import localfs as _localfs
+from . import branding as _branding
 
-DRIVE_ID = "drive"
+CLOUD_ID = "cloud"
 
 _lock = threading.Lock()
 
@@ -32,7 +34,7 @@ _lock = threading.Lock()
 # ── Persistencia ─────────────────────────────────────────────
 
 def _load_raw():
-    """Fontes locais gravadas, sem a fonte sintetica do Drive."""
+    """Fontes locais gravadas, sem a fonte sintetica da nuvem."""
     try:
         data = json.loads(SOURCES_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -67,28 +69,28 @@ def _save_raw(sources):
         pass
 
 
-def drive_source():
-    """A fonte sintetica do Drive — nao mora no JSON, sempre existe."""
+def cloud_source():
+    """A fonte sintetica da nuvem — nao mora no JSON, sempre existe."""
     return {
-        "id": DRIVE_ID,
-        "kind": "drive",
-        "name": "Google Drive",
-        "root": RCLONE_REMOTE,
-        "mount": LOGICAL_ROOT,
+        "id": CLOUD_ID,
+        "kind": "cloud",
+        "name": "Nuvem",
+        "root": (_remote_atual() + ":") if _remote_atual() else "nuvem",
+        "mount": _branding.logical_root(),
         "added_at": 0,
     }
 
 
-def list_sources(include_drive=True):
-    """Todas as fontes, o Drive primeiro."""
+def list_sources(include_cloud=True):
+    """Todas as fontes, a nuvem primeiro."""
     with _lock:
         local = _load_raw()
     local.sort(key=lambda s: s["name"].lower())
-    return ([drive_source()] if include_drive else []) + local
+    return ([cloud_source()] if include_cloud else []) + local
 
 
 def local_sources():
-    return list_sources(include_drive=False)
+    return list_sources(include_cloud=False)
 
 
 def local_mount(source_id):
@@ -171,12 +173,13 @@ def validate_root(raw_root):
 def add_source(name, raw_root):
     """Cadastra uma fonte local. Devolve (fonte, erro).
 
-    A fonte precisa conter uma pasta chamada "Mediaflix" (localfs.CATALOG_DIR_NAME)
-    — a mesma convencao do Drive. Ela pode estar na pasta escolhida ou ate dois
-    niveis abaixo, ja que o volume que o usuario seleciona costuma ficar acima
-    do acervo ("/Volumes/MeuHD" com os filmes em "MeuHD/Filmes/Mediaflix/...").
-    Uma pasta ja existente chamada "TicianoFlix" (o nome antigo) tambem serve —
-    ninguem deveria ter que renomear nada no HD por causa de uma troca de marca.
+    A fonte precisa conter uma pasta com o nome escolhido na instalacao
+    (localfs.catalog_dir_name()) — a mesma convencao do Drive. Ela pode estar
+    na pasta escolhida ou ate dois niveis abaixo, ja que o volume que o
+    usuario seleciona costuma ficar acima do acervo ("/Volumes/MeuHD" com os
+    filmes em "MeuHD/Filmes/<nome do app>/..."). Uma pasta ja existente com um
+    dos nomes genericos antigos (localfs.CATALOG_DIR_NAME_LEGADO) tambem serve
+    — ninguem deveria ter que renomear nada no HD por causa disto.
 
     Sem essa pasta o cadastro e recusado: o scanner le a estrutura em posicao
     fixa, entao aceitar uma pasta qualquer produziria um catalogo vazio sem
@@ -188,11 +191,12 @@ def add_source(name, raw_root):
 
     catalog = _localfs.find_catalog_dir(root)
     if catalog is None:
+        nome = _localfs.catalog_dir_name()
         return None, (
-            f'Nao encontrei uma pasta "{_localfs.CATALOG_DIR_NAME}" em {root}. '
-            f"Crie uma pasta com esse nome e ponha os generos dentro dela "
-            f"({_localfs.CATALOG_DIR_NAME.capitalize()}/Terror/Filme (2024)/filme.mkv) "
-            "— e a mesma organizacao do Google Drive.")
+            f'Nao encontrei uma pasta "{nome}" em {root}. '
+            f"Crie uma pasta com esse nome e ponha os filmes dentro dela — "
+            f"uma pasta por filme ({nome}/Filme (2024)/filme.mkv) ou o "
+            f"arquivo solto direto nela. Tags você cria depois no app.")
     descended = catalog != root
     root = catalog
 
@@ -207,7 +211,7 @@ def add_source(name, raw_root):
                 return None, f"Essa pasta ja esta cadastrada como \"{s['name']}\"."
 
         label = (name or "").strip() or root.name or "Fonte local"
-        taken = {s["id"] for s in existing} | {DRIVE_ID}
+        taken = {s["id"] for s in existing} | {CLOUD_ID}
         source_id = _unique_id(_slugify(label), taken)
         source = {
             "id": source_id,
@@ -229,7 +233,7 @@ def add_source(name, raw_root):
 
 def remove_source(source_id):
     """Descadastra uma fonte local. A poda do catalogo fica com o scanner."""
-    if source_id == DRIVE_ID:
+    if source_id == CLOUD_ID:
         return False
     with _lock:
         existing = _load_raw()
@@ -242,7 +246,7 @@ def remove_source(source_id):
 
 def rename_source(source_id, name):
     label = (name or "").strip()
-    if not label or source_id == DRIVE_ID:
+    if not label or source_id == CLOUD_ID:
         return False
     with _lock:
         existing = _load_raw()
@@ -259,8 +263,9 @@ def rename_source(source_id, name):
 def resolve(logical_path):
     """Path logico -> fonte dona dele, ou None se estiver fora de todas."""
     p = "/" + str(logical_path or "").strip("/")
-    if p == LOGICAL_ROOT or p.startswith(LOGICAL_ROOT + "/"):
-        return drive_source()
+    raiz = _branding.logical_root()
+    if p == raiz or p.startswith(raiz + "/"):
+        return cloud_source()
     if not p.startswith(LOCAL_ROOT + "/"):
         return None
     for s in local_sources():

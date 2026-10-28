@@ -331,6 +331,29 @@
   .casting-title { font-size: 18px; font-weight: 700; }
   .casting-device { font-size: 14px; color: var(--text3); }
   .casting-hint { font-size: 12px; color: var(--text3); opacity: 0.7; margin-top: 6px; }
+  /* ====== CONTROLE REMOTO DO PAINEL DE TRANSMISSAO ====== */
+  .casting-actions {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; flex-wrap: wrap; margin-top: 18px;
+  }
+  .casting-action {
+    width: 46px; height: 46px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.06); color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: all var(--transition);
+  }
+  .casting-action:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
+  .casting-action.active {
+    color: var(--primary); border-color: rgba(229,9,20,0.5);
+    background: rgba(229,9,20,0.14);
+  }
+  .casting-action .icon-svg { width: 20px; height: 20px; }
+  .casting-aa-btn { flex-direction: column; gap: 0; line-height: 1; }
+  .casting-aa { font-size: 9px; font-weight: 600; opacity: 0.75; }
+  /* Separador fino entre os controles de playback e os de legenda. */
+  .casting-sep { width: 1px; height: 28px; background: rgba(255,255,255,0.14); }
   .casting-stop {
     margin-top: 18px; padding: 10px 18px;
     border: 1px solid rgba(255,255,255,0.16); border-radius: var(--radius);
@@ -359,6 +382,377 @@
     background: rgba(255,255,255,0.14);
     padding: 2px 7px; border-radius: 999px;
   }
+  /* Pílula de controle da ficha (ficha do filme e página da série).
+     Nasceu no interruptor do perfil infantil e agora serve de casca comum
+     para todo controle da linha de ações: "Já assisti" (interruptor) e
+     "Tags" (abre o modal). Uma linguagem visual só. */
+  .switch-infantil, .pill-acao {
+    display: inline-flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+    padding: 6px 12px; border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+  .switch-infantil:hover, .pill-acao:hover { background: rgba(255,255,255,0.1); }
+  /* Variante botão (sem track): "Tags". */
+  .pill-acao-btn { font-family: inherit; color: var(--text); }
+  .pill-acao-icone {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(255,255,255,0.08); color: var(--text2);
+    transition: all var(--transition);
+  }
+  .pill-acao-btn:hover .pill-acao-icone {
+    background: rgba(229,9,20,0.18); color: var(--primary);
+  }
+  .pill-acao-icone .icon-svg { width: 15px; height: 15px; }
+  .switch-texto { display: flex; flex-direction: column; line-height: 1.2; }
+  .switch-rotulo { font-size: 12px; font-weight: 700; color: var(--text); }
+  .switch-nota { font-size: 10px; color: var(--text3); }
+  .switch-track {
+    width: 40px; height: 22px; border-radius: 999px;
+    background: rgba(255,255,255,0.18); position: relative;
+    transition: background var(--transition); flex-shrink: 0;
+  }
+  .switch-knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: transform var(--transition);
+  }
+  .switch-track.on { background: #4caf50; }
+  .switch-track.on .switch-knob { transform: translateX(18px); }
+  .switch-estado {
+    font-size: 12px; font-weight: 700; color: var(--text2);
+    min-width: 22px; text-align: left;
+  }
+
+  /* Episódios em lista (séries) */
+  .episodio-lista {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .episodio-linha {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.07);
+    background: var(--surface); color: var(--text);
+    cursor: pointer; text-align: left; font-family: inherit;
+    transition: all var(--transition);
+  }
+  .episodio-linha:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.2); }
+  .episodio-play {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(229,9,20,0.15); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 12px;
+    transition: all var(--transition);
+  }
+  .episodio-linha:hover .episodio-play { background: var(--accent); color: #fff; }
+  .episodio-titulo {
+    flex: 1 1 auto; font-size: 14px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .episodio-tamanho { font-size: 12px; color: var(--text3); flex-shrink: 0; }
+  .episodio-cc {
+    font-size: 10px; font-weight: 700; color: var(--text3);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    padding: 1px 5px; flex-shrink: 0;
+  }
+  /* Episódio em andamento: hora parada, barra e "Já assisti" */
+  .episodio-linha.em-progresso { border-color: rgba(229,9,20,0.35); }
+  .episodio-linha.em-progresso .episodio-play { background: var(--accent); color: #fff; }
+  .episodio-pos {
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .episodio-assistido {
+    font-size: 11px; font-weight: 600; color: var(--text2);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 999px;
+    padding: 5px 11px; flex-shrink: 0; cursor: pointer;
+    transition: all var(--transition);
+  }
+  .episodio-assistido:hover {
+    background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.55);
+    color: #a5d6a7;
+  }
+  .episodio-progresso {
+    width: 90px; height: 4px; border-radius: 999px;
+    background: rgba(255,255,255,0.15); overflow: hidden; flex-shrink: 0;
+  }
+  .episodio-progresso span {
+    display: block; height: 100%;
+    background: var(--accent);
+  }
+
+  /* ===== Nuvem: wizard de conexão ===== */
+  /* Abre por cima do painel do rclone (que o chamou) — modais ficam em 500. */
+  #nuvemWizardModal { z-index: 550; }
+  .rclone-mini {
+    font-size: 10px; color: var(--text3); font-weight: 400;
+    margin-left: 4px;
+  }
+  .wizard-origem {
+    display: flex; flex-direction: column; gap: 10px;
+    margin-bottom: 8px;
+  }
+  .wizard-opcao {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04); color: var(--text);
+    cursor: pointer; text-align: left; font-family: inherit;
+    transition: all var(--transition);
+  }
+  .wizard-opcao:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.25); }
+  .wizard-opcao small { color: var(--text3); font-size: 12px; }
+  .wizard-opcao-icone {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .wizard-lista {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 240px; overflow-y: auto;
+    padding: 2px; margin-bottom: 10px;
+    overscroll-behavior: contain;
+  }
+  .wizard-remoto {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px; border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04); color: var(--text);
+    cursor: pointer; text-align: left; font-family: inherit; font-size: 13px;
+    transition: all var(--transition);
+  }
+  .wizard-remoto:hover { background: rgba(255,255,255,0.09); }
+  .wizard-remoto.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .wizard-remoto-tipo {
+    font-size: 11px; color: var(--text3);
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
+    padding: 2px 8px; flex-shrink: 0;
+  }
+  .wizard-ajuda {
+    font-size: 11px; color: var(--text3); line-height: 1.4;
+    margin: -4px 0 8px; padding-left: 2px;
+  }
+
+  /* ===== Tags do app ===== */
+  .sidebar-genre-add {
+    margin-left: auto;
+    width: 20px; height: 20px;
+    border: 1px solid rgba(255,255,255,0.25); border-radius: 50%;
+    background: none; color: var(--text2);
+    font-size: 13px; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: inherit;
+  }
+  .sidebar-genre-add:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  .sidebar-source-label { position: relative; }
+  .genero-chips {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .genero-chip {
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05); color: var(--text2);
+    font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: all var(--transition);
+  }
+  .genero-chip:hover { border-color: rgba(255,255,255,0.45); color: var(--text); }
+  .genero-chip.on {
+    background: rgba(229,9,20,0.18); border-color: var(--accent); color: var(--text);
+  }
+  .genero-nova-linha {
+    display: flex; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .genero-nova-linha input {
+    flex: 1 1 auto; padding: 9px 12px;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius); color: var(--text); font-size: 14px;
+    font-family: inherit;
+  }
+  .genero-nova-linha input:focus { outline: none; border-color: var(--accent); }
+  .genero-nova-linha .rclone-action-btn { flex: 0 0 auto; min-width: 0; }
+  /* Selo de tags no card do A-Z (admin) */
+  .movie-card-genero {
+    position: absolute; top: 8px; right: 8px; z-index: 3;
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.35);
+    background: rgba(0,0,0,0.55); color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: all var(--transition);
+    font-family: inherit;
+  }
+  .movie-card:hover .movie-card-genero { opacity: 1; }
+  .movie-card-genero:hover { background: var(--accent); border-color: var(--accent); }
+  @media (hover: none) {
+    .movie-card-genero { opacity: 1; width: 34px; height: 34px; }
+  }
+  /* Selo "já assistido": verde no canto do poster (esquerda — a direita
+     fica com o botão de tags do admin on-hover). Não é clicável: o des-
+     marcar fica no switch da ficha e nas linhas de episódio. */
+  .movie-card-assistido {
+    position: absolute; top: 8px; left: 8px; z-index: 3;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1.5px solid #4caf50;
+    color: #a5d6a7;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+  }
+  .movie-card-assistido .icon-svg { width: 15px; height: 15px; }
+  /* Linha de episódio assistido: o chip verde herda o layout de
+     .episodio-assistido; o clique retira a marcação. */
+  .episodio-visto {
+    color: #a5d6a7; border-color: rgba(76,175,80,0.55);
+    background: rgba(76,175,80,0.14);
+  }
+  .episodio-visto:hover { background: rgba(76,175,80,0.08); }
+  .confirm-input {
+    width: 100%; box-sizing: border-box;
+    padding: 10px 12px; margin-top: 4px;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius); color: var(--text); font-size: 16px;
+    font-family: inherit;
+  }
+  .confirm-input:focus { outline: none; border-color: var(--accent); }
+
+  /* ===== Coleções: criar/editar ===== */
+  .colecao-nova-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-bottom: 16px; padding: 10px 18px;
+    border: none; border-radius: var(--radius);
+    background: var(--accent); color: #fff;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    font-family: inherit; transition: all var(--transition);
+  }
+  .colecao-nova-btn:hover { filter: brightness(1.15); }
+  .colecao-acao-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-right: 8px; padding: 7px 14px;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 999px;
+    background: rgba(255,255,255,0.06); color: var(--text);
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: all var(--transition);
+  }
+  .colecao-acao-btn:hover { background: rgba(255,255,255,0.14); }
+  .colecao-acao-btn.perigo:hover { background: rgba(229,9,20,0.25); border-color: rgba(229,9,20,0.5); }
+  .colecao-acoes { display: inline-flex; margin-right: 12px; }
+  .colecao-campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .colecao-campo span { font-size: 12px; color: var(--text3); font-weight: 600; }
+  .colecao-campo span em { font-style: normal; font-weight: 400; }
+  .colecao-campo input, .colecao-campo textarea {
+    padding: 10px 12px; background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius);
+    color: var(--text); font-size: 14px; font-family: inherit; resize: vertical;
+  }
+  .colecao-campo input:focus, .colecao-campo textarea:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .colecao-secao-titulo {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--text3);
+    margin: 14px 0 8px;
+  }
+  .colecao-contador {
+    font-weight: 600; text-transform: none; letter-spacing: 0;
+    color: var(--accent); font-size: 11px;
+  }
+  .colecao-busca {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 12px; margin-bottom: 10px;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius); color: var(--text); font-size: 14px;
+    font-family: inherit;
+  }
+  .colecao-busca:focus { outline: none; border-color: var(--accent); }
+  .colecao-picker {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 10px; max-height: 300px; overflow-y: auto;
+    padding: 2px; border-radius: var(--radius);
+    overscroll-behavior: contain;
+  }
+  .colecao-filme {
+    position: relative; display: flex; flex-direction: column; gap: 6px;
+    padding: 0; border: 2px solid transparent; border-radius: var(--radius);
+    background: rgba(255,255,255,0.04); cursor: pointer; overflow: hidden;
+    font-family: inherit; transition: all var(--transition);
+  }
+  .colecao-filme img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+  .colecao-filme:hover { border-color: rgba(255,255,255,0.35); }
+  .colecao-filme.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .colecao-filme-sem {
+    width: 100%; aspect-ratio: 2/3;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text3); font-size: 22px;
+  }
+  .colecao-filme-check {
+    position: absolute; top: 6px; right: 6px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1.5px solid rgba(255,255,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    color: transparent; font-size: 12px;
+  }
+  .colecao-filme.escolhido .colecao-filme-check {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .colecao-filme-titulo {
+    font-size: 11px; color: var(--text2); line-height: 1.3;
+    padding: 0 6px 6px; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden; text-align: left;
+  }
+  .colecao-picker-vazio {
+    grid-column: 1 / -1; padding: 24px; text-align: center;
+    color: var(--text3); font-size: 13px;
+  }
+  .colecao-dica { font-size: 12px; color: var(--text3); margin: 0 0 10px; line-height: 1.5; }
+  .colecao-capa-grade {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px; max-height: 320px; overflow-y: auto;
+    padding: 2px; overscroll-behavior: contain;
+  }
+  .colecao-capa-opcao {
+    position: relative; display: flex; flex-direction: column; gap: 6px;
+    padding: 0; border: 3px solid transparent; border-radius: var(--radius);
+    background: rgba(255,255,255,0.04); cursor: pointer; overflow: hidden;
+    font-family: inherit; transition: all var(--transition);
+  }
+  .colecao-capa-opcao img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+  .colecao-capa-opcao:hover { border-color: rgba(255,255,255,0.35); }
+  .colecao-capa-opcao.escolhida { border-color: var(--accent); }
+  .colecao-capa-opcao.sem-poster::before {
+    content: '🎬'; font-size: 30px; display: flex;
+    align-items: center; justify-content: center; aspect-ratio: 2/3;
+  }
+  .colecao-capa-titulo {
+    font-size: 11px; color: var(--text2); line-height: 1.3;
+    padding: 0 6px 6px; text-align: left;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .colecao-capa-check {
+    position: absolute; top: 8px; right: 8px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: none; align-items: center; justify-content: center; font-size: 13px;
+  }
+  .colecao-capa-opcao.escolhida .colecao-capa-check { display: flex; }
+  .colecao-passos {
+    display: flex; justify-content: space-between; gap: 8px;
+    margin-top: 14px;
+  }
+  .colecao-passos .rclone-action-btn { min-width: 140px; }
+  @media (max-width: 480px) {
+    .colecao-picker { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+    .colecao-capa-grade { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+    .colecao-passos { flex-direction: column; }
+    .colecao-passos .rclone-action-btn { width: 100%; }
+    .colecao-acoes { display: flex; width: 100%; margin: 0 0 8px; }
+    .colecao-acao-btn { flex: 1 1 auto; justify-content: center; }
+  }
+
   .colecao-sinopse {
     font-size: 13px; color: var(--text2);
     margin-top: 8px; max-width: 70ch; line-height: 1.5;
@@ -515,9 +909,12 @@
     color: var(--text3);
   }
   /* ====== MOVIE GRID (dentro do género) ====== */
+  /* 155px deixa 8 pôsteres por linha no desktop: o conteúdo para em 1504px
+     (max-width 1600 menos paddings), e 8 colunas começam a partir de 1352px —
+     9 colunas só a partir de 1523px, que o layout não alcança. */
   .movie-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
     gap: 16px;
   }
 
@@ -786,12 +1183,17 @@
     box-shadow: 0 20px 60px rgba(0,0,0,0.6);
     animation: scaleIn 0.25s ease;
     overflow: hidden;
+    /* Coluna: o header fica fixo e o body é quem rola — sem isso um conteúdo
+       mais alto que o modal simplesmente some (cortado pelo overflow acima). */
+    display: flex;
+    flex-direction: column;
   }
   .modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 20px 24px 0;
+    flex: 0 0 auto;
   }
   .modal-title { font-size: 18px; font-weight: 700; color: var(--text); }
   .modal-close {
@@ -805,7 +1207,26 @@
     transition: all var(--transition);
   }
   .modal-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
-  .modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .modal-body {
+    padding: 16px 24px 24px;
+    display: flex; flex-direction: column; gap: 8px;
+    /* O body é o container de rolagem do modal: cresce até o teto do .modal e
+       rola dali pra baixo. min-height:0 é o que permite encolher dentro do
+       flex; overscroll-behavior evita a rolagem "vazar" pro fundo da página. */
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.18) transparent;
+  }
+  .modal-body::-webkit-scrollbar { width: 6px; }
+  .modal-body::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.18);
+    border-radius: 3px;
+  }
+  .modal-body::-webkit-scrollbar-track { background: transparent; }
   .backup-option {
     display: flex;
     align-items: center;
@@ -823,6 +1244,40 @@
   .backup-icon { font-size: 24px; width: 40px; text-align: center; flex-shrink: 0; }
   .backup-option-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
   .backup-option-desc { font-size: 12px; color: var(--text3); line-height: 1.4; }
+
+  /* ====== INSTALAR NO CELULAR ====== */
+  .phone-url {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+  .phone-url code {
+    flex: 1 1 auto; min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; color: var(--text);
+    overflow-wrap: anywhere; user-select: all;
+  }
+  .phone-steps {
+    margin: 0; padding-left: 20px;
+    font-size: 13px; color: var(--text2); line-height: 1.55;
+  }
+  .phone-steps li { margin-bottom: 7px; }
+  .phone-steps code {
+    background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: var(--text); overflow-wrap: anywhere;
+  }
+  .phone-steps a { color: var(--accent); text-decoration: none; }
+  .phone-steps a:hover { text-decoration: underline; }
+  .phone-alt {
+    margin-top: 16px; font-size: 12px; color: var(--text3); line-height: 1.55;
+  }
+  .phone-alt code {
+    background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px;
+    font-size: 11.5px; color: var(--text2); overflow-wrap: anywhere;
+  }
+  .phone-alt div { margin-top: 6px; }
 
   /* ====== RCLONE MODAL ====== */
   .user-row {
@@ -927,7 +1382,7 @@
   }
   .cache-manager-actions .rclone-action-btn { flex: 0 0 auto; min-width: 0; }
 
-  /* ===== Fontes do acervo (Drive, HD externo, pendrive, pasta local) ===== */
+  /* ===== Fontes do acervo (nuvem, HD externo, pendrive, pasta local) ===== */
   .src-row { align-items: flex-start; flex-wrap: wrap; }
   .src-main { flex: 1 1 200px; min-width: 0; }
   .src-path {
@@ -936,9 +1391,10 @@
     word-break: break-all; margin-top: 3px;
   }
   .src-counts { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .user-tag.infantil { background: rgba(76,175,80,0.18); color: #a5d6a7; }
   .user-tag.offline { background: rgba(255,167,38,0.18); color: #ffb74d; }
   .user-tag.local   { background: rgba(66,165,245,0.18); color: #64b5f6; }
-  .user-tag.drive   { background: rgba(255,255,255,0.10); color: var(--text3); }
+  .user-tag.cloud   { background: rgba(255,255,255,0.10); color: var(--text3); }
   .src-hint {
     font-size: 12px; color: var(--text3);
     line-height: 1.5; margin: 2px 0 10px;
@@ -966,7 +1422,15 @@
     padding: 12px 16px 4px;
   }
   .sidebar-source-label.offline { color: #ffb74d; }
-  /* Aviso de acesso ao Drive mais largo que o necessario. */
+  /* Dica quando não há tags criadas: mesmo ritmo dos itens da barra. */
+  .sidebar-sem-genero {
+    padding: 2px 16px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text3);
+  }
+  .sidebar-sem-genero b { color: var(--text2); }
+  /* Aviso de acesso à nuvem mais largo que o necessario. */
   .rclone-warn {
     margin: 10px 0 4px;
     padding: 14px 16px;
@@ -1034,6 +1498,46 @@
   }
   .rclone-creds b { color: var(--text); }
   .rclone-creds a, .rclone-help a { color: var(--accent); }
+
+  /* ===== Nuvem ===== */
+  .rclone-subhead {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--text3);
+    margin: 16px 0 8px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .rclone-subhead:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .b2-form {
+    display: flex; flex-direction: column; gap: 10px;
+    margin: 10px 0;
+  }
+  .b2-field { display: flex; flex-direction: column; gap: 4px; }
+  .b2-field span { font-size: 12px; color: var(--text3); font-weight: 600; }
+  .b2-field span em { font-style: normal; font-weight: 400; }
+  .b2-field input {
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .b2-field input:focus { outline: none; border-color: var(--accent); }
+  .b2-advanced {
+    margin: 4px 0 10px;
+    font-size: 12px;
+    color: var(--text3);
+  }
+  .b2-advanced summary {
+    cursor: pointer;
+    padding: 8px 0;
+    color: var(--text2);
+    font-weight: 600;
+  }
+  .b2-advanced summary:hover { color: var(--text); }
 
   /* ====== CONFIRM MODAL ====== */
   .confirm-modal { max-width: 380px; }
@@ -1361,7 +1865,76 @@
     font-variant-numeric: tabular-nums;
     min-width: 100px;
   }
-  .ctrl-sub { font-size: 12px; font-weight: 700; }
+  .ctrl-sub {
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.06);
+    border-radius: 6px;
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .ctrl-sub:hover { background: rgba(255,255,255,0.16); }
+  .ctrl-sub-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.65);
+    min-width: 3ch;
+    text-align: left;
+  }
+  /* Amostra redonda da cor atual da legenda — precisa de tamanho e borda
+     proprios porque um <span> vazio nao tem dimensao nenhuma sozinho, so
+     a cor de fundo (era isso que deixava o botao "sem forma"). A borda
+     clara + o anel escuro por fora garantem contraste tanto pro branco
+     quanto pro amarelo, contra qualquer fundo de video atras do player. */
+  .subtitle-swatch {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.8);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.45);
+    flex: 0 0 auto;
+  }
+
+  /* Menuzinho de opcoes do botao de tamanho/cor da legenda — abre pra cima,
+     ancorado no proprio botao, em vez de ciclar valor a cada clique. */
+  .ctrl-sub-wrap { position: relative; display: inline-flex; }
+  .ctrl-sub-menu {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    flex-direction: column;
+    gap: 2px;
+    min-width: 150px;
+    z-index: 20;
+  }
+  .ctrl-sub-menu.aberto { display: flex; }
+  .ctrl-sub-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ctrl-sub-menu-item:hover { background: rgba(255,255,255,0.10); }
+  .ctrl-sub-menu-item.active { color: var(--primary); font-weight: 600; }
   .ctrl-speed { font-size: 12px; min-width: 32px; text-align: center; }
   .ctrl-cast { font-size: 16px; }
   .ctrl-cast.active { color: #4285f4; }
@@ -1629,18 +2202,27 @@
   .movie-genres {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0 12px;
+    gap: 8px;
+    margin: 10px 0 14px;
   }
   .movie-genre-tag {
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
     font-weight: 600;
-    background: rgba(229,9,20,0.15);
+    background: rgba(229,9,20,0.12);
     color: var(--primary);
-    border: 1px solid rgba(229,9,20,0.25);
+    border: 1px solid rgba(229,9,20,0.28);
+    transition: all var(--transition);
   }
+  .movie-genre-tag:hover {
+    background: rgba(229,9,20,0.2);
+    border-color: rgba(229,9,20,0.45);
+  }
+  .movie-genre-tag .icon-svg { width: 14px; height: 14px; opacity: 0.9; }
   .movie-meta-row {
     display: flex;
     flex-wrap: wrap;
@@ -1680,15 +2262,27 @@
   .movie-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin: 8px 0;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0 8px;
+  }
+  /* Rótulo das tags do metadado: "Palavras-chave", para não confundir com as
+     Tags do app (criadas pelo usuário). */
+  .movie-tags-rotulo {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text3);
+    margin-right: 2px;
   }
   .movie-tag {
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
     font-size: 10px;
     background: rgba(255,255,255,0.06);
     color: var(--text3);
+    border: 1px solid rgba(255,255,255,0.08);
   }
 
   .btn-play:hover { transform: scale(1.04); }
@@ -1704,26 +2298,6 @@
     padding: 6px 12px;
     border-radius: 6px;
     white-space: nowrap;
-  }
-  .btn-watched {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text3);
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.08);
-    padding: 5px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-  .btn-watched:hover {
-    color: #66bb6a;
-    border-color: rgba(102,187,106,0.3);
-    background: rgba(102,187,106,0.08);
   }
 
   /* Menu "mais" do player.
@@ -1760,6 +2334,24 @@
 
     .main { padding-left: 16px; padding-right: 16px; }
     .logo { font-size: 22px; }
+
+    /* ── Modais no celular ──────────────────────────────────
+       Largura fixa (480px) e max-height 80dvh não bastavam: com o teclado
+       aberto sobra metade da tela e o rodapé dos modais ficava fora de
+       alcance. Aqui o modal ocupa quase a tela toda e rola no body — e os
+       alvos de toque passam a ter no mínimo 40px. */
+    .modal-overlay { padding: 12px; }
+    .modal { width: 100%; max-height: 92dvh; }
+    .modal-header { padding: 16px 18px 0; }
+    .modal-title { font-size: 16px; }
+    .modal-body { padding: 12px 18px calc(20px + env(safe-area-inset-bottom)); }
+    .modal-close { min-width: 40px; min-height: 40px; display: inline-flex;
+                   align-items: center; justify-content: center; }
+    /* iOS Safari dá zoom na página quando o input tem menos de 16px —
+       o zoom deslocava todo o layout do modal ao focar um campo. */
+    .modal-body input[type="text"],
+    .modal-body input[type="password"] { font-size: 16px; }
+
     .hero { height: 200px; border-radius: var(--radius); margin-bottom: 24px; }
     .hero-content { padding: 24px 16px; }
     .hero h1 { font-size: 22px; }
@@ -1777,7 +2369,7 @@
     .movie-info-breadcrumb { left: 0; padding: 16px 16px 16px 68px; font-size: 12px; }
     .movie-info-actions { gap: 8px; }
     .movie-info-actions .btn-play,
-    .movie-info-actions .btn-watched,
+    .movie-info-actions .pill-acao,
     .movie-info-actions .btn-colecao { flex: 1 1 auto; justify-content: center; }
 
     /* ── Controles do player em duas faixas ──────────────────
@@ -1813,6 +2405,10 @@
       padding: 10px 12px; min-height: 44px; border-radius: var(--radius);
     }
     .player-more .ctrl-btn:active { background: rgba(255,255,255,0.10); }
+    /* Os dois botoes de legenda vem dentro de um wrap (pro menuzinho ancorar
+       nele) — sem width:100% aqui eles ficariam menores que os demais. */
+    .player-more .ctrl-sub-wrap { width: 100%; }
+    .player-more .ctrl-sub-menu-item { min-height: 44px; }
     .player-more .volume-wrap { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
     /* A trilha do volume nasce com width:0 e so cresce no :hover — que nao
        existe em tela de toque. Sem isto o controle fica com largura zero. */
@@ -1832,6 +2428,8 @@
     /* Painel de transmissao: cartaz menor, para caber com os controles */
     .casting-poster { width: 92px; max-height: 138px; margin-bottom: 10px; }
     .casting-title { font-size: 16px; }
+    .casting-actions { gap: 8px; margin-top: 12px; }
+    .casting-action { width: 44px; height: 44px; }
 
     /* ── Titulo do filme sempre visivel ──────────────────────
        A legenda do cartao e opacity:0 e so aparece no :hover. Em tela de

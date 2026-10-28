@@ -71,7 +71,8 @@ def _v1_to_v2(raw):
         "users": {
             "admin": {
                 "role": "admin",
-                "algo": "scrypt", "n": 16384, "r": 8, "p": 1,
+                # O formato antigo guardava PBKDF2; agora o rotulo conta a verdade.
+                "algo": "pbkdf2_sha256", "iterations": 100000,
                 "salt": raw["salt"], "hash": raw["hash"],
                 "epoch": int(raw.get("epoch", now)),
                 "created": int(raw.get("created", now)),
@@ -143,7 +144,8 @@ def _get_user(username):
 def _list_users():
     d = _auth_data() or {}
     return [
-        {"username": name, "role": u.get("role", "user"), "created": u.get("created")}
+        {"username": name, "role": u.get("role", "user"),
+         "infantil": bool(u.get("infantil")), "created": u.get("created")}
         for name, u in sorted((d.get("users") or {}).items())
     ]
 
@@ -153,11 +155,90 @@ def _admin_count(d):
 
 
 def _hash_password(password, salt=None):
+    """PBKDF2 legado — o algoritmo real de todas as senhas ate o upgrade para
+    scrypt. Continua aqui para conferir os registros antigos."""
     if salt is None:
         salt = secrets.token_bytes(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt=salt,
                               iterations=100000, dklen=32)
     return salt, dk
+
+
+# O scrypt depende do OpenSSL do interpretador: o Python 3.9 da Apple nao
+# expoe hashlib.scrypt (LibreSSL antigo), o do Homebrew expoe. A escolha e
+# por disponibilidade, e cada registro grava o que foi usado de verdade — nos
+# registros antigos o rotulo "scrypt" mentia (guardavam PBKDF2).
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 16384, 8, 1
+_scrypt_ok = None
+
+
+def _scrypt_disponivel():
+    global _scrypt_ok
+    if _scrypt_ok is None:
+        try:
+            hashlib.scrypt(b"probe", salt=b"0123456789abcdef",
+                           n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=16)
+            _scrypt_ok = True
+        except Exception:
+            _scrypt_ok = False
+    return _scrypt_ok
+
+
+def _novo_registro_senha(password):
+    """Campos de senha para um registro novo, no KDF que este interpretador
+    tem — rotulo e parametros contando a verdade."""
+    if _scrypt_disponivel():
+        salt = secrets.token_bytes(16)
+        dk = hashlib.scrypt(password.encode("utf-8"), salt=salt,
+                            n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+        return {"algo": "scrypt", "n": _SCRYPT_N, "r": _SCRYPT_R,
+                "p": _SCRYPT_P, "salt": salt.hex(), "hash": dk.hex()}
+    salt, dk = _hash_password(password)
+    return {"algo": "pbkdf2_sha256", "iterations": 100000,
+            "salt": salt.hex(), "hash": dk.hex()}
+
+
+def _senha_confere(user, password):
+    """Confere a senha e devolve o formato que bateu ('scrypt' ou 'pbkdf2').
+
+    Registros antigos dizem 'scrypt' mas guardam PBKDF2 — por isso o formato
+    declarado e tentado primeiro e o PBKDF2 entra como segundo teste. Quem
+    entra por esse caminho ganha registro novo no login (ver _check_credentials).
+    """
+    try:
+        salt = bytes.fromhex(user["salt"])
+        esperado = user["hash"]
+        if user.get("algo") == "scrypt" and _scrypt_disponivel():
+            try:
+                dk = hashlib.scrypt(password.encode("utf-8"), salt=salt,
+                                    n=int(user.get("n") or _SCRYPT_N),
+                                    r=int(user.get("r") or _SCRYPT_R),
+                                    p=int(user.get("p") or _SCRYPT_P),
+                                    dklen=32)
+                if hmac.compare_digest(dk.hex(), esperado):
+                    return "scrypt"
+            except Exception:
+                pass
+        _, dk = _hash_password(password, salt)
+        if hmac.compare_digest(dk.hex(), esperado):
+            return "pbkdf2"
+    except Exception:
+        pass
+    return None
+
+
+def _upgrade_hash(username, password):
+    """Troca o registro da senha pelo formato atual sem mexer na epoca — o
+    login ja concedido continua valido; so o hash melhora."""
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return
+        user = d["users"][username]
+        for key in ("algo", "n", "r", "p", "iterations", "salt", "hash"):
+            user.pop(key, None)
+        user.update(_novo_registro_senha(password))
+        _save_auth(d)
 
 
 def _password_problem(password):
@@ -173,7 +254,7 @@ def _username_problem(username):
     return None
 
 
-def _create_user(username, password, role="user"):
+def _create_user(username, password, role="user", infantil=False):
     """Cria a conta. Devolve None em sucesso ou a mensagem de erro."""
     username = _norm_username(username)
     problem = _username_problem(username) or _password_problem(password)
@@ -183,14 +264,37 @@ def _create_user(username, password, role="user"):
         d = _auth_data() or {"version": 2, "epoch": int(time.time()), "users": {}}
         if username in (d.get("users") or {}):
             return "Ja existe uma conta com esse nome"
-        salt, dk = _hash_password(password)
         now = int(time.time())
+        registro = _novo_registro_senha(password)
         d.setdefault("users", {})[username] = {
             "role": "admin" if role == "admin" else "user",
-            "algo": "scrypt", "n": 16384, "r": 8, "p": 1,
-            "salt": salt.hex(), "hash": dk.hex(),
+            "infantil": bool(infantil) and role != "admin",
+            **registro,
             "epoch": now, "created": now,
         }
+        _save_auth(d)
+    return None
+
+
+def _set_user_infantil(username, infantil, acting):
+    """Liga/desliga o perfil infantil de uma conta.
+
+    Revoga as sessões da conta (mesmo mecanismo da troca de papel): o
+    dispositivo da criança volta ao login e a sessão já reflete o modo novo.
+    """
+    username = _norm_username(username)
+    acting = _norm_username(acting)
+    with _auth_lock:
+        d = _auth_data()
+        if not d or username not in (d.get("users") or {}):
+            return "Conta não encontrada"
+        if username == acting:
+            return "Não dá para mudar o seu próprio perfil"
+        if d["users"][username].get("role") == "admin":
+            return "Perfil infantil não se aplica a administradores"
+        d["users"][username]["infantil"] = bool(infantil)
+        d["users"][username]["epoch"] = _next_epoch(
+            d["users"][username].get("epoch"))
         _save_auth(d)
     return None
 
@@ -238,9 +342,10 @@ def _set_user_password(username, password):
         d = _auth_data()
         if not d or username not in (d.get("users") or {}):
             return "Conta nao encontrada"
-        salt, dk = _hash_password(password)
         user = d["users"][username]
-        user["salt"], user["hash"] = salt.hex(), dk.hex()
+        for key in ("algo", "n", "r", "p", "iterations", "salt", "hash"):
+            user.pop(key, None)
+        user.update(_novo_registro_senha(password))
         # Trocar a senha derruba as sessoes daquela conta.
         user["epoch"] = _next_epoch(user.get("epoch"))
         _save_auth(d)
@@ -253,15 +358,15 @@ def _check_credentials(username, password):
         # Gasta o mesmo tempo de um hash real, para nao vazar quais contas existem.
         _hash_password(password or "")
         return None
-    try:
-        salt = bytes.fromhex(user["salt"])
-        _, dk = _hash_password(password or "", salt)
-        if hmac.compare_digest(dk.hex(), user["hash"]):
-            return {"username": _norm_username(username),
-                    "role": user.get("role", "user")}
-    except Exception:
-        pass
-    return None
+    formato = _senha_confere(user, password or "")
+    if not formato:
+        return None
+    username = _norm_username(username)
+    if formato == "pbkdf2" and _scrypt_disponivel():
+        # Registro antigo (ou com rotulo mentiroso): reaproveita a senha ja
+        # conferida para gravar no formato atual, sem derrubar sessao nenhuma.
+        _upgrade_hash(username, password or "")
+    return {"username": username, "role": user.get("role", "user")}
 
 
 def _revoke_all_sessions():
@@ -326,7 +431,8 @@ def _session_user(token):
     if int(payload.get("p", -1)) != int(user.get("epoch", 0)):
         return None
     return {"username": _norm_username(payload["u"]),
-            "role": user.get("role", "user")}
+            "role": user.get("role", "user"),
+            "infantil": bool(user.get("infantil"))}
 
 
 def _issue_media_token(media_path):

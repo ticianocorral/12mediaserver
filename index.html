@@ -116,6 +116,7 @@
     <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="6" fill="#e50914" stroke="none"/><polygon points="9 7 9 17 17 12" fill="#fff" stroke="none"/></symbol>
     <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V3a1 1 0 0 1 1-1z"/><path d="M9 3v2h6V3"/></symbol>
     <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></symbol>
   </svg>
   </head>
 <body>
@@ -133,7 +134,7 @@
       <div class="hero-content">
         <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> TicianoFlix</div>
         <h1 id="heroTitle">Seus Filmes, Sua Tela</h1>
-        <p id="heroDesc">Navegue pelos seus filmes do Google Drive com estilo Netflix.</p>
+        <p id="heroDesc">Navegue pelos seus filmes com estilo Netflix.</p>
       </div>
     </div>
 
@@ -178,7 +179,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="logo-text"><svg class="icon-svg"><use href="#i-play"></use></svg> TicianoFlix</span>
-      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.20</span>
+      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
@@ -186,17 +187,19 @@
         <input type="text" id="searchInput" placeholder="Pesquisar filmes..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter') search(); else if(event.key==='Escape') clearSearch()">
         <span class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpar busca"><svg class="icon-svg"><use href="#i-close"></use></svg></span>
       </div>
-      <button class="sidebar-item active" onclick="loadPath('')">
+      <button class="sidebar-item active" data-nav="home" onclick="loadPath('')">
         <span class="icon"><svg class="icon-svg"><use href="#i-home"></use></svg></span> Início
       </button>
-      <button class="sidebar-item" onclick="loadAZ()">
-        <span class="icon"><svg class="icon-svg"><use href="#i-sort"></use></svg></span> A-Z
+      <button class="sidebar-item" data-nav="__az__" onclick="loadAZ()">
+        <span class="icon"><svg class="icon-svg"><use href="#i-sort"></use></svg></span> Filmes
       </button>
-      <button class="sidebar-item" onclick="loadCollections()">
+      <button class="sidebar-item" data-nav="series" onclick="loadSeries()">
+        <span class="icon"><svg class="icon-svg"><use href="#i-tv"></use></svg></span> Séries
+      </button>
+      <button class="sidebar-item" data-nav="colecoes" onclick="loadCollections()">
         <span class="icon"><svg class="icon-svg"><use href="#i-layers"></use></svg></span> Coleções
       </button>
-      <div class="sidebar-section-title">Gêneros</div>
-      <div id="sidebarGenres"></div>
+      <div id="sidebarGenres"></div><!-- o cabeçalho "Tags" é renderizado junto pelo app.js -->
     </div>
     <div class="sidebar-footer">
       <button id="refreshBtn" class="sidebar-item" onclick="refreshCache()" title="Escanear todas as fontes em busca de filmes novos">
@@ -233,11 +236,11 @@
             <div class="backup-option-desc">Baixar backup completo (DB + imagens + legendas)</div>
           </div>
         </div>
-        <div class="backup-option" onclick="backupToDrive()">
+        <div class="backup-option" onclick="backupToCloud()">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
           <div>
-            <div class="backup-option-title">Salvar backup no Google Drive</div>
-            <div class="backup-option-desc">Fazer upload do backup para o Google Drive</div>
+            <div class="backup-option-title">Salvar backup na nuvem</div>
+            <div class="backup-option-desc">Fazer upload do backup para a nuvem conectada</div>
           </div>
         </div>
         <div class="backup-option" onclick="document.getElementById('restoreFileInput').click()">
@@ -247,11 +250,11 @@
             <div class="backup-option-desc">Importar um arquivo .zip de backup salvo anteriormente</div>
           </div>
         </div>
-        <div class="backup-option" onclick="restoreFromDrive()">
+        <div class="backup-option" onclick="restoreFromCloud()">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
           <div>
-            <div class="backup-option-title">Restaurar backup do Google Drive</div>
-            <div class="backup-option-desc">Baixar e restaurar o backup mais recente do Drive</div>
+            <div class="backup-option-title">Restaurar backup da nuvem</div>
+            <div class="backup-option-desc">Baixar e restaurar o backup mais recente da nuvem</div>
           </div>
         </div>
       </div>
@@ -289,7 +292,7 @@
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando filmes...</span></div>
         </div>
         <div class="cache-manager-actions">
-          <button class="rclone-action-btn" onclick="clearCache()" title="Apaga todos os vídeos baixados. Os filmes continuam no Drive.">
+          <button class="rclone-action-btn" onclick="clearCache()" title="Apaga todos os vídeos baixados. Os filmes continuam na nuvem.">
             <svg class="icon-svg"><use href="#i-broom"></use></svg> Limpar tudo
           </button>
         </div>
@@ -307,25 +310,32 @@
         <button class="modal-close" onclick="closeSettingsModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
       </div>
       <div class="modal-body">
+        <div class="backup-option" onclick="fromSettings(openPhoneModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-phone"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Instalar no celular</div>
+            <div class="backup-option-desc">Vire app no iPhone/Android pelo endereço .local — instruções passo a passo</div>
+          </div>
+        </div>
         <div class="backup-option" id="settingsSources" style="display:none" onclick="fromSettings(openSourcesModal)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></span>
           <div>
             <div class="backup-option-title">Fontes do acervo</div>
-            <div class="backup-option-desc">Google Drive, HD externo, pendrive e pastas do computador</div>
+            <div class="backup-option-desc">Nuvem (B2, Drive, S3...), HD externo, pendrive e pastas do computador</div>
           </div>
         </div>
         <div class="backup-option" onclick="fromSettings(openCacheManager)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-box"></use></svg></span>
           <div>
             <div class="backup-option-title">Cache offline</div>
-            <div class="backup-option-desc">Baixar filmes do Drive para assistir sem internet, ou liberar espaço</div>
+            <div class="backup-option-desc">Baixar filmes da nuvem para assistir sem internet, ou liberar espaço</div>
           </div>
         </div>
-        <div class="backup-option" onclick="fromSettings(openBackupModal)">
+        <div class="backup-option" id="settingsBackup" style="display:none" onclick="fromSettings(openBackupModal)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-save"></use></svg></span>
           <div>
             <div class="backup-option-title">Backup &amp; Restaurar</div>
-            <div class="backup-option-desc">Salvar o catálogo num arquivo ou no Drive, e restaurar depois</div>
+            <div class="backup-option-desc">Salvar o catálogo num arquivo ou na nuvem, e restaurar depois</div>
           </div>
         </div>
         <div class="backup-option" id="settingsUsers" style="display:none" onclick="fromSettings(openUsersModal)">
@@ -339,24 +349,28 @@
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-cloud"></use></svg></span>
           <div>
             <div class="backup-option-title">rclone</div>
-            <div class="backup-option-desc">Status da conexão com o Google Drive e nível de acesso</div>
-          </div>
-        </div>
-        <div class="backup-option" id="settingsScrape" style="display:none" onclick="fromSettings(openScrapeModal)">
-          <span class="backup-icon"><svg class="icon-svg"><use href="#i-clipboard"></use></svg></span>
-          <div>
-            <div class="backup-option-title">Metadados</div>
-            <div class="backup-option-desc">Sinopse, elenco e pôster via TMDB — sem tinyMediaManager</div>
+            <div class="backup-option-desc">Status da conexão com a nuvem e nível de acesso</div>
           </div>
         </div>
         <div class="backup-option" id="settingsBranding" style="display:none" onclick="fromSettings(openBrandingModal)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span>
           <div>
             <div class="backup-option-title">Aparência</div>
-            <div class="backup-option-desc">Nome e cor do app — cada instalação com a sua marca</div>
+            <div class="backup-option-desc">Cor do app — o nome foi escolhido na instalação e não muda mais</div>
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ====== INSTALAR NO CELULAR ====== -->
+  <div class="modal-overlay" id="phoneModal">
+    <div class="modal" style="width:560px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-phone"></use></svg> Instalar no celular</span>
+        <button class="modal-close" onclick="closePhoneModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body" id="phoneBox"></div>
     </div>
   </div>
 
@@ -389,21 +403,6 @@
     </div>
   </div>
 
-  <!-- ====== METADADOS (TMDB, editor que substitui o tinyMediaManager) ====== -->
-  <div class="modal-overlay" id="scrapeModal">
-    <div class="modal" style="width:600px">
-      <div class="modal-header">
-        <span class="modal-title"><svg class="icon-svg"><use href="#i-clipboard"></use></svg> Metadados</span>
-        <button class="modal-close" onclick="closeScrapeModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
-      </div>
-      <div class="modal-body">
-        <div id="scrapeBox">
-          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- ====== APARENCIA (nome e cor da marca) ====== -->
   <div class="modal-overlay" id="brandingModal">
     <div class="modal" style="width:480px">
@@ -415,6 +414,65 @@
         <div id="brandingBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== TAGS DO APP ====== -->
+  <div class="modal-overlay" id="generoFilmeModal">
+    <div class="modal" style="width:440px">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-layers"></use></svg>
+          Tags: <span id="generoFilmeTitulo"></span></span>
+        <button class="modal-close" onclick="closeGeneroFilmeModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="generoFilmeCorpo"></div>
+        <div id="generoFilmeMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="generoNovoModal">
+    <div class="modal confirm-modal">
+      <div class="modal-body confirm-body">
+        <div class="confirm-icon"><svg class="icon-svg" style="font-size:40px"><use href="#i-layers"></use></svg></div>
+        <div class="confirm-title">Nova tag</div>
+        <div class="confirm-desc">Os filmes entram depois, pela ficha ou pelo A-Z.</div>
+        <input id="generoNovoInput" class="confirm-input" type="text" maxlength="40" placeholder="Ex.: Marvel, Comédia romântica..."
+               onkeydown="if(event.key==='Enter')criarGeneroDoModal()">
+        <div id="generoNovoMsg" style="width:100%"></div>
+        <div class="confirm-actions">
+          <button class="confirm-btn cancel" onclick="closeGeneroNovoModal()">Cancelar</button>
+          <button class="confirm-btn confirm" onclick="criarGeneroDoModal()">Criar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== NUVEM: WIZARD DE CONEXÃO ====== -->
+  <div class="modal-overlay" id="nuvemWizardModal">
+    <div class="modal" style="width:520px">
+      <div class="modal-header">
+        <span class="modal-title" id="nuvemWizardTitulo"><svg class="icon-svg"><use href="#i-cloud"></use></svg> Conectar nuvem</span>
+        <button class="modal-close" onclick="closeNuvemWizard()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="nuvemWizardCorpo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== COLEÇÃO (criar/editar) ======
+       Duas etapas dentro do mesmo modal: dados + filmes, depois a capa. -->
+  <div class="modal-overlay" id="colecaoModal">
+    <div class="modal" style="width:600px">
+      <div class="modal-header">
+        <span class="modal-title" id="colecaoModalTitulo"><svg class="icon-svg"><use href="#i-layers"></use></svg> Nova coleção</span>
+        <button class="modal-close" onclick="closeColecaoModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="colecaoModalConteudo"></div>
       </div>
     </div>
   </div>
@@ -457,7 +515,7 @@
       </div>
       <div class="player-loading" id="playerLoading">
         <div class="spinner"></div>
-        <span>Preparando vídeo do Google Drive...</span>
+        <span>Preparando vídeo da nuvem...</span>
       </div>
       <div class="player-error" id="playerError">
         <div class="error-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div>
@@ -475,7 +533,17 @@
         <div class="casting-wave"><svg class="icon-svg"><use href="#i-cast"></use></svg></div>
         <div class="casting-title" id="castingTitle">Transmitindo</div>
         <div class="casting-device" id="castingDevice"></div>
-        <div class="casting-hint">Os controles abaixo comandam a TV.</div>
+        <!-- Controle remoto rápido: a barra de baixo continua valendo, mas
+             estes botões ficam no centro da tela, como um controle de TV. -->
+        <div class="casting-actions" id="castingActions">
+          <button class="casting-action" id="castingPlayBtn" onclick="togglePlay()" title="Play/Pause"><svg class="icon-svg"><use href="#i-play"></use></svg></button>
+          <button class="casting-action" onclick="skip(-10)" title="Voltar 10s"><svg class="icon-svg"><use href="#i-rewind"></use></svg></button>
+          <button class="casting-action" onclick="skip(10)" title="Avançar 10s"><svg class="icon-svg"><use href="#i-forward"></use></svg></button>
+          <span class="casting-sep" id="castingSubSep"></span>
+          <button class="casting-action casting-aa-btn" id="castingSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho da legenda na TV">Aa<span class="casting-aa" id="castingSizeLabel">Gde</span></button>
+          <button class="casting-action" id="castingCcBtn" onclick="toggleSubtitles()" title="Legenda na TV (liga/desliga)">CC</button>
+        </div>
+        <div class="casting-hint">Os controles desta tela comandam a TV.</div>
         <button class="casting-stop" onclick="toggleCast()">
           <svg class="icon-svg"><use href="#i-stop"></use></svg> Parar transmissão
         </button>
@@ -505,8 +573,14 @@
                 <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
               </div>
               <button class="ctrl-btn" id="speedBtn" onclick="cycleSpeed()" title="Velocidade">1×</button>
-              <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="cycleSubtitleSize()" title="Tamanho legenda">Aa <span id="subtitleSizeLabel">Gde</span></button>
-              <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="cycleSubtitleColor()" title="Cor legenda"><span id="subtitleColorIcon" class="subtitle-swatch" style="background:#ffd700"></span> <span id="subtitleColorLabel">Amar</span></button>
+              <div class="ctrl-sub-wrap">
+                <button class="ctrl-btn ctrl-sub" id="subtitleSizeBtn" onclick="toggleSubtitleSizeMenu(event)" title="Tamanho da legenda">Aa<span class="ctrl-sub-label" id="subtitleSizeLabel">Gde</span></button>
+                <div class="ctrl-sub-menu" id="subtitleSizeMenu"></div>
+              </div>
+              <div class="ctrl-sub-wrap">
+                <button class="ctrl-btn ctrl-sub" id="subtitleColorBtn" onclick="toggleSubtitleColorMenu(event)" title="Cor da legenda"><span id="subtitleColorIcon" class="subtitle-swatch" style="background:#ffd700"></span><span class="ctrl-sub-label" id="subtitleColorLabel">Amar</span></button>
+                <div class="ctrl-sub-menu" id="subtitleColorMenu"></div>
+              </div>
             </div>
             <button class="ctrl-btn ctrl-sub" id="subtitleToggleBtn" onclick="toggleSubtitles()" title="Legenda">CC</button>
             <button class="ctrl-btn ctrl-more" onclick="togglePlayerMore(event)" title="Mais controles">⋯</button>

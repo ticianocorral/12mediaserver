@@ -1,26 +1,28 @@
 """Tudo que fala com o rclone: comandos, cache VFS e o processo do serve.
 
-O `rclone serve http` e montado sempre na pasta TicianoFlix, nunca na raiz do
-Drive — veja start_rclone_serve. Combinado com --read-only, a porta local nao
-le nem escreve nada fora do catalogo.
+O `rclone serve http` e montado sempre no remote/pasta cadastrados no wizard,
+nunca na raiz do remote — veja start_rclone_serve. Combinado com --read-only, a
+porta local nao le nem escreve nada fora do catalogo.
 """
 
 import json
 import os
+import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 import urllib.request
 from pathlib import Path
 
 from .config import (
-    CACHED_FILES_PATH, LOGICAL_ROOT, RCLONE_GUI_ENABLED,
+    CACHED_FILES_PATH, RCLONE_GUI_ENABLED,
     RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
 )
-from .paths import rc_remote as _rc_remote, read_remote_conf, remote_configurado
+from .paths import rc_remote as _rc_remote, remote_configurado
 from .procutil import _pids_on_port, _proc_cmdline
+from . import nuvem as _nuvem
+from . import branding as _branding
 
 rclone_server_proc = None
 
@@ -42,6 +44,29 @@ _cached_files_lock = threading.Lock()
 
 
 _cached_files = set()
+
+
+def ensure_rclone_in_path():
+    """Acha o rclone mesmo instalado fora do PATH do processo.
+
+    O install.sh baixa o binario oficial do rclone para ~/.local/bin quando o
+    sistema nao tem nenhum. Esse diretorio entra no PATH do LaunchAgent e do
+    systemd, mas nao no de um terminal qualquer: rodar o servidor a mao
+    (`python3 server.py`) ficaria sem nuvem, sem nenhum aviso. Prepend aqui
+    resolve para todos os subprocessos, que herdam este env.
+
+    Devolve True quando ha um rclone alcancavel.
+    """
+    if shutil.which("rclone"):
+        return True
+    local = Path.home() / ".local" / "bin" / "rclone"
+    try:
+        if local.is_file() and os.access(local, os.X_OK):
+            os.environ["PATH"] = str(local.parent) + os.pathsep + os.environ.get("PATH", "")
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def _vfs_segment_match(entry_str, needle):
@@ -147,10 +172,10 @@ def _urlopen_ok(url, timeout=2):
 def _porta_responde(url, timeout=2):
     """True se algo HTTP atender, mesmo respondendo erro.
 
-    Diferente de _urlopen_ok: aqui a pergunta e "o processo ja subiu?", nao "o
-    Drive esta acessivel?". Com o token do Google expirado o rclone responde 500
-    na hora — se tratassemos isso como "nao subiu", esperariamos os 25s inteiros
-    a cada boot por algo que ja esta de pe.
+    Diferente de _urlopen_ok: aqui a pergunta e "o processo ja subiu?", nao "a
+    nuvem esta acessivel?". Com a credencial errada o rclone responde 500
+    na hora — se tratassemos isso como "nao subiu", esperaríamos os 25s
+    inteiros a cada boot por algo que ja esta de pe.
     """
     try:
         import urllib.error as _ue
@@ -180,7 +205,7 @@ def start_rclone_serve():
     """Garante que o 'rclone serve http' esteja rodando na porta 18082.
 
     Retorna o Popen se este processo iniciou, "external" se já havia um
-    servidor respondendo com o Drive acessível, ou None em caso de falha.
+    servidor respondendo com o remote acessível, ou None em caso de falha.
     """
     global rclone_server_proc
     with _rclone_serve_lock:
@@ -194,8 +219,9 @@ def start_rclone_serve():
         # rclone tentando pra sempre. Quem so usa pasta local pagava isso a
         # cada subida do servidor.
         if not remote_configurado():
-            print("[TicianoFlix] Sem remote do Drive configurado — "
-                  "usando apenas fontes locais.", flush=True)
+            print("[TicianoFlix] Nuvem nao configurada — "
+                  "usando apenas fontes locais. Configure em Ajustes > Nuvem.",
+                  flush=True)
             return None
 
         # Já existe um serve respondendo (ex.: iniciado externamente)?
@@ -207,7 +233,7 @@ def start_rclone_serve():
                 print(f"[TicianoFlix] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
                 return "external"
             except Exception:
-                print(f"[TicianoFlix] rclone serve responde mas o Drive está inacessível — tentando reiniciar", flush=True)
+                print(f"[TicianoFlix] rclone serve responde mas a nuvem está inacessível — tentando reiniciar", flush=True)
                 _kill_rclone_on_port(RCLONE_SERVE_PORT)
                 time.sleep(1)
         except Exception:
@@ -215,14 +241,14 @@ def start_rclone_serve():
 
         try:
             proc = subprocess.Popen(
-                # Montado na pasta TicianoFlix, nunca na raiz do Drive: mesmo
-                # com o remote ainda apontando pra raiz, o serve so expoe o
-                # catalogo. Combinado com --read-only, a porta 18082 nao le
-                # nem escreve nada fora dali.
-                ["rclone", "serve", "http", _rc_remote(LOGICAL_ROOT),
+                # Montado no remote/pasta cadastrados no wizard, nunca na raiz
+                # do remote do usuario: mesmo com o remote apontando pra raiz,
+                # o serve so expoe o catalogo. Combinado com --read-only, a
+                # porta 18082 nao le nem escreve nada fora dali.
+                ["rclone", "serve", "http", _rc_remote(_branding.logical_root()),
                  "--addr", f"127.0.0.1:{RCLONE_SERVE_PORT}",
                  "--read-only",
-                 "--drive-chunk-size", "128M",
+                 "--b2-chunk-size", "96M",
                  "--buffer-size", "512M",
                  "--vfs-cache-mode", "full",
                  "--vfs-cache-max-age", "720h",
@@ -237,7 +263,7 @@ def start_rclone_serve():
             print(f"[TicianoFlix] Starting rclone serve http on localhost:{RCLONE_SERVE_PORT}...", end=" ", flush=True)
 
             # Wait for rclone serve to be ready (up to 25s — cold start pode
-            # demorar enquanto o rclone inicializa o VFS e conecta no Drive)
+            # demorar enquanto o rclone inicializa o VFS e conecta na nuvem)
             for _ in range(25):
                 time.sleep(1)
                 if not _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
@@ -245,10 +271,9 @@ def start_rclone_serve():
                 if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
                     print("ready!", flush=True)
                 else:
-                    # De pe, mas o Drive nao respondeu. O caso comum e o token
-                    # do Google expirado; o painel do rclone mostra o motivo.
-                    print("no ar, mas o Drive nao respondeu — veja Ajustes > rclone "
-                          "(token expirado? 'rclone config reconnect gdrive:')",
+                    # De pe, mas o remote nao respondeu. O caso comum e a
+                    # credencial errada; o painel mostra o motivo.
+                    print("no ar, mas a nuvem nao respondeu — veja Ajustes > Nuvem",
                           flush=True)
                 break
             else:
@@ -347,44 +372,31 @@ def stop_rclone_webgui():
     return {"status": "ok", "running": False}
 
 
-def audit_drive_access():
-    """Quanto do Google Drive o TicianoFlix alcanca hoje.
+def audit_nuvem_access():
+    """Como esta a conexão de nuvem que o painel mostra.
 
-    Por padrao o `rclone config` cria o remote com scope "drive": leitura E
-    escrita no Drive inteiro. O app so precisa ler uma pasta. Isto e o que o
-    painel usa para avisar quando o acesso esta mais largo que o necessario.
+    O app nao introspecta credenciais: reporta o que da pra ver daqui — qual
+    remote esta em uso, a pasta, e o tipo do backend.
     """
-    main = read_remote_conf("gdrive")
-    backup = read_remote_conf("gdrive_backup")
-    scope = main.get("scope", "")
-    somente_leitura = scope in ("drive.readonly", "drive.metadata.readonly")
-    escopado = bool(main.get("root_folder_id"))
+    st = _nuvem.status()
 
-    if not main:
-        nivel, resumo = "desconhecido", "Nao foi possivel ler o rclone.conf."
-    elif somente_leitura and escopado:
-        nivel, resumo = "ok", "Acesso minimo: so leitura, so a pasta TicianoFlix."
-    elif somente_leitura:
-        nivel, resumo = "atencao", ("So leitura, mas enxerga o Drive inteiro. "
-                                    "Falta escopar na pasta TicianoFlix.")
-    elif escopado:
-        nivel, resumo = "atencao", ("Limitado a pasta TicianoFlix, mas ainda "
-                                    "pode ESCREVER nela.")
+    if not st["configurado"]:
+        nivel, resumo = "desconhecido", "Nuvem ainda nao configurada."
     else:
-        nivel, resumo = "risco", ("O TicianoFlix pode LER E APAGAR qualquer "
-                                  "arquivo do seu Google Drive.")
+        resumo = f'Remote "{st["remote"]}"'
+        if st["tipo"]:
+            resumo += f" ({st['tipo']})"
+        if st["pasta"]:
+            resumo += f', pasta "{st["pasta"]}"'
+        nivel = "ok"
 
     return {
-        "nivel": nivel,                    # ok | atencao | risco | desconhecido
+        "nivel": nivel,                    # ok | desconhecido
         "resumo": resumo,
-        "scope": scope or None,
-        "somente_leitura": somente_leitura,
-        "escopado": escopado,
-        "backup_remote": bool(backup),
-        "backup_scope": backup.get("scope"),
-        # O client_id compartilhado do rclone esta sendo aposentado em 2026.
-        "backup_client_proprio": bool(backup.get("client_id")),
-        "comando": "./setup-rclone-seguro.sh",
+        "remote": st["remote"],
+        "pasta": st["pasta"],
+        "tipo": st["tipo"],
+        "comando": None,                   # configuracao agora e in-app
     }
 
 
@@ -412,18 +424,21 @@ def get_rclone_status():
     if not status["installed"]:
         return status
 
-    # Remote gdrive: configurado?
+    # Remote da nuvem: configurado?
     try:
         res = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True, timeout=15)
         remotes = res.stdout.strip().splitlines()
-        status["remote_configured"] = "gdrive:" in remotes
+        status["remote_configured"] = remote_configurado()
+        status["remote"] = _nuvem.status().get("remote")
+        status["pasta_nuvem"] = _nuvem.status().get("pasta")
     except Exception:
         status["remote_error"] = "Falha ao listar remotes"
 
     # Remote acessível (autenticação OK)?
     if status["remote_configured"]:
         try:
-            res = subprocess.run(["rclone", "lsd", "gdrive:", "--max-depth", "1"],
+            res = subprocess.run(["rclone", "lsd", _rc_remote(_branding.logical_root()),
+                                  "--max-depth", "1"],
                                  capture_output=True, text=True, timeout=20)
             status["remote_ok"] = res.returncode == 0
             if not status["remote_ok"]:
@@ -434,8 +449,8 @@ def get_rclone_status():
         except Exception as e:
             status["remote_error"] = str(e)
 
-    # Quanto do Drive o app alcanca?
-    status["acesso"] = audit_drive_access()
+    # Como esta a conexão de nuvem?
+    status["acesso"] = audit_nuvem_access()
 
     # Serve de streaming ativo?
     status["serve_running"] = _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)

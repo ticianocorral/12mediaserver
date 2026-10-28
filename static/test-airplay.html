@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teste de AirPlay — experimento legenda na TV</title>
+<style>
+  body{font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;color:#111;background:#fff;max-width:660px;margin:0 auto;padding:24px 16px 48px;line-height:1.5}
+  h1{font-size:22px;margin:0 0 8px} h2{font-size:18px;margin:24px 0 8px}
+  p{margin:8px 0;font-size:15px}
+  video{width:100%;background:#000;border-radius:8px}
+  code{background:#f2f2f2;padding:2px 6px;border-radius:5px;font-size:13px}
+  .passo{font-weight:600}
+  #log{font-size:13px;color:#a00;padding:8px;background:#fff3f3;border-radius:6px}
+  section{background:#fafafa;border:1px solid #e5e5e5;border-radius:12px;padding:14px;margin:14px 0}
+  em{color:#555}
+</style>
+</head>
+<body>
+<h1>Teste de AirPlay — legenda na TV</h1>
+<p>Esta página existe <strong>só para diagnóstico</strong>: reprodução nativa do iPhone, sem nenhuma lógica do app TicianoFlix.</p>
+<div id="log"></div>
+
+<section>
+<h2>Teste 1 — fonte sem assinatura (igual ao Jackass de setembro)</h2>
+<p><span class="passo">1)</span> Toque no ▶ e confirme que a legenda aparece <em>na tela do iPhone</em>.</p>
+<p><span class="passo">2)</span> Use o <strong>ícone de AirPlay dos controles do vídeo</strong> (o do iOS, no canto) e escolha o Roku.</p>
+<p><span class="passo">3)</span> Veja na TV: <em>o filme tocou?</em> <em>Apareceu legenda na TV?</em> (aguarde uns 30–60s para aparecer fala)</p>
+<video id="v1" controls playsinline preload="auto">
+  <track id="t1" kind="subtitles" srclang="pt-BR" label="Português" default>
+</video>
+</section>
+
+<section>
+<h2>Teste 2 — fonte assinada (token), como o botão do app faz hoje</h2>
+<p><span class="passo">1)</span> Toque no ▶ (legenda deve aparecer no iPhone).</p>
+<p><span class="passo">2)</span> Ícone de AirPlay dos controles → escolha o Roku.</p>
+<p><span class="passo">3)</span> Veja na TV: tocou? legenda?</p>
+<video id="v2" controls playsinline preload="auto">
+  <track id="t2" kind="subtitles" srclang="pt-BR" label="Português" default>
+</video>
+</section>
+
+<p><em>Filme de teste: Friday the 13th Part VII (H.264/AAC + .srt).</em> Nada aqui altera o app — é página avulsa.</p>
+
+<script>
+(function () {
+  var log = document.getElementById('log');
+  function aviso(msg) { log.textContent = msg; }
+
+  var base = '/Local/movies/movies/Friday the 13th Part VII - The New Blood (1988)/Friday the 13th Part VII - The New Blood (1988)';
+  var videoPath = base + '.mp4';
+  var subPath   = base + '.srt';
+
+  // Teste 1: URLs cruas (cookie do próprio navegador — o mesmo caminho do teste
+  // de setembro). O iPhone carrega com o cookie da sessao; o Roku, se tentar
+  // buscar direto, leva 401 (e o log do servidor vai registrar).
+  var v1 = document.getElementById('v1');
+  v1.src = '/api/stream?path=' + encodeURIComponent(videoPath);
+  var t1 = document.getElementById('t1');
+  t1.src = '/api/subtitle?path=' + encodeURIComponent(subPath);
+
+  // Teste 2: mesmas URLs assinadas (t=), como o botao do app troca hoje.
+  fetch('/api/cast-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: videoPath, subtitle: subPath })
+  }).then(function (r) {
+    if (!r.ok) { aviso('⚠️ Sem sessão neste navegador — abra o TicianoFlix, entre, e volte a esta página.'); return null; }
+    return r.json();
+  }).then(function (t) {
+    if (!t || !t.t) return;
+    var v2 = document.getElementById('v2');
+    v2.src = '/api/stream?path=' + encodeURIComponent(videoPath) + '&t=' + encodeURIComponent(t.t);
+    var t2 = document.getElementById('t2');
+    if (t.sub) t2.src = '/api/subtitle?path=' + encodeURIComponent(subPath) + '&t=' + encodeURIComponent(t.sub);
+  }).catch(function (e) {
+    aviso('Erro no teste 2: ' + e);
+  });
+
+  // Quando o aparelho trocar para a rota sem fio (AirPlay), registramos no console
+  // para conferencia com o log do servidor.
+  ['v1', 'v2'].forEach(function (id) {
+    var v = document.getElementById(id);
+    if (typeof v.webkitShowPlaybackTargetPicker !== 'function') return;
+    v.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', function () {
+      aviso((id === 'v1' ? 'Teste 1' : 'Teste 2') + ': rota sem fio '
+        + (v.webkitCurrentPlaybackTargetIsWireless ? 'LIGADA (AirPlay ativo)' : 'desligada'));
+    });
+    v.addEventListener('error', function () {
+      var codigos = { 1: 'cancelado', 2: 'falha de rede (tipico de 401 na busca direta)', 3: 'decoding', 4: 'formato nao suportado' };
+      var e = v.error ? v.error.code : '?';
+      var txt = codigos[e] || 'desconhecido';
+      aviso((id === 'v1' ? 'Teste 1' : 'Teste 2') + ': erro de vídeo (' + txt + ')');
+    });
+  });
+})();
+</script>
+</body>
+</html>

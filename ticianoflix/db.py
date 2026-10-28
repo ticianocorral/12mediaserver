@@ -7,7 +7,8 @@ import threading
 import time
 from pathlib import Path
 
-from .config import DB_PATH, IMAGE_CACHE_DIR, LOGICAL_ROOT, LOGICAL_ROOT_LEGADO, SUBS_CACHE_DIR
+from .config import DB_PATH, IMAGE_CACHE_DIR, LOGICAL_ROOT_LEGADO, SUBS_CACHE_DIR
+from . import branding as _branding
 
 _db_write_lock = threading.Lock()
 
@@ -24,7 +25,8 @@ SCHEMA = """
         is_ticianoflix_root INTEGER NOT NULL DEFAULT 0,
         has_video INTEGER NOT NULL DEFAULT 0,
         depth INTEGER NOT NULL DEFAULT 0,
-        mod_time TEXT NOT NULL DEFAULT ''
+        mod_time TEXT NOT NULL DEFAULT '',
+        tipo TEXT NOT NULL DEFAULT 'filme'
     );
 
     CREATE TABLE IF NOT EXISTS files (
@@ -69,9 +71,9 @@ SCHEMA = """
         updated_at REAL NOT NULL DEFAULT 0
     );
 
-    -- Colecoes (Star Wars 1-6, trilogias, franquias). Vem da tag <set> do NFO,
-    -- que o tinyMediaManager grava sozinho ao agrupar um conjunto — nenhuma
-    -- pasta muda de lugar, os filmes continuam cada um no seu genero.
+    -- Colecoes legadas, alimentadas pela tag <set> do NFO (tinyMediaManager).
+    -- A tela de Coleções não usa mais estas tabelas: viram "colecoes" abaixo
+    -- numa migração única e ficam só por compatibilidade de bancos antigos.
     CREATE TABLE IF NOT EXISTS collections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
@@ -86,6 +88,53 @@ SCHEMA = """
 
     CREATE INDEX IF NOT EXISTS idx_movie_collections_col
         ON movie_collections(collection_id);
+
+    -- Coleções do app: criadas e editadas na própria interface, sem NFO.
+    -- capa é o folder_path do filme cujo pôster representa a coleção; um
+    -- filme pode pertencer a várias coleções (colecoes_filmes é N:N).
+    CREATE TABLE IF NOT EXISTS colecoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        descricao TEXT NOT NULL DEFAULT '',
+        capa TEXT NOT NULL DEFAULT '',
+        created_at REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS colecoes_filmes (
+        colecao_id INTEGER NOT NULL REFERENCES colecoes(id) ON DELETE CASCADE,
+        folder_path TEXT NOT NULL,
+        PRIMARY KEY (colecao_id, folder_path)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_colecoes_filmes_path
+        ON colecoes_filmes(folder_path);
+
+    -- Gêneros criados na interface, independentes de pasta. Um gênero pode
+    -- receber filmes de qualquer fonte; o vínculo (generos_filmes.alvo) aponta
+    -- para o folder_path do filme OU para o path completo do arquivo, no caso
+    -- de filme solto (arquivo de vídeo direto na raiz da fonte).
+    CREATE TABLE IF NOT EXISTS generos_app (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        created_at REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS generos_filmes (
+        genero_id INTEGER NOT NULL REFERENCES generos_app(id) ON DELETE CASCADE,
+        alvo TEXT NOT NULL,
+        PRIMARY KEY (genero_id, alvo)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_generos_filmes_alvo
+        ON generos_filmes(alvo);
+
+    -- Filmes marcados para o perfil infantil (conta com "infantil" ligada).
+    -- alvo = folder_path do filme, ou o path completo do arquivo, no caso de
+    -- filme solto. Só o que está aqui aparece para o perfil infantil — e o
+    -- resto fica bloqueado até no streaming.
+    CREATE TABLE IF NOT EXISTS infantil_filmes (
+        alvo TEXT PRIMARY KEY
+    );
 """
 
 
@@ -119,13 +168,29 @@ def init_db():
     """Cria as tabelas se ainda nao existirem."""
     conn = get_db()
     conn.executescript(SCHEMA)
-    # Migracao: bancos antigos nao tem folders.mod_time.
+    # Migracao: bancos antigos nao tem folders.mod_time nem folders.tipo.
     try:
         conn.execute(
             "ALTER TABLE folders ADD COLUMN mod_time TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass  # coluna ja existe
+    try:
+        conn.execute(
+            "ALTER TABLE folders ADD COLUMN tipo TEXT NOT NULL DEFAULT 'filme'")
+    except sqlite3.OperationalError:
+        pass  # coluna ja existe
+    # Migracao: a tabela files nao tinha chave por (pasta, arquivo) e rescans
+    # acumulavam linhas duplicadas — episodios apareciam dobrados na serie.
+    # Deduplica (fica a linha mais antiga) e trava o reinci­dio com indice
+    # unico; o _index_file usa INSERT OR REPLACE, entao passa a substituir.
+    conn.execute(
+        "DELETE FROM files WHERE id NOT IN "
+        "(SELECT MIN(id) FROM files GROUP BY folder_path, name)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_unico "
+        "ON files(folder_path, name)")
     _migrar_prefixo_marca(conn)
+    _migrar_colecoes_nfo(conn)
     conn.commit()
     conn.close()
 
@@ -145,12 +210,65 @@ _TABELAS_COM_PATH = (
     ("movie_meta", "folder_path"),
     ("watch_progress", "folder_path"),
     ("movie_collections", "folder_path"),
+    ("colecoes_filmes", "folder_path"),
+    ("colecoes", "capa"),
+    ("generos_filmes", "alvo"),
+    ("infantil_filmes", "alvo"),
 )
 
 
+def _migrar_colecoes_nfo(conn):
+    """Importa as colecoes vindas de NFO (<set> do tinyMediaManager), uma vez.
+
+    A tela de Coleções passou a ser gerenciada pelo app (criar, editar, capa),
+    sem ler NFO nenhum. Bancos que ja tinham conjuntos etiquetados no
+    tinyMediaManager nao podem perder isso: na primeira subida com esta versao,
+    cada colecao antiga vira uma colecao do app com os mesmos filmes — a capa
+    sai do cartaz do filme mais antigo do conjunto, como a tela fazia antes.
+
+    Roda uma unica vez (cache_meta); colecoes novas do usuario nunca voltam
+    aqui, e as tabelas antigas ficam no banco so como registro historico.
+    """
+    row = conn.execute(
+        "SELECT value FROM cache_meta WHERE key='colecoes_app_v1'").fetchone()
+    if row:
+        return
+    antigas = conn.execute(
+        """SELECT c.id, c.name, c.overview FROM collections c
+           JOIN movie_collections mc ON mc.collection_id = c.id
+           GROUP BY c.id""").fetchall()
+    for antiga in antigas:
+        cur = conn.execute(
+            "INSERT INTO colecoes (nome, descricao, capa, created_at) "
+            "VALUES (?, ?, '', ?)",
+            (antiga["name"], antiga["overview"] or "", time.time()))
+        nova_id = cur.lastrowid
+        conn.execute(
+            "INSERT OR IGNORE INTO colecoes_filmes (colecao_id, folder_path) "
+            "SELECT ?, folder_path FROM movie_collections WHERE collection_id=?",
+            (nova_id, antiga["id"]))
+        # Capa inicial: cartaz do filme mais antigo do conjunto (mesma regra
+        # que a tela usava como fallback antes de existir capa escolhida).
+        primeiro = conn.execute(
+            """SELECT cf.folder_path FROM colecoes_filmes cf
+               JOIN folders f ON f.path = cf.folder_path
+               LEFT JOIN movie_meta m ON m.folder_path = f.path
+               WHERE cf.colecao_id = ?
+               ORDER BY CASE WHEN m.year IS NULL OR m.year = '' THEN 1 ELSE 0 END,
+                        CAST(m.year AS INTEGER) ASC, f.name COLLATE NOCASE ASC
+               LIMIT 1""", (nova_id,)).fetchone()
+        if primeiro:
+            conn.execute("UPDATE colecoes SET capa=? WHERE id=?",
+                         (primeiro["folder_path"], nova_id))
+    conn.execute(
+        "INSERT OR REPLACE INTO cache_meta (key, value) "
+        "VALUES ('colecoes_app_v1', ?)", (str(time.time()),))
+
+
 def _migrar_prefixo_marca(conn):
-    """Reescreve o prefixo logico da marca antiga (LOGICAL_ROOT_LEGADO) para a
-    atual (LOGICAL_ROOT), nas tabelas/colunas que guardam path logico.
+    """Reescreve o prefixo logico anterior para o atual (branding.logical_root(),
+    hoje o nome escolhido na instalacao), nas tabelas/colunas que guardam path
+    logico.
 
     Sem isto, um rescan ate reconstroi folders/files sozinho, mas PERDERIA o
     progresso de exibicao e os vinculos de colecao, que sao indexados pelo
@@ -163,28 +281,32 @@ def _migrar_prefixo_marca(conn):
     com os filmes intactos no banco. Root_path='' (a raiz) nunca casa com o
     prefixo antigo, entao fica de fora do UPDATE sem precisar de caso especial.
 
-    Gatilho unico via cache_meta, no mesmo idioma que o scanner ja usa pro
-    backfill de NFO (meta_version): se o valor gravado ja bate com o
-    LOGICAL_ROOT atual, nao ha nada a fazer — cobre tanto quem ja migrou
-    quanto quem instalou do zero direto com o nome novo (nunca teve o antigo).
+    O prefixo anterior nao e mais um valor fixo no codigo: como o nome agora
+    pode mudar de uma versao pra outra (era generico, virou o nome escolhido
+    na instalacao), o "de onde migrar" tem que vir do que ficou gravado da
+    ultima vez (cache_meta), e so cai no LOGICAL_ROOT_LEGADO historico quando
+    essa chave nunca existiu — instalacao muito antiga (anterior a qualquer
+    migracao) ou totalmente nova. Gatilho unico, no mesmo idioma que o
+    scanner ja usa pro backfill de NFO (meta_version): se o prefixo anterior
+    ja bate com o atual, nao ha nada a fazer.
     """
-    if LOGICAL_ROOT == LOGICAL_ROOT_LEGADO:
-        return
+    logical_root = _branding.logical_root()
     row = conn.execute(
         "SELECT value FROM cache_meta WHERE key='logical_root_migrado_v2'").fetchone()
-    if row and row["value"] == LOGICAL_ROOT:
+    prefixo_antigo = row["value"] if row else LOGICAL_ROOT_LEGADO
+    if prefixo_antigo == logical_root:
         return
-    prefixo_like = like_prefix(LOGICAL_ROOT_LEGADO)
-    tamanho_antigo = len(LOGICAL_ROOT_LEGADO) + 1  # +1: substr e 1-indexado
+    prefixo_like = like_prefix(prefixo_antigo)
+    tamanho_antigo = len(prefixo_antigo) + 1  # +1: substr e 1-indexado
     for tabela, coluna in _TABELAS_COM_PATH:
         conn.execute(
             f"UPDATE {tabela} SET {coluna} = ? || substr({coluna}, ?) "
             f"WHERE {coluna} = ? OR {coluna} LIKE ? ESCAPE '\\'",
-            (LOGICAL_ROOT, tamanho_antigo, LOGICAL_ROOT_LEGADO, prefixo_like),
+            (logical_root, tamanho_antigo, prefixo_antigo, prefixo_like),
         )
     conn.execute(
         "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('logical_root_migrado_v2', ?)",
-        (LOGICAL_ROOT,),
+        (logical_root,),
     )
 
 
@@ -228,6 +350,31 @@ def log_notification(level, message):
         pass
 
 
+def _tamanho_arvore(p):
+    """Soma dos arquivos da árvore, via scandir.
+
+    O rglob + is_file + stat anterior fazia dois stats por arquivo — e o
+    /api/cache-status é consultado em laço pela interface. DirEntry já traz
+    o tipo; o stat só acontece para tamanho.
+    """
+    total = 0
+    pilha = [p]
+    while pilha:
+        try:
+            with os.scandir(pilha.pop()) as it:
+                for entrada in it:
+                    try:
+                        if entrada.is_dir(follow_symlinks=False):
+                            pilha.append(entrada.path)
+                        elif entrada.is_file(follow_symlinks=False):
+                            total += entrada.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return total
+
+
 def get_cache_usage():
     """Uso em disco de cada cache, em bytes."""
     total = 0
@@ -243,9 +390,7 @@ def get_cache_usage():
         if p.is_file():
             size = p.stat().st_size
         elif p.is_dir():
-            for f in p.rglob("*"):
-                if f.is_file():
-                    size += f.stat().st_size
+            size = _tamanho_arvore(p)
         details[label] = size
         total += size
     return {"total": total, "details": details}

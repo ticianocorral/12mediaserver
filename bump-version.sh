@@ -10,16 +10,18 @@
 #   patch  → correção de bug              (ex: 1.5.1 → 1.5.2)
 #   none   → sem mudança de versão (docs/chore/refactor)
 #
-# Atualiza os 3 lugares que exibem a versão:
+# Atualiza os 4 lugares que exibem a versão:
 #   1. Badge na sidebar (index.html: logo-version)
 #   2. Changelog do app (_CHANGELOG em static/app.js)
 #   3. README.md (Changelog)
+#   4. __version__ do pacote (ticianoflix/__init__.py)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 INDEX="$DIR/index.html"
 APPJS="$DIR/static/app.js"
 README="$DIR/README.md"
+INIT="$DIR/ticianoflix/__init__.py"
 
 TYPE="${1:-none}"
 TITLE="${2:-}"
@@ -31,12 +33,13 @@ if [ -z "$TITLE" ] && [ "$TYPE" != "none" ]; then
 fi
 
 # ─── Toda a lógica em Python (portável macOS/Linux) ─────────
-NEW_VERSION="$(TYPE="$TYPE" TITLE="$TITLE" ITEMS="$ITEMS_RAW" INDEX="$INDEX" APPJS="$APPJS" README="$README" python3 <<'PY'
+NEW_VERSION="$(TYPE="$TYPE" TITLE="$TITLE" ITEMS="$ITEMS_RAW" INDEX="$INDEX" APPJS="$APPJS" README="$README" INIT="$INIT" python3 <<'PY'
 import os, re, sys
 
 index_path = os.environ["INDEX"]
 appjs_path = os.environ["APPJS"]
 readme_path = os.environ["README"]
+init_path = os.environ["INIT"]
 bump_type = os.environ["TYPE"]
 title = os.environ["TITLE"]
 items_raw = os.environ["ITEMS"]
@@ -44,6 +47,7 @@ items_raw = os.environ["ITEMS"]
 html = open(index_path).read()
 appjs = open(appjs_path).read()      # o _CHANGELOG mora aqui desde o split do frontend
 readme = open(readme_path).read()
+init = open(init_path).read()
 
 # 1. Versão atual (badge na sidebar)
 m = re.search(r'logo-version"[^>]*>v([0-9]+)\.([0-9]+)(?:\.([0-9]+))?', html)
@@ -100,9 +104,16 @@ rmarker = "## 📋 Changelog\n"
 assert rmarker in readme, "marker Changelog não encontrado"
 readme = readme.replace(rmarker, rmarker + "\n" + block + "\n", 1)
 
+# 6. __version__ do pacote
+init_new = re.sub(r'__version__ = "[0-9.]+"',
+                  f'__version__ = "{new_full}"', init)
+assert init_new != init, "__version__ não substituído"
+init = init_new
+
 open(index_path, "w").write(html)
 open(appjs_path, "w").write(appjs)
 open(readme_path, "w").write(readme)
+open(init_path, "w").write(init)
 print("OK")
 PY
 )"
@@ -123,4 +134,4 @@ html = open('$INDEX').read()
 m = re.search(r'logo-version\"[^>]*>v([0-9.]+)', html)
 print('v' + m.group(1) if m else '?')
 ")"
-echo "   git add index.html static/app.js README.md && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""
+echo "   git add index.html static/app.js README.md ticianoflix/__init__.py && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""

@@ -19,20 +19,41 @@ from .auth import _setup_code_value, _migrate_auth_if_needed, _auth_configured
 from .netutil import (
     _get_local_ip, _ensure_ssl_cert, start_https_server, find_free_port,
 )
-from .rclone import start_rclone_serve
+from .rclone import ensure_rclone_in_path, start_rclone_serve
 from . import rclone as _rclone
 from . import sources as _sources
 from . import scanner as _scanner
+from .paths import remote_atual, remote_configurado
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
 from .handler import TicianoFlixHandler
 
 
+def _rotacionar_log():
+    """O launchd segura stdout/stderr abertos no mesmo arquivo desde a subida
+    do processo — sem rotacao o log so cresce (ja passou de 3 MB). Copytruncate:
+    guarda a versao anterior em .1 e zera o original; renomear nao serve — o fd
+    aberto continuaria escrevendo no arquivo ja rotacionado."""
+    log = CACHE_DIR / "ticianoflix.log"
+    try:
+        if not (log.exists() and log.stat().st_size >= 1024 * 1024):
+            return
+        (CACHE_DIR / "ticianoflix.log.1").write_bytes(log.read_bytes())
+        log.write_bytes(b"")
+    except OSError:
+        pass
+
+
 def main():
+    _rotacionar_log()
     # Initialize database
     init_db()
     _migrate_auth_if_needed()
     db_path_abs = DB_PATH.resolve()
+
+    # O rclone pode estar em ~/.local/bin (instalado pelo install.sh) fora do
+    # PATH do processo — resolve antes de qualquer subprocesso do rclone.
+    ensure_rclone_in_path()
 
     # Start rclone serve http (persistent connection = much faster streams)
     start_rclone_serve()
@@ -43,6 +64,13 @@ def main():
         _scanner.prune_orphan_sources()
     except Exception as e:
         print(f"[TicianoFlix] Falha ao podar fontes orfas: {e}", flush=True)
+
+    # O mesmo para a nuvem: desconfigurada, o catalogo remoto antigo nao sairia
+    # nunca — o scan incremental nao visita fonte que deixou de existir.
+    try:
+        _scanner.prune_unconfigured_cloud()
+    except Exception as e:
+        print(f"[TicianoFlix] Falha ao podar catalogo da nuvem: {e}", flush=True)
 
     # No auto-scan on startup — user must click refresh manually
     conn = get_db()
@@ -116,11 +144,16 @@ def main():
         fontes = f"{len(local)} local(is), {online} conectada(s)"
     else:
         fontes = "nenhuma cadastrada"
+    # Nuvem é opcional: mostra o remote conectado ou o lembrete de configurar.
+    if remote_configurado():
+        linha_nuvem = f"☁️  Nuvem: {remote_atual()} (cache + http)"
+    else:
+        linha_nuvem = "☁️  Nuvem nao configurada (Ajustes > Nuvem)"
     banner += f"""
-║  ☁️  Google Drive via rclone (cached + http)  ║
-║  💽 Fontes locais: {fontes:<26}║
+║  {linha_nuvem:<44}║
+║  💽 Fontes locais: {fontes:<27}║
 ║                                              ║
-║  ⚡ /api/refresh - rescan drive               ║
+║  ⚡ /api/refresh - rescan do acervo           ║
 ║  🚀 rclone proxy on localhost:{RCLONE_SERVE_PORT}        ║
 ╚══════════════════════════════════════════════╝
     """

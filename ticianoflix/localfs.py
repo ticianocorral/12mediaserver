@@ -3,7 +3,7 @@
 O motor de indexacao do scanner nasceu lendo a saida do rclone. Em vez de
 duplica-lo para o disco, esta camada fina devolve entradas com as mesmas chaves
 (Path, Name, Size, ModTime, IsDir, MimeType, ID) — assim HD externo, pendrive e
-pasta do computador passam pelo mesmo diff incremental que o Drive.
+pasta do computador passam pelo mesmo diff incremental que a nuvem.
 """
 
 import mimetypes
@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import VIDEO_EXTENSIONS
+from . import branding as _branding
 
 # Teto de profundidade relativa a raiz da fonte. A estrutura util e
 # Genero/Filme/arquivo (3 niveis); o resto e rede de seguranca contra uma pasta
@@ -105,19 +106,24 @@ def list_tree(root):
     return entries
 
 
-# Nome fixo da pasta que marca a raiz de um acervo, igual ao do Drive. Exigir
-# esse nome torna o cadastro previsivel: nao ha adivinhacao de estrutura nem
-# desempate entre pastas parecidas. Neutro de proposito — e a pasta que fica
-# gravada dentro do HD/pendrive de qualquer pessoa que instalar o app.
-CATALOG_DIR_NAME = "mediaflix"
-# Nome antigo, aceito so pra quem ja tinha criado a pasta antes da troca de
-# marca — ninguem deveria ter que renomear uma pasta no HD por causa disto.
-CATALOG_DIR_NAME_LEGADO = "ticianoflix"
+# Nome da pasta que marca a raiz de um acervo, igual ao da nuvem. Exigir esse
+# nome torna o cadastro previsivel: nao ha adivinhacao de estrutura nem
+# desempate entre pastas parecidas. E o nome escolhido na instalacao (fixo
+# depois dela, ver branding.set) — e a pasta que fica gravada dentro do
+# HD/pendrive de qualquer pessoa que instalar o app.
+def catalog_dir_name():
+    return _branding.pasta_biblioteca()
+
+
+# Nomes genericos que ja existiram como padrao em versoes anteriores, aceitos
+# pra sempre — ninguem deveria ter que renomear uma pasta no HD so porque o
+# app mudou a convencao de nome.
+CATALOG_DIR_NAME_LEGADO = ("ticianoflix", "mediaflix")
 
 
 def _casa_nome_catalogo(nome):
     n = nome.lower()
-    return n == CATALOG_DIR_NAME or n == CATALOG_DIR_NAME_LEGADO
+    return n == catalog_dir_name().lower() or n in CATALOG_DIR_NAME_LEGADO
 
 # Quantas subpastas olhar por nivel ao procurar a pasta do acervo. Um HD com
 # centenas de pastas soltas nao pode transformar o cadastro numa varredura longa.
