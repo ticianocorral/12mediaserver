@@ -336,7 +336,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         # depois da instalacao (ver _handle_branding_set). Validado antes de
         # criar o usuario pra nunca deixar a instalacao com admin mas sem nome.
         nome = str(body.get("nome", "")).strip()
-        if not _branding._nome_valido(nome):
+        if nome != _branding.NOME_PADRAO and not _branding._nome_valido(nome):
             self._send_json({"status": "error", "error":
                              "Nome do app invalido: use de 1 a 40 caracteres, "
                              'sem \\ / : * ? " < > |'}, 400)

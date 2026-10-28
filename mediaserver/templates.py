@@ -26,7 +26,7 @@ def _login_page(setup=False):
         extra_top = (
             '<label for="appname">Nome do app</label>'
             '<input id="appname" type="text" maxlength="40" autocomplete="off" '
-            'required placeholder="Ex.: Familia Corral">'
+            'required value="__MARCA__" placeholder="Ex.: Familia Corral">'
             '<label for="code">Codigo de instalacao</label>'
             '<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" '
             'maxlength="6" autocomplete="off" required placeholder="000000">')

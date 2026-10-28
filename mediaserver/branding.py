@@ -108,7 +108,7 @@ def set(nome=None, cor=None):
     atual = get()
     novo_nome = atual["nome"] if nome is None else (nome or "").strip()
     novo_cor = atual["cor"] if cor is None else (cor or "").strip()
-    if nome is not None and not _nome_valido(novo_nome):
+    if nome is not None and novo_nome != NOME_PADRAO and not _nome_valido(novo_nome):
         return False, ("O nome precisa ter entre 1 e 40 caracteres e nao "
                        'pode conter \\ / : * ? " < > |')
     if cor is not None and not _cor_valida(novo_cor):
