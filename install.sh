@@ -2,7 +2,7 @@
 # 12:00 Media Server — Instalador (Linux e macOS)
 #
 # Uso recomendado (nao precisa clonar nada antes):
-#   curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ticianocorral/12mediaserver/main/install.sh | bash
 #
 # Tambem funciona rodado de dentro de um clone existente:
 #   bash install.sh
@@ -11,7 +11,7 @@
 # "curl | bash" ali em cima).
 set -euo pipefail
 
-REPO="${MEDIA_SERVER_REPO:-ticianocorral/TicianoFlix}"
+REPO="${MEDIA_SERVER_REPO:-ticianocorral/12mediaserver}"
 REF="${MEDIA_SERVER_REF:-main}"
 PORTA="${MEDIA_SERVER_PORT:-9187}"
 

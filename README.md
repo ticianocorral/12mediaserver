@@ -97,15 +97,15 @@ catálogo vai para a pasta `Media Server Backups/` na mesma nuvem.
 **Linux e macOS**, com um comando só — não precisa clonar nada:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ticianocorral/12mediaserver/main/install.sh | bash
 ```
 
 > O repositório está privado no momento, então esse comando só funciona para
 > quem já tem acesso autenticado a ele. Enquanto isso, clone e rode local:
 >
 > ```bash
-> git clone https://github.com/ticianocorral/TicianoFlix.git
-> cd 12:00 Media Server
+> git clone https://github.com/ticianocorral/12mediaserver.git
+> cd 12mediaserver
 > bash install.sh
 > ```
 >

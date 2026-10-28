@@ -15,7 +15,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$Script:REPO = 'ticianocorral/TicianoFlix'
+$Script:REPO = 'ticianocorral/12mediaserver'
 $Script:REF = 'main'
 $Script:PORTA = 9187
 # Pasta do instalador: se server.py estiver ao lado, é um clone/baixado —
@@ -112,7 +112,7 @@ function Get-Projeto {
     Invoke-WebRequest -Uri "https://github.com/$($Script:REPO)/archive/refs/heads/$($Script:REF).zip" -OutFile $zip -UseBasicParsing
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     Expand-Archive -Force $zip $env:TEMP
-    $extraido = Get-ChildItem $env:TEMP -Directory | Where-Object { $_.Name -like 'TicianoFlix-*' -or $_.Name -like 'Media-Server-*' } |
+    $extraido = Get-ChildItem $env:TEMP -Directory | Where-Object { $_.Name -like '12mediaserver-*' -or $_.Name -like 'Media-Server-*' } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     Move-Item $extraido.FullName $dest
     $Script:DirInstalacao = $dest
