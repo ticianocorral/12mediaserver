@@ -54,6 +54,8 @@ def _login_page(setup=False):
 <meta name="robots" content="noindex">
 <title>__MARCA__</title>
 <link rel="icon" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -62,12 +64,12 @@ def _login_page(setup=False):
     justify-content: center; padding: 24px;
     background: radial-gradient(1200px 600px at 50% -10%, #26262a 0%, #0e0e10 60%);
     color: #f2ecdc;
-    font-family: Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "Jost", Futura, "Century Gothic", "Segoe UI", Roboto, ui-sans-serif, sans-serif;
   }
   .card {
     width: 100%; max-width: 390px; background: rgba(26,26,29,.92);
-    border: 1px solid #2e2e33; border-radius: 14px; padding: 34px 30px 30px;
-    box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
+    border: 1px solid #2e2e33; border-radius: 6px; padding: 34px 30px 30px;
+    box-shadow: 0 3px 0 0 rgba(0,0,0,.6);
   }
   .brand { margin: 0; line-height: 0; }
   .wordmark { height: 34px; width: auto; display: block; }

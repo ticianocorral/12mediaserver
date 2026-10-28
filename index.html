@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" href="/icone-apple-touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
 <!-- Cor da marca: carregado depois de styles.css de proposito, para a
      mesma especificidade em :root vencer a cascata. Gerado na hora por
@@ -210,15 +210,15 @@
       <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
         <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
       </button>
-      <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
-        <span class="icon"><svg class="icon-svg"><use href="#i-logout"></use></svg></span> <span id="logoutLabel">Sair</span>
-      </button>
     </div>
     <div class="sidebar-header">
       <img class="logo-text" src="/static/vcr-logo.svg" alt="12:00 Media Server">
       <div class="sidebar-header-meta">
-        <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
-        <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
+        <button class="sidebar-logout" onclick="doLogout()" title="Encerrar a sessão neste aparelho"><svg class="icon-svg"><use href="#i-logout"></use></svg> <span id="logoutLabel">Sair</span></button>
+        <div class="sidebar-header-right">
+          <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
+          <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
+        </div>
       </div>
     </div>
   </div>
