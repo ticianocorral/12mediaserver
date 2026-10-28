@@ -1,16 +1,18 @@
 /* ====== RESET & BASE ====== */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #141414;
-    --bg2: #1a1a2e;
-    --bg3: #222;
-    --surface: #1e1e2e;
-    --primary: #e50914;
-    --primary-hover: #ff0f1f;
-    --accent: #e50914;
-    --text: #fff;
-    --text2: #999;
-    --text3: #666;
+    /* Tons do logo: preto de videocassete, cinza de painel, creme de etiqueta
+       e o vermelho do display digital. */
+    --bg: #0e0e10;
+    --bg2: #1a1a1d;
+    --bg3: #26262a;
+    --surface: #212125;
+    --primary: #e8282c;
+    --primary-hover: #ff4a4d;
+    --accent: #e8282c;
+    --text: #f2ecdc;
+    --text2: #a8a296;
+    --text3: #6f6a60;
     --radius: 8px;
     --radius-lg: 12px;
     --shadow: 0 4px 20px rgba(0,0,0,0.4);
@@ -185,20 +187,31 @@
     align-items: flex-start;
     /* Logo grande em cima e a versao embaixo: o numero cresce com cada bump
        automatico ("v1.8" -> "v1.10.1") e assim nunca disputa espaco com ele. */
-    gap: 6px;
-    padding: 18px 20px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    gap: 4px;
+    padding: 12px 8px 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
   }
   .sidebar-header .logo-text {
     /* Videocassete com o 12:00 piscando (static/vcr-logo.svg). */
     width: 100%;
     height: auto;
   }
+  .sidebar-header-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  /* Cache embaixo do logo, a esquerda; a versao fica na direita da mesma linha. */
+  .sidebar-header .sidebar-cache-usage {
+    padding: 0 0 0 6px;
+    border-top: none;
+    margin-top: 0;
+  }
   .sidebar-header .logo-version {
     font-size: 11px;
     color: var(--text3);
-    align-self: flex-end;
-    padding-right: 2px;
+    padding-right: 6px;
     cursor: pointer;
     user-select: none;
     transition: color 0.15s;
@@ -232,7 +245,7 @@
   }
   .sidebar-item.active {
     color: var(--text);
-    background: rgba(229,9,20,0.1);
+    background: rgba(232,40,44,0.1);
     border-left: 3px solid var(--primary);
   }
   .sidebar-item .icon { font-size: 16px; width: 22px; text-align: center; }
@@ -307,7 +320,7 @@
     position: absolute; inset: 0;
     flex-direction: column; align-items: center; justify-content: center;
     gap: 6px; text-align: center; padding: 24px;
-    background: radial-gradient(circle at 50% 40%, #1c1c22 0%, #0b0b0e 100%);
+    background: radial-gradient(circle at 50% 40%, #1d1d20 0%, #0b0b0e 100%);
     z-index: 2;
   }
   .casting-panel.active { display: flex; }
@@ -336,8 +349,8 @@
   }
   .casting-action:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
   .casting-action.active {
-    color: var(--primary); border-color: rgba(229,9,20,0.5);
-    background: rgba(229,9,20,0.14);
+    color: var(--primary); border-color: rgba(232,40,44,0.5);
+    background: rgba(232,40,44,0.14);
   }
   .casting-action .icon-svg { width: 20px; height: 20px; }
   .casting-aa-btn { flex-direction: column; gap: 0; line-height: 1; }
@@ -352,7 +365,7 @@
     font-family: inherit; transition: all var(--transition);
     display: inline-flex; align-items: center; gap: 8px;
   }
-  .casting-stop:hover { background: rgba(229,9,20,0.22); border-color: rgba(229,9,20,0.5); }
+  .casting-stop:hover { background: rgba(232,40,44,0.22); border-color: rgba(232,40,44,0.5); }
 
   /* ====== COLECOES ====== */
   .btn-colecao {
@@ -393,7 +406,7 @@
     transition: all var(--transition);
   }
   .pill-acao-btn:hover .pill-acao-icone {
-    background: rgba(229,9,20,0.18); color: var(--primary);
+    background: rgba(232,40,44,0.18); color: var(--primary);
   }
   .pill-acao-icone .icon-svg { width: 15px; height: 15px; }
   .switch-texto { display: flex; flex-direction: column; line-height: 1.2; }
@@ -431,7 +444,7 @@
   .episodio-linha:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.2); }
   .episodio-play {
     width: 30px; height: 30px; border-radius: 50%;
-    background: rgba(229,9,20,0.15); color: var(--accent);
+    background: rgba(232,40,44,0.15); color: var(--accent);
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 12px;
     transition: all var(--transition);
@@ -448,7 +461,7 @@
     padding: 1px 5px; flex-shrink: 0;
   }
   /* Episódio em andamento: hora parada, barra e "Já assisti" */
-  .episodio-linha.em-progresso { border-color: rgba(229,9,20,0.35); }
+  .episodio-linha.em-progresso { border-color: rgba(232,40,44,0.35); }
   .episodio-linha.em-progresso .episodio-play { background: var(--accent); color: #fff; }
   .episodio-pos {
     font-size: 11px; font-weight: 700; color: var(--accent);
@@ -515,7 +528,7 @@
     transition: all var(--transition);
   }
   .wizard-remoto:hover { background: rgba(255,255,255,0.09); }
-  .wizard-remoto.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .wizard-remoto.escolhido { border-color: var(--accent); background: rgba(232,40,44,0.12); }
   .wizard-remoto-tipo {
     font-size: 11px; color: var(--text3);
     border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
@@ -551,7 +564,7 @@
   }
   .genero-chip:hover { border-color: rgba(255,255,255,0.45); color: var(--text); }
   .genero-chip.on {
-    background: rgba(229,9,20,0.18); border-color: var(--accent); color: var(--text);
+    background: rgba(232,40,44,0.18); border-color: var(--accent); color: var(--text);
   }
   .genero-nova-linha {
     display: flex; gap: 8px;
@@ -628,7 +641,7 @@
     transition: all var(--transition);
   }
   .colecao-acao-btn:hover { background: rgba(255,255,255,0.14); }
-  .colecao-acao-btn.perigo:hover { background: rgba(229,9,20,0.25); border-color: rgba(229,9,20,0.5); }
+  .colecao-acao-btn.perigo:hover { background: rgba(232,40,44,0.25); border-color: rgba(232,40,44,0.5); }
   .colecao-acoes { display: inline-flex; margin-right: 12px; }
   .colecao-campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
   .colecao-campo span { font-size: 12px; color: var(--text3); font-weight: 600; }
@@ -673,7 +686,7 @@
   }
   .colecao-filme img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
   .colecao-filme:hover { border-color: rgba(255,255,255,0.35); }
-  .colecao-filme.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .colecao-filme.escolhido { border-color: var(--accent); background: rgba(232,40,44,0.12); }
   .colecao-filme-sem {
     width: 100%; aspect-ratio: 2/3;
     display: flex; align-items: center; justify-content: center;
@@ -1282,7 +1295,7 @@
     font-size: 11px; font-weight: 700; letter-spacing: .04em;
     padding: 2px 8px; border-radius: 999px; white-space: nowrap;
   }
-  .user-tag.admin { background: rgba(229,9,20,0.18); color: #ff6b73; }
+  .user-tag.admin { background: rgba(232,40,44,0.18); color: #ff6b73; }
   .user-tag.me { background: rgba(255,255,255,0.10); color: var(--text3); }
   .user-btn {
     border: none; background: rgba(255,255,255,0.08); color: var(--text);
@@ -1428,8 +1441,8 @@
     border: 1px solid;
   }
   .rclone-warn-risco {
-    background: rgba(229, 9, 20, 0.10);
-    border-color: rgba(229, 9, 20, 0.45);
+    background: rgba(232,40,44, 0.10);
+    border-color: rgba(232,40,44, 0.45);
   }
   .rclone-warn-atencao {
     background: rgba(245, 166, 35, 0.10);
@@ -1992,26 +2005,6 @@
   }
   .movie-info-overlay.active { display: block; }
 
-  .movie-info-breadcrumb {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    z-index: 10;     /* relativo a ficha, que ja e um contexto de empilhamento */
-    padding: 16px 24px;
-    font-size: 13px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
-    pointer-events: none;
-  }
-  .movie-info-breadcrumb a {
-    pointer-events: all;
-    cursor: pointer;
-    color: var(--text2);
-    text-decoration: none;
-    transition: color var(--transition);
-  }
-  .movie-info-breadcrumb a:hover { color: var(--text); }
 
   /* Botão circular fixo, sempre visível — o breadcrumb sozinho (texto pequeno,
      "Início" lá em cima) não é um afordance óbvio de "voltar", e no PWA
@@ -2197,14 +2190,14 @@
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
-    background: rgba(229,9,20,0.12);
+    background: rgba(232,40,44,0.12);
     color: var(--primary);
-    border: 1px solid rgba(229,9,20,0.28);
+    border: 1px solid rgba(232,40,44,0.28);
     transition: all var(--transition);
   }
   .movie-genre-tag:hover {
-    background: rgba(229,9,20,0.2);
-    border-color: rgba(229,9,20,0.45);
+    background: rgba(232,40,44,0.2);
+    border-color: rgba(232,40,44,0.45);
   }
   .movie-genre-tag .icon-svg { width: 14px; height: 14px; opacity: 0.9; }
   .movie-meta-row {
@@ -2350,7 +2343,6 @@
        sobrava uma faixa de ~155px pro breadcrumb inteiro. padding-left abre
        espaço pro botão de voltar (fixo em left:20px, 40px de largura), que
        senão ficaria por cima do texto. */
-    .movie-info-breadcrumb { left: 0; padding: 16px 16px 16px 68px; font-size: 12px; }
     .movie-info-actions { gap: 8px; }
     .movie-info-actions .btn-play,
     .movie-info-actions .pill-acao,

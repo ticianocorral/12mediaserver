@@ -233,10 +233,6 @@
 
   // Agrupa os generos pela fonte dona deles. O servidor manda o Path completo
   // de cada genero, entao nao ha prefixo remontado no cliente.
-  // id da fonte -> nome de exibicao. O id e o mesmo slug que aparece no path
-  // ("/Local/hd-externo"), entao o breadcrumb mostra "HD Externo".
-  const _sourceNames = {};
-
   // Marca no menu o item da tela atual. O HTML nasce com "Início" ativo, mas
   // quem manda é esta função: toda navegação passa por loadPathInternal ou
   // loadAZ, e eles redesenham a seleção — inclusive para tag, série e
@@ -456,11 +452,9 @@
 
     const isHome = isHomePage(data.path);
 
-    if (!isHome) {
-      renderBreadcrumb(data.path);
-    } else {
-      document.getElementById('breadcrumb').innerHTML = '';
-    }
+    // Sem trilha do caminho de pastas: o acervo se navega por tags, series e
+    // colecoes, nao pelo caminho do disco.
+    document.getElementById('breadcrumb').innerHTML = '';
     const hasFolders = data.folders && data.folders.length > 0;
     const hasVideos = data.videos && data.videos.length > 0;
     const hasImages = data.images && data.images.length > 0;
@@ -2087,26 +2081,6 @@
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
-    document.getElementById('movieInfoBreadcrumb').style.display = 'block';
-
-    // Build breadcrumb for the overlay
-    const bcEl = document.getElementById('movieInfoBreadcrumb');
-    const path = folderPath || '';
-    const parts = path.split('/').filter(Boolean);
-    let cur = window.__LOGICAL_ROOT__ || '/Media Server';
-    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-    parts.forEach((p, i) => {
-      if (i === 0) return; // pula a raiz da nuvem (LOGICAL_ROOT, o nome escolhido na instalação)
-      cur += '/' + p;
-      const name = p.replace(/[._]/g, ' ');
-      if (i === parts.length - 1) {
-        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
-      } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(cur) + '\'))">' + escHtml(name) + '</a>';
-      }
-    });
-    bcEl.innerHTML = html;
-
     content.innerHTML = '<div class="loading" style="min-height:400px"><div class="spinner"></div><span>Carregando informações...</span></div>';
     bg.style.backgroundImage = 'none';
 
@@ -2321,8 +2295,6 @@
     overlay.classList.remove('active');
     document.body.style.overflow = '';
     currentMovieFolder = null;
-    document.getElementById('movieInfoBreadcrumb').innerHTML = '';
-    document.getElementById('movieInfoBreadcrumb').style.display = 'none';
   }
 
   // Botão de voltar da ficha do filme: sem ele, no PWA instalado (tela cheia,
@@ -2398,36 +2370,6 @@
       _saveProgress();
     }
   });
-
-  // ==================== BREADCRUMB ====================
-  function renderBreadcrumb(path) {
-    const el = document.getElementById('breadcrumb');
-    if (!el) return;
-    const parts = path ? path.split('/').filter(Boolean) : [];
-    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-
-    // A raiz da fonte ocupa 1 segmento na nuvem (LOGICAL_ROOT) e 2 nas fontes
-    // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
-    // path — remontar com um prefixo fixo gerava link quebrado fora da nuvem.
-    const rootLen = isLocalPath(path) ? 2 : 1;
-    if (rootLen === 2 && parts.length >= 2) {
-      const slug = parts[1];
-      html += ' <span class="sep">›</span> <span>'
-        + escHtml(_sourceNames[slug] || slug) + '</span>';
-    }
-
-    let current = '/' + parts.slice(0, rootLen).join('/');
-    parts.slice(rootLen).forEach((part, i, rest) => {
-      current += '/' + part;
-      const name = part.replace(/[._]/g, ' ');
-      if (i === rest.length - 1) {
-        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
-      } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(current) + '\'))">' + escHtml(name) + '</a>';
-      }
-    });
-    el.innerHTML = html;
-  }
 
   // ==================== PLAYER ====================
   let currentVideoPath = null;
@@ -5399,7 +5341,7 @@
         + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
         + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
         + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
-        + 'style="flex:1" placeholder="#e50914">'
+        + 'style="flex:1" placeholder="#e8282c">'
         + '</div>'
         + '</div>'
         + '<div class="rclone-help">O nome foi escolhido na instalação e não muda mais '
@@ -5426,7 +5368,7 @@
     const cor = (document.getElementById('brandCorTexto').value || '').trim();
     const msg = document.getElementById('brandingMsg');
     const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
-    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e50914.', 'err'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e8282c.', 'err'); return; }
     try {
       const res = await fetch('/api/branding/set', {
         method: 'POST',
