@@ -5391,6 +5391,16 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.24.0',
+      title: 'Renomeia para 12:00 Media Server e visual retrô discreto',
+      changes: [
+        'Novo nome: 12:00 Media Server',
+        'Fonte Jost, cantos menores e calço nos cards',
+        'Sem breadcrumb; Sair abaixo do videocassete',
+        'Remove compatibilidade com instalações do nome antigo',
+      ],
+    },
+    {
       version: '1.23.0',
       title: 'ficha do filme: \'já assisti\' que desmarca, Gêneros viram Tags e o AirPlay emendando episódios',
       changes: [
