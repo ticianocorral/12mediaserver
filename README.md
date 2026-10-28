@@ -279,8 +279,7 @@ dentro dela — cada filme numa pasta com o vídeo, ou como arquivo solto.
 do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
 `/Volumes/MeuHD/Filmes/Mediaflix/...`. O 12:00 Media Server procura essa pasta na
 raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
-encontrou. Maiúsculas não importam, e uma pasta já criada com um nome genérico
-de versão anterior (`mediaflix` ou `ticianoflix`) também é sempre aceita.
+encontrou. Maiúsculas não importam.
 
 Sem essa pasta, o cadastro é **recusado** com uma mensagem dizendo o que criar —
 em vez de aceitar uma pasta qualquer e devolver um catálogo vazio sem explicação.

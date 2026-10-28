@@ -177,9 +177,7 @@ def add_source(name, raw_root):
     (localfs.catalog_dir_name()) — a mesma convencao do Drive. Ela pode estar
     na pasta escolhida ou ate dois niveis abaixo, ja que o volume que o
     usuario seleciona costuma ficar acima do acervo ("/Volumes/MeuHD" com os
-    filmes em "MeuHD/Filmes/<nome do app>/..."). Uma pasta ja existente com um
-    dos nomes genericos antigos (localfs.CATALOG_DIR_NAME_LEGADO) tambem serve
-    — ninguem deveria ter que renomear nada no HD por causa disto.
+    filmes em "MeuHD/Filmes/<nome do app>/...").
 
     Sem essa pasta o cadastro e recusado: o scanner le a estrutura em posicao
     fixa, entao aceitar uma pasta qualquer produziria um catalogo vazio sem

@@ -35,7 +35,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 NOME = "12:00 Media Server"
-PORTA = int(os.environ.get("MEDIA_SERVER_PORT", os.environ.get("TICIANOFLIX_PORT", "9187")))
+PORTA = int(os.environ.get("MEDIA_SERVER_PORT", "9187"))
 HOME = Path.home()
 CACHE = HOME / ".cache" / "media-server"
 LOG = CACHE / "media-server.log"
@@ -163,25 +163,12 @@ def mac_carregar(plist):
         raise Falha("launchctl: %s" % (r.stderr or r.stdout).strip())
 
 
-def mac_remover_antigo(log):
-    """Servicos de antes da troca de nome (com.ticianoflix*)."""
-    la = HOME / "Library" / "LaunchAgents"
-    uid = str(os.getuid())
-    for rotulo in ("com.ticianoflix", "com.ticianoflix.mdns"):
-        p = la / (rotulo + ".plist")
-        if p.exists():
-            executar(["launchctl", "bootout", "gui/%s/%s" % (uid, rotulo)])
-            p.unlink()
-            log("Servico antigo removido: %s" % rotulo)
-
-
 def passo_servico(log, rclone, iniciar_com_o_sistema=True):
     py = sys.executable
     env_path = caminho_servico(rclone)
     if SISTEMA == "mac":
         la = HOME / "Library" / "LaunchAgents"
         la.mkdir(parents=True, exist_ok=True)
-        mac_remover_antigo(log)
         wrapper = RAIZ / "media-server"
         if shutil.which("clang") and (RAIZ / "media-server.c").exists():
             if not wrapper.exists() or (RAIZ / "media-server.c").stat().st_mtime > wrapper.stat().st_mtime:
@@ -195,10 +182,6 @@ def passo_servico(log, rclone, iniciar_com_o_sistema=True):
     elif SISTEMA == "linux":
         sd = HOME / ".config" / "systemd" / "user"
         sd.mkdir(parents=True, exist_ok=True)
-        antigo = sd / "ticianoflix.service"
-        if antigo.exists():
-            executar(["systemctl", "--user", "disable", "--now", "ticianoflix.service"])
-            antigo.unlink()
         unidade = (
             "[Unit]\nDescription=%s\nAfter=network-online.target\nWants=network-online.target\n\n"
             "[Service]\nType=simple\nExecStart=%s server.py\nWorkingDirectory=%s\n"
@@ -220,7 +203,6 @@ def passo_servico(log, rclone, iniciar_com_o_sistema=True):
         # (e nao por aqui) nao o enxergaria.
         linha_path = ('set "PATH=%s;%%PATH%%"\r\n' % Path(rclone).parent) if rclone else ""
         bat.write_text('@echo off\r\nchcp 65001 >nul\r\ncd /d "%s"\r\n%s"%s" server.py\r\n' % (RAIZ, linha_path, py))
-        executar(["schtasks", "/Delete", "/TN", "TicianoFlix", "/F"])
         if iniciar_com_o_sistema:
             r = executar(["schtasks", "/Create", "/F", "/TN", "Media Server", "/SC", "ONLOGON",
                           "/RL", "LIMITED", "/TR", '"%s"' % bat])

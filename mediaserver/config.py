@@ -4,15 +4,12 @@ Modulo folha: nao importa nada do proprio pacote.
 """
 
 import os
-import shutil
 from pathlib import Path
 
 
 def env(nome, padrao=""):
-    """Variavel de ambiente MEDIA_SERVER_<nome>; cai na TICIANOFLIX_<nome> de
-    antes da troca de nome, pra quem ja tinha isso no servico ou no shell."""
-    return os.environ.get("MEDIA_SERVER_" + nome,
-                          os.environ.get("TICIANOFLIX_" + nome, padrao))
+    """Variavel de ambiente MEDIA_SERVER_<nome>."""
+    return os.environ.get("MEDIA_SERVER_" + nome, padrao)
 
 # ── Rede ─────────────────────────────────────────────────────
 HOST = "0.0.0.0"
@@ -31,10 +28,8 @@ BIND_HOST = env("BIND", HOST)
 # criado por ali mesmo. O app grava a escolha no nuvem.json — o rclone.conf
 # so e tocado quando o wizard cria um remote novo.
 BACKUP_FOLDER = "Media Server Backups"
-# Nomes de antes da troca de nome, aceitos pra sempre ao restaurar um backup.
-BACKUP_FOLDER_LEGADO = "TicianoFlix Backups"
-NOMES_DB_BACKUP = ("media-server.db", "ticianoflix.db")
-PREFIXOS_BACKUP = ("media-server-backup-", "ticianoflix-backup-")
+NOME_DB_BACKUP = "media-server.db"
+PREFIXO_BACKUP = "media-server-backup-"
 RCLONE_SERVE_PORT = 18082
 RCLONE_WEBGUI_PORT = 5572
 
@@ -47,12 +42,6 @@ RCLONE_GUI_ENABLED = env("RCLONE_GUI") == "1"
 # escolhido na instalacao) que o DB e o frontend usam pra raiz da nuvem.
 # Nao mora aqui porque config.py e modulo-folha e branding.py importa config —
 # um LOGICAL_ROOT dinamico aqui criaria um ciclo de import.
-#
-# LOGICAL_ROOT_LEGADO segue fixo: e o nome real e historico exigido no Drive
-# por quem configurou o rclone no modo antigo, nao-escopado (ver paths.rc()),
-# e tambem o valor de fallback que db._migrar_prefixo_marca usa quando uma
-# instalacao nunca registrou o prefixo anterior em cache_meta.
-LOGICAL_ROOT_LEGADO = "/TicianoFlix"
 
 # ── Fontes locais ────────────────────────────────────────────
 # A nuvem deixou de ser a unica fonte: HD externo, pendrive e pastas do proprio
@@ -69,7 +58,6 @@ FRONTEND_PATH = PROJECT_ROOT / "index.html"
 
 # Cache vai pro home do usuario (gravavel mesmo dentro de um AppImage).
 CACHE_DIR = Path.home() / ".cache" / "media-server"
-CACHE_DIR_LEGADO = Path.home() / ".cache" / "ticianoflix"
 DB_PATH = CACHE_DIR / "media-server.db"
 IMAGE_CACHE_DIR = CACHE_DIR / "images"
 SUBS_CACHE_DIR = CACHE_DIR / "subs"
@@ -167,57 +155,8 @@ ADMIN_PATHS = frozenset({
 
 # ── Sessao e contas ──────────────────────────────────────────
 SESSION_COOKIE = "ms_session"
-SESSION_COOKIE_LEGADO = "tflix_session"   # de antes da troca de nome: ainda vale pra quem ja estava logado
 SESSION_MAX_AGE = 90 * 24 * 3600     # 90 dias por dispositivo
 CAST_TOKEN_MAX_AGE = 12 * 3600       # cobre um filme inteiro com folga
 MIN_PASSWORD_LEN = 8
 LOGIN_MAX_ATTEMPTS = 8
 LOGIN_WINDOW = 15 * 60
-
-
-def _mover_sem_sobrescrever(origem, destino, renomear=False):
-    """Move o conteudo de origem pra destino, mesclando pastas que ja existem
-    dos dois lados e deixando de lado o que ja estiver no destino. renomear
-    troca o prefixo ticianoflix. dos nomes de arquivo (so no nivel de cima)."""
-    destino.mkdir(parents=True, exist_ok=True)
-    for item in sorted(origem.iterdir()):
-        nome = item.name
-        if renomear and nome.startswith("ticianoflix."):
-            nome = "media-server." + nome[len("ticianoflix."):]
-        alvo = destino / nome
-        if item.is_dir() and not item.is_symlink() and alvo.is_dir():
-            _mover_sem_sobrescrever(item, alvo)
-        elif not alvo.exists():
-            shutil.move(str(item), str(alvo))
-
-
-def _migrar_cache_legado():
-    """Traz a pasta de cache de antes da troca de nome (~/.cache/ticianoflix)
-    pra pasta nova, sem sobrescrever nada que ja exista nela: banco, login,
-    cor da marca, fontes, nuvem, certificado e imagens continuam todos aqui.
-    O banco, o log e as copias dele trocam o prefixo do nome do arquivo. Antes
-    de mexer, guarda uma copia do banco ao lado (.pre-renomeacao.bak)."""
-    try:
-        if not CACHE_DIR_LEGADO.is_dir():
-            return
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        banco = CACHE_DIR_LEGADO / "ticianoflix.db"
-        copia = CACHE_DIR / "media-server.db.pre-renomeacao.bak"
-        if banco.is_file() and not copia.exists():
-            shutil.copy2(banco, copia)
-        _mover_sem_sobrescrever(CACHE_DIR_LEGADO, CACHE_DIR, renomear=True)
-        for sub in sorted(CACHE_DIR_LEGADO.rglob("*"), reverse=True):
-            if sub.is_dir():
-                try:
-                    sub.rmdir()   # so as que ficaram vazias
-                except OSError:
-                    pass
-        try:
-            CACHE_DIR_LEGADO.rmdir()
-        except OSError:
-            pass  # sobrou algo que ja existia no destino: deixa onde esta
-    except OSError:
-        pass
-
-
-_migrar_cache_legado()

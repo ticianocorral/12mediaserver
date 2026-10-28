@@ -142,7 +142,6 @@ function Install-App {
     # Autostart (opcional)
     if ($Script:QueroAutostart) {
         try {
-            schtasks /Delete /TN 'TicianoFlix' /F 2>$null | Out-Null
             schtasks /Create /F /TN 'Media Server' /SC ONLOGON /RL LIMITED /TR "`"$bat`"" | Out-Null
             Write-Log '✓ Tarefa agendada criada (inicia no login)' 'LightGreen'
         } catch {

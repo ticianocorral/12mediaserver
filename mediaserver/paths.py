@@ -13,7 +13,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from .config import BACKUP_FOLDER, BACKUP_FOLDER_LEGADO, NUVEM_PATH
+from .config import BACKUP_FOLDER, NUVEM_PATH
 from . import branding as _branding
 
 _nuvem_cache_lock = threading.Lock()
@@ -128,10 +128,9 @@ def destino_backup():
 
 
 def destinos_backup():
-    """Pasta de backups atual e a de antes da troca de nome, nessa ordem: quem
-    ja tinha backups na nuvem continua conseguindo restaurar."""
+    """Pastas onde procurar backups na nuvem."""
     base = remote_atual() + ":" + prefixo_nuvem()
-    return [base + BACKUP_FOLDER, base + BACKUP_FOLDER_LEGADO]
+    return [base + BACKUP_FOLDER]
 
 
 def _strip_logical_root(logical_path):

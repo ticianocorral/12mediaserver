@@ -120,13 +120,9 @@ object Servidor {
      * (_media-server._tcp, via dns-sd). E o caminho que sobrevive a troca de
      * IP: nomes .local o Android so resolve nativamente a partir do 12, mas o
      * NsdManager funciona desde as versoes antigas.
-     *
-     * Quem ainda anuncia o tipo de antes da troca de nome (_ticianoflix._tcp)
-     * continua sendo achado: tenta o novo e, se nada responder, o antigo.
      */
     suspend fun procurarViaBonjour(ctx: Context): String? =
         descobrir(ctx, "_media-server._tcp", "media-server", 4_000L)
-            ?: descobrir(ctx, "_ticianoflix._tcp", "ticianoflix", 4_000L)
 
     @SuppressLint("ServiceCast")
     private suspend fun descobrir(ctx: Context, tipo: String, marca: String, ms: Long): String? =

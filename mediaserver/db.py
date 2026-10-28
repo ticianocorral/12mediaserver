@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import DB_PATH, IMAGE_CACHE_DIR, LOGICAL_ROOT_LEGADO, SUBS_CACHE_DIR
+from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR
 from . import branding as _branding
 
 _db_write_lock = threading.Lock()
@@ -189,7 +189,6 @@ def init_db():
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_unico "
         "ON files(folder_path, name)")
-    _renomear_coluna_raiz(conn)
     _migrar_prefixo_marca(conn)
     _migrar_colecoes_nfo(conn)
     conn.commit()
@@ -266,15 +265,6 @@ def _migrar_colecoes_nfo(conn):
         "VALUES ('colecoes_app_v1', ?)", (str(time.time()),))
 
 
-def _renomear_coluna_raiz(conn):
-    """folders.is_ticianoflix_root virou is_media_server_root (troca de nome do
-    app). Bancos criados antes — e backups restaurados — ainda tem a antiga."""
-    colunas = {r[1] for r in conn.execute("PRAGMA table_info(folders)")}
-    if "is_ticianoflix_root" in colunas and "is_media_server_root" not in colunas:
-        conn.execute("ALTER TABLE folders RENAME COLUMN "
-                     "is_ticianoflix_root TO is_media_server_root")
-
-
 def _migrar_prefixo_marca(conn):
     """Reescreve o prefixo logico anterior para o atual (branding.logical_root(),
     hoje o nome escolhido na instalacao), nas tabelas/colunas que guardam path
@@ -294,16 +284,20 @@ def _migrar_prefixo_marca(conn):
     O prefixo anterior nao e mais um valor fixo no codigo: como o nome agora
     pode mudar de uma versao pra outra (era generico, virou o nome escolhido
     na instalacao), o "de onde migrar" tem que vir do que ficou gravado da
-    ultima vez (cache_meta), e so cai no LOGICAL_ROOT_LEGADO historico quando
-    essa chave nunca existiu — instalacao muito antiga (anterior a qualquer
-    migracao) ou totalmente nova. Gatilho unico, no mesmo idioma que o
+    ultima vez (cache_meta), e, sem essa chave (banco novo), so registra o prefixo atual. Gatilho unico, no mesmo idioma que o
     scanner ja usa pro backfill de NFO (meta_version): se o prefixo anterior
     ja bate com o atual, nao ha nada a fazer.
     """
     logical_root = _branding.logical_root()
     row = conn.execute(
         "SELECT value FROM cache_meta WHERE key='logical_root_migrado_v2'").fetchone()
-    prefixo_antigo = row["value"] if row else LOGICAL_ROOT_LEGADO
+    if row is None:
+        # Banco novo: nada a migrar, so registra o prefixo atual.
+        conn.execute(
+            "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('logical_root_migrado_v2', ?)",
+            (logical_root,))
+        return
+    prefixo_antigo = row["value"]
     if prefixo_antigo == logical_root:
         return
     prefixo_like = like_prefix(prefixo_antigo)

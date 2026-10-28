@@ -24,13 +24,6 @@ from .config import BRANDING_PATH, CACHE_DIR
 
 NOME_PADRAO = "12:00 Media Server"
 COR_PADRAO = "#f02828"
-# Vermelhos que ja foram o padrao (ou o mais usado) antes do logo novo: quem os
-# tem gravado passa a usar o COR_PADRAO atual, senao a cor antiga sobrepoe a
-# paleta nova em todo o app (ver get()).
-CORES_LEGADO = ("#e50914", "#e60a0a", "#e8282c")
-# Nome padrao de antes da troca de nome do app. Quem o tem gravado no
-# branding.json passa a usar o NOME_PADRAO novo (ver get()).
-NOME_LEGADO = "TicianoFlix"
 # O nome padrao tem ":" (nao vale em nome de pasta), entao a pasta real do
 # acervo no HD/pendrive e na nuvem usa esta forma. Nomes escolhidos na
 # instalacao ja nao podem ter ":" e viram a pasta como estao.
@@ -56,17 +49,6 @@ def _cor_valida(cor):
     return bool(_RE_COR.match(cor or ""))
 
 
-def _gravar_sem_lock(dados):
-    """Grava o branding.json; so a migracao do nome legado usa (set() faz o seu)."""
-    try:
-        tmp = BRANDING_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, BRANDING_PATH)
-        os.chmod(BRANDING_PATH, 0o600)
-    except OSError:
-        pass
-
-
 def get():
     """Marca atual. Nunca falha — sem arquivo ou com arquivo invalido, cai
     no padrao neutro em vez de quebrar a pagina."""
@@ -80,16 +62,8 @@ def get():
             if isinstance(bruto, dict):
                 if _nome_valido(bruto.get("nome")):
                     dados["nome"] = bruto["nome"].strip()
-                    if dados["nome"] == NOME_LEGADO:
-                        dados["nome"] = NOME_PADRAO
-                        if _cor_valida(bruto.get("cor")):
-                            dados["cor"] = bruto["cor"].lower()
-                        _gravar_sem_lock(dados)
                 if _cor_valida(bruto.get("cor")):
                     dados["cor"] = bruto["cor"].lower()
-                    if dados["cor"] in CORES_LEGADO:
-                        dados["cor"] = COR_PADRAO
-                        _gravar_sem_lock(dados)
         except (OSError, ValueError):
             pass
         _cache = dados

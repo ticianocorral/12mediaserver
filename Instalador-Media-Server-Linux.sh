@@ -10,8 +10,8 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
-REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
+REPO="${MEDIA_SERVER_REPO:-ticianocorral/TicianoFlix}"
+REF="${MEDIA_SERVER_REF:-main}"
 
 # ── Qual caixa de diálogo temos? ─────────────────────────────
 ZENITY="$(command -v zenity 2>/dev/null || true)"
@@ -89,7 +89,7 @@ Deixe-a terminar — ela mostra o progresso e o código de instalação no final
         # Acompanha pelo log até o serviço responder.
         info "Instalando..." "A instalação está rodando na janela que abri. Quando ela terminar, clique em OK para continuar."
         for _ in $(seq 1 60); do
-            curl -fsS -o /dev/null "http://localhost:${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}/api/auth/status" 2>/dev/null && break
+            curl -fsS -o /dev/null "http://localhost:${MEDIA_SERVER_PORT:-9187}/api/auth/status" 2>/dev/null && break
             sleep 2
         done
     fi
@@ -98,7 +98,7 @@ else
 fi
 
 # ── Encerramento ─────────────────────────────────────────────
-URL="http://localhost:${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}"
+URL="http://localhost:${MEDIA_SERVER_PORT:-9187}"
 if pergunta "Instalação concluída" "✅ <b>O 12:00 Media Server está no ar</b>
 
 Abra $URL — o código de instalação de 6 dígitos aparece no log

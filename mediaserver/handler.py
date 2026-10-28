@@ -23,8 +23,8 @@ from .config import (
     PROJECT_ROOT,
     PORT,
     BACKUP_FOLDER,
-    NOMES_DB_BACKUP,
-    PREFIXOS_BACKUP,
+    NOME_DB_BACKUP,
+    PREFIXO_BACKUP,
     RCLONE_SERVE_PORT,
     FRONTEND_PATH,
     DB_PATH,
@@ -39,7 +39,6 @@ from .config import (
     TOKEN_PATHS,
     ADMIN_PATHS,
     SESSION_COOKIE,
-    SESSION_COOKIE_LEGADO,
     SESSION_MAX_AGE,
 )
 from .netsec import (
@@ -226,7 +225,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if getattr(self, "_user_cache", _UNSET) is _UNSET:
             jar = self._cookies()
             self._user_cache = _session_user(
-                jar.get(SESSION_COOKIE) or jar.get(SESSION_COOKIE_LEGADO))
+                jar.get(SESSION_COOKIE))
         return self._user_cache
 
     def _has_session(self):
@@ -378,9 +377,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                                  "Apenas o administrador pode encerrar todas as sessões"}, 403)
                 return
             _revoke_all_sessions()
-        for nome_cookie in (SESSION_COOKIE, SESSION_COOKIE_LEGADO):
-            self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s"
-                               % (nome_cookie, self._cookie_secure()))
+        self._queue_cookie("%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s"
+                           % (SESSION_COOKIE, self._cookie_secure()))
         self._send_json({"status": "ok"})
 
     def _handle_cast_token(self):
@@ -1448,8 +1446,6 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         try:
             # Lista pelo remote de backup: com uma key so de escrita restrita,
             # ele so enxerga os arquivos que o proprio 12:00 Media Server criou.
-            # Backups de antes da troca de nome ficam na pasta e com o prefixo
-            # antigos: procura nas duas e fica com o mais recente.
             candidatos = []
             listou = False
             for pasta in destinos_backup():
@@ -1459,7 +1455,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 listou = True
                 for f in result:
                     nome_f = f.get("Name", "")
-                    if nome_f.endswith(".zip") and nome_f.startswith(PREFIXOS_BACKUP):
+                    if nome_f.endswith(".zip") and nome_f.startswith(PREFIXO_BACKUP):
                         f["_pasta"] = pasta
                         candidatos.append(f)
             zips = candidatos
@@ -1513,7 +1509,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                     buf = io.BytesIO(proc.stdout)
                     with zipfile.ZipFile(buf, "r") as z:
                         names = z.namelist()
-                        nome_db = next((n for n in NOMES_DB_BACKUP if n in names), None)
+                        nome_db = NOME_DB_BACKUP if NOME_DB_BACKUP in names else None
                         if nome_db is None:
                             msg = "Backup zip não contém media-server.db"
                             print(f"[12:00 Media Server] {msg}", flush=True)
@@ -2202,7 +2198,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             buf = io.BytesIO(data)
             with zipfile.ZipFile(buf, "r") as z:
                 names = z.namelist()
-                nome_db = next((n for n in NOMES_DB_BACKUP if n in names), None)
+                nome_db = NOME_DB_BACKUP if NOME_DB_BACKUP in names else None
                 if nome_db is None:
                     self._send_error("Backup must contain media-server.db", 400)
                     return

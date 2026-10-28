@@ -11,9 +11,9 @@
 # "curl | bash" ali em cima).
 set -euo pipefail
 
-REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
-REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
-PORTA="${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}"
+REPO="${MEDIA_SERVER_REPO:-ticianocorral/TicianoFlix}"
+REF="${MEDIA_SERVER_REF:-main}"
+PORTA="${MEDIA_SERVER_PORT:-9187}"
 
 # ─── Cores ──────────────────────────────────────────────
 VERDE='\033[0;32m'
@@ -52,11 +52,7 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ] \
     DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ok "Rodando a partir de um clone existente: $DIR"
 else
-    DIR="${MEDIA_SERVER_DIR:-${TICIANOFLIX_DIR:-$HOME/Media-Server}}"
-    # Instalacao de antes da troca de nome: leva a pasta pro nome novo.
-    if [ ! -e "$DIR" ] && [ -d "$HOME/TicianoFlix" ] && [ -z "${MEDIA_SERVER_DIR:-${TICIANOFLIX_DIR:-}}" ]; then
-        mv "$HOME/TicianoFlix" "$DIR" && ok "Pasta ~/TicianoFlix movida para $DIR"
-    fi
+    DIR="${MEDIA_SERVER_DIR:-$HOME/Media-Server}"
     info "Baixando o 12:00 Media Server (${REPO}@${REF})..."
     mkdir -p "$DIR"
     URL_TARBALL="https://github.com/${REPO}/archive/refs/heads/${REF}.tar.gz"
@@ -148,7 +144,7 @@ else
     esac
     if [ "$PLATAFORMA" = "macos" ]; then RCLONE_OS="osx"; else RCLONE_OS="linux"; fi
     # Base configuravel: mirrors e proxies de empresa nao precisam de sed no script.
-    RCLONE_BASE="${MEDIA_SERVER_RCLONE_BASE:-${TICIANOFLIX_RCLONE_BASE:-https://downloads.rclone.org}}"
+    RCLONE_BASE="${MEDIA_SERVER_RCLONE_BASE:-https://downloads.rclone.org}"
 
     if [ -n "$RCLONE_ARCH" ]; then
         TMP_RCLONE="$(mktemp -d)"
@@ -248,14 +244,6 @@ if [ "$PLATAFORMA" = "macos" ]; then
     fi
 
     LA_DIR="$HOME/Library/LaunchAgents"
-    # Servico de antes da troca de nome: para e remove, senao ele segue dono da porta.
-    OLD_PLIST="$LA_DIR/com.ticianoflix.plist"
-    if [ -f "$OLD_PLIST" ]; then
-        launchctl bootout "gui/$(id -u)/com.ticianoflix" 2>/dev/null \
-            || launchctl unload "$OLD_PLIST" 2>/dev/null || true
-        rm -f "$OLD_PLIST"
-        ok "Serviço antigo (com.ticianoflix) removido"
-    fi
     PLIST="$LA_DIR/com.mediaserver.plist"
     mkdir -p "$LA_DIR"
     cat > "$PLIST" <<PLIST_EOF
@@ -305,12 +293,6 @@ else
     # ─── 6b. systemd (Linux) ─────────────────────────────
     SERVICE_DIR="$HOME/.config/systemd/user"
     SERVICE_FILE="$SERVICE_DIR/media-server.service"
-    # Servico de antes da troca de nome: para e remove.
-    if [ -f "$SERVICE_DIR/ticianoflix.service" ]; then
-        systemctl --user disable --now ticianoflix.service 2>/dev/null || true
-        rm -f "$SERVICE_DIR/ticianoflix.service"
-        ok "Serviço antigo (ticianoflix) removido"
-    fi
     mkdir -p "$SERVICE_DIR"
     cat > "$SERVICE_FILE" <<UNIT
 [Unit]

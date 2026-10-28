@@ -115,15 +115,9 @@ def catalog_dir_name():
     return _branding.pasta_biblioteca()
 
 
-# Nomes genericos que ja existiram como padrao em versoes anteriores, aceitos
-# pra sempre — ninguem deveria ter que renomear uma pasta no HD so porque o
-# app mudou a convencao de nome.
-CATALOG_DIR_NAME_LEGADO = ("ticianoflix", "mediaflix")  # inclui o nome de antes da troca de nome do app
-
-
 def _casa_nome_catalogo(nome):
     n = nome.lower()
-    return n == catalog_dir_name().lower() or n in CATALOG_DIR_NAME_LEGADO
+    return n == catalog_dir_name().lower()
 
 # Quantas subpastas olhar por nivel ao procurar a pasta do acervo. Um HD com
 # centenas de pastas soltas nao pode transformar o cadastro numa varredura longa.

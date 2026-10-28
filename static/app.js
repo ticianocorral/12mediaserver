@@ -3915,9 +3915,9 @@
   // regular de novo a cada filme. O valor entra antes da primeira pintura dos
   // menus (os _renderSubtitleMenu logo abaixo), então a UI já nasce certa.
   try {
-    const ss = parseInt(localStorage.getItem('media_server_sub_size') || localStorage.getItem('ticianoflix_sub_size'), 10);
+    const ss = parseInt(localStorage.getItem('media_server_sub_size'), 10);
     if (ss >= 0 && ss < subtitleSizes.length) subtitleSizeIndex = ss;
-    const sc = parseInt(localStorage.getItem('media_server_sub_color') || localStorage.getItem('ticianoflix_sub_color'), 10);
+    const sc = parseInt(localStorage.getItem('media_server_sub_color'), 10);
     if (sc >= 0 && sc < subtitleColors.length) subtitleColorIndex = sc;
   } catch (e) { /* storage indisponível: segue no padrão */ }
 
@@ -4783,7 +4783,7 @@
   // disco por natureza — não foi "baixado", e misturar os dois esvaziava o
   // sentido da seção. O filter limpa o que versões anteriores gravaram.
   const _cachedSet = new Set(
-    JSON.parse(localStorage.getItem('media_server_cached') || localStorage.getItem('ticianoflix_cached') || '[]')
+    JSON.parse(localStorage.getItem('media_server_cached') || '[]')
       .filter(p => !isLocalPath(p))
   );
   function _isCached(folderPath) {
@@ -4823,7 +4823,6 @@
 
   function clearCache() {
     localStorage.removeItem('media_server_cached');
-    localStorage.removeItem('ticianoflix_cached');
     _cachedSet.clear();
     showToast('🧹 Limpando cache do servidor...', '');
     fetch('/api/clear-cache', { method: 'POST' }).then(r => r.json()).then(d => {
