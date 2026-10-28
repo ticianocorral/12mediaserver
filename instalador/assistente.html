@@ -152,23 +152,36 @@ async function instalar(opts) {
 // ── 3. conta ──
 function conta() {
   tela(2, "Conta de administrador", "É a primeira conta, a que gerencia o app. Depois dela não existe auto-cadastro: contas novas só pelo painel.", [
-    campo("Nome do app", "c-nome", "text", "__NOME__"), campo("Usuário", "c-usuario"),
+    campo("Usuário", "c-usuario"),
     campo("Senha (mín. 8 caracteres)", "c-senha", "password"), campo("Repita a senha", "c-repete", "password"), mensagem(),
   ], [btn("Criar conta", async () => {
-    const r = await api("/api/conta", { nome: $("c-nome").value, usuario: $("c-usuario").value,
+    const r = await api("/api/conta", { usuario: $("c-usuario").value,
       senha: $("c-senha").value, repete: $("c-repete").value });
     if (r.status === "ok") nuvem(); else mostrar(r.error || "Não foi possível criar a conta.");
   }, true)]);
 }
 
 // ── 4. nuvem ──
-function nuvem() {
-  tela(3, "Nuvem", "Onde estão os seus filmes. Dá para configurar agora (Backblaze B2) ou depois, no app, em Ajustes > Nuvem — lá há também Google Drive, S3 e outras.", [
-    campo("ID da chave (keyID)", "n-conta"), campo("Chave de aplicação", "n-chave", "password"),
-    campo("Bucket", "n-bucket"), campo("Pasta dentro do bucket (opcional)", "n-pasta"), mensagem(),
+async function nuvem() {
+  const provs = await api("/api/provedores");
+  let atual = null;
+  const form = el("div", { id: "n-form" });
+  const lista = provs.map((p) => {
+    const r = el("input", { type: "radio", name: "n-prov", value: p.id });
+    r.addEventListener("change", () => { atual = p; desenharForm(); });
+    return el("label", { class: "opcao" }, r, el("div", {}, p.nome, el("small", {}, p.detalhe)));
+  });
+  function desenharForm() {
+    form.replaceChildren(...atual.campos.map((c) => campo(c.rotulo, "n-" + c.id, c.segredo ? "password" : "text", c.valor)));
+    const m = $("msg"); if (m) m.className = "msg";
+  }
+  tela(3, "Nuvem", "Onde estão os seus filmes. Escolha onde eles ficam, ou pule e configure depois no app (Ajustes > Nuvem). Google Drive, OneDrive e Dropbox pedem login no navegador: configure-os pelo rclone.", [
+    ...lista, form, mensagem(),
   ], [btn("Pular", final), btn("Conectar", async () => {
-    const r = await api("/api/nuvem", { conta: $("n-conta").value, chave: $("n-chave").value,
-      bucket: $("n-bucket").value, pasta: $("n-pasta").value });
+    if (!atual) { mostrar("Escolha uma nuvem ou clique em Pular."); return; }
+    const campos = {};
+    atual.campos.forEach((c) => { campos[c.id] = $("n-" + c.id).value; });
+    const r = await api("/api/nuvem", { provedor: atual.id, campos });
     if (r.status === "ok") final(); else mostrar(r.error || "Não foi possível conectar.");
   }, true)]);
 }

@@ -24,9 +24,6 @@ def _login_page(setup=False):
         action = "/api/auth/setup"
         button = "Criar conta e entrar"
         extra_top = (
-            '<label for="appname">Nome do app</label>'
-            '<input id="appname" type="text" maxlength="40" autocomplete="off" '
-            'required value="__MARCA__" placeholder="Ex.: Familia Corral">'
             '<label for="code">Codigo de instalacao</label>'
             '<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" '
             'maxlength="6" autocomplete="off" required placeholder="000000">')
@@ -34,10 +31,8 @@ def _login_page(setup=False):
             '<label for="confirm">Repita a senha</label>'
             '<input id="confirm" type="password" autocomplete="new-password" '
             'required minlength="%d">' % MIN_PASSWORD_LEN)
-        hint = ("O nome do app tambem vira a pasta da biblioteca na nuvem/HD "
-                "— escolha com cuidado, nao da pra mudar depois. Depois disso "
-                "nao existe auto-cadastro: contas novas so pelo painel de "
-                "administracao.")
+        hint = ("Depois disso nao existe auto-cadastro: contas novas so pelo "
+                "painel de administracao.")
         autocomplete = "new-password"
     else:
         heading = "Entrar"
@@ -137,8 +132,6 @@ def _login_page(setup=False):
     }
     var codeEl = document.getElementById('code');
     if (codeEl) body.code = codeEl.value.trim();
-    var appnameEl = document.getElementById('appname');
-    if (appnameEl) body.nome = appnameEl.value.trim();
     btn.disabled = true;
     try {
       var res = await fetch('__ACTION__', {

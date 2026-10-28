@@ -215,7 +215,11 @@ def passo_servico(log, rclone, iniciar_com_o_sistema=True):
         log("Servico instalado (systemd --user media-server)")
     elif SISTEMA == "windows":
         bat = RAIZ / "Media-Server.bat"
-        bat.write_text('@echo off\r\nchcp 65001 >nul\r\ncd /d "%s"\r\n"%s" server.py\r\n' % (RAIZ, py))
+        # O rclone instalado pelo assistente mora numa pasta que nao esta no PATH
+        # do Windows; sem esta linha, o servidor iniciado pela tarefa agendada
+        # (e nao por aqui) nao o enxergaria.
+        linha_path = ('set "PATH=%s;%%PATH%%"\r\n' % Path(rclone).parent) if rclone else ""
+        bat.write_text('@echo off\r\nchcp 65001 >nul\r\ncd /d "%s"\r\n%s"%s" server.py\r\n' % (RAIZ, linha_path, py))
         executar(["schtasks", "/Delete", "/TN", "TicianoFlix", "/F"])
         if iniciar_com_o_sistema:
             r = executar(["schtasks", "/Create", "/F", "/TN", "Media Server", "/SC", "ONLOGON",
@@ -295,7 +299,9 @@ class Api:
     def post(self, caminho, corpo):
         req = urllib.request.Request(
             "http://127.0.0.1:%d%s" % (PORTA, caminho), data=json.dumps(corpo).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
+            # O servidor so aceita escrita com Origin local (protecao contra CSRF).
+            headers={"Content-Type": "application/json", "Origin": "http://localhost:%d" % PORTA},
+            method="POST")
         try:
             with self.op.open(req, timeout=30) as r:
                 return json.loads(r.read() or b"{}")
@@ -340,25 +346,76 @@ def ler_codigo_de_instalacao():
     return achados[-1] if achados else ""
 
 
-def criar_administrador(api, nome_app, usuario, senha):
+def criar_administrador(api, usuario, senha):
     codigo = ler_codigo_de_instalacao()
     if not codigo:
         raise Falha("Nao achei o codigo de instalacao no log (%s)." % LOG)
-    r = api.post("/api/auth/setup", {"username": usuario, "password": senha, "code": codigo, "nome": nome_app})
+    r = api.post("/api/auth/setup", {"username": usuario, "password": senha, "code": codigo})
     if r.get("status") != "ok":
         raise Falha(r.get("error") or "Nao foi possivel criar a conta.")
 
 
-def conectar_b2(api, rclone, account, key, bucket, pasta):
-    """Cria o remote 'b2' no rclone e liga o app nele (mesmo caminho do
-    assistente de Ajustes > Nuvem)."""
-    if not (account and key and bucket):
-        raise Falha("Preencha o ID da chave, a chave e o bucket.")
-    r = executar([rclone, "config", "create", "b2", "b2", "account=" + account, "key=" + key, "--non-interactive"])
+# Nuvens mais usadas com o rclone. Todas guardam por chave (nada de login pelo
+# navegador): o app so liga num remote ja criado, e o assistente de Ajustes >
+# Nuvem tambem so cria remotes assim. Google Drive, OneDrive e Dropbox pedem
+# autorizacao no navegador e ficam pelo rclone (rclone config) ou pelo app.
+# campo = (id, rotulo, segredo, valor padrao)
+PROVEDORES = [
+    {"id": "b2", "nome": "Backblaze B2", "detalhe": "armazenamento barato, o mais usado com o rclone",
+     "campos": [("conta", "ID da chave (keyID)", False, ""), ("chave", "Chave de aplicação", True, ""),
+                ("bucket", "Bucket", False, ""), ("pasta", "Pasta dentro do bucket (opcional)", False, "")]},
+    {"id": "s3", "nome": "Amazon S3", "detalhe": "S3 da AWS",
+     "campos": [("acesso", "Access key ID", False, ""), ("segredo", "Secret access key", True, ""),
+                ("regiao", "Região", False, "us-east-1"), ("bucket", "Bucket", False, ""),
+                ("pasta", "Pasta dentro do bucket (opcional)", False, "")]},
+    {"id": "r2", "nome": "Cloudflare R2", "detalhe": "sem taxa de saída de dados",
+     "campos": [("conta", "ID da conta Cloudflare", False, ""), ("acesso", "Access key ID", False, ""),
+                ("segredo", "Secret access key", True, ""), ("bucket", "Bucket", False, ""),
+                ("pasta", "Pasta dentro do bucket (opcional)", False, "")]},
+    {"id": "wasabi", "nome": "Wasabi", "detalhe": "armazenamento compatível com S3",
+     "campos": [("acesso", "Access key", False, ""), ("segredo", "Secret key", True, ""),
+                ("regiao", "Região", False, "us-east-1"), ("bucket", "Bucket", False, ""),
+                ("pasta", "Pasta dentro do bucket (opcional)", False, "")]},
+]
+
+
+def provedor(prov_id):
+    return next((p for p in PROVEDORES if p["id"] == prov_id), None)
+
+
+def parametros_remote(prov_id, c):
+    """(tipo do rclone, nome do remote, parametros, pasta no remote) para a
+    escolha do usuario. Levanta Falha se faltar um campo obrigatorio."""
+    prov = provedor(prov_id)
+    if prov is None:
+        raise Falha("Provedor desconhecido.")
+    c = {k: str(v or "").strip() for k, v in c.items()}
+    for cid, rotulo, _seg, _val in prov["campos"]:
+        if cid != "pasta" and not c.get(cid):
+            raise Falha("Preencha: %s." % rotulo)
+    pasta = "/".join(p for p in (c["bucket"].strip("/"), c.get("pasta", "").strip("/")) if p)
+    if prov_id == "b2":
+        return "b2", "b2", ["account=" + c["conta"], "key=" + c["chave"]], pasta
+    if prov_id == "s3":
+        return "s3", "s3", ["provider=AWS", "access_key_id=" + c["acesso"],
+                            "secret_access_key=" + c["segredo"], "region=" + c["regiao"]], pasta
+    if prov_id == "r2":
+        return "s3", "r2", ["provider=Cloudflare", "access_key_id=" + c["acesso"],
+                            "secret_access_key=" + c["segredo"], "region=auto", "no_check_bucket=true",
+                            "endpoint=https://%s.r2.cloudflarestorage.com" % c["conta"]], pasta
+    return "s3", "wasabi", ["provider=Wasabi", "access_key_id=" + c["acesso"],
+                            "secret_access_key=" + c["segredo"], "region=" + c["regiao"],
+                            "endpoint=s3.%s.wasabisys.com" % c["regiao"]], pasta
+
+
+def conectar_nuvem(api, rclone, prov_id, campos):
+    """Cria o remote no rclone e liga o app nele (mesmo caminho do assistente
+    de Ajustes > Nuvem: config create ... --non-interactive --obscure)."""
+    tipo, remote, params, pasta = parametros_remote(prov_id, campos)
+    r = executar([rclone, "config", "create", remote, tipo] + params + ["--non-interactive", "--obscure"])
     if r.returncode != 0:
         raise Falha("rclone: %s" % (r.stderr or r.stdout).strip()[-300:])
-    destino = "/".join(p for p in (bucket.strip("/"), pasta.strip("/")) if p)
-    resp = api.post("/api/nuvem/conectar", {"remote": "b2", "pasta": destino})
+    resp = api.post("/api/nuvem/conectar", {"remote": remote, "pasta": pasta})
     if resp.get("status") != "ok":
         raise Falha(resp.get("error") or "O app nao conseguiu usar essa nuvem.")
 
@@ -504,6 +561,10 @@ class Assistente(BaseHTTPRequestHandler):
         if u.path == "/api/progresso":
             desde = int(parse_qs(u.query).get("desde", ["0"])[0] or 0)
             return self._json(ESTADO.instantaneo(desde))
+        if u.path == "/api/provedores":
+            return self._json([{"id": p["id"], "nome": p["nome"], "detalhe": p["detalhe"],
+                                "campos": [{"id": i, "rotulo": r, "segredo": s, "valor": v}
+                                           for i, r, s, v in p["campos"]]} for p in PROVEDORES])
         if u.path == "/api/info":
             return self._json({"sistema": SISTEMA, "porta": PORTA, "rede": endereco_na_rede(), "nome": NOME})
         self._responder(b"nao encontrado", "text/plain", 404)
@@ -525,16 +586,18 @@ class Assistente(BaseHTTPRequestHandler):
                 if corpo.get("senha") != corpo.get("repete"):
                     raise Falha("As senhas não conferem.")
                 if not SIMULAR:
-                    criar_administrador(e.api, str(corpo.get("nome", "")).strip(),
-                                        str(corpo.get("usuario", "")).strip().lower(), str(corpo.get("senha", "")))
+                    criar_administrador(e.api, str(corpo.get("usuario", "")).strip().lower(), str(corpo.get("senha", "")))
                 return self._json({"status": "ok"})
             if self.path == "/api/nuvem":
-                if not SIMULAR:
+                prov_id = str(corpo.get("provedor", ""))
+                campos = corpo.get("campos") if isinstance(corpo.get("campos"), dict) else {}
+                if SIMULAR:
+                    parametros_remote(prov_id, campos)  # valida os campos mesmo na simulacao
+                else:
                     rc = e.rclone or achar_rclone()
                     if not rc:
                         raise Falha("rclone não encontrado.")
-                    conectar_b2(e.api, rc, str(corpo.get("conta", "")).strip(), str(corpo.get("chave", "")).strip(),
-                                str(corpo.get("bucket", "")).strip(), str(corpo.get("pasta", "")).strip())
+                    conectar_nuvem(e.api, rc, prov_id, campos)
                 return self._json({"status": "ok"})
             if self.path == "/api/sair":
                 self._json({"status": "ok"})

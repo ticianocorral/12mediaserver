@@ -331,16 +331,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                              "Codigo de instalacao incorreto. Ele aparece no "
                              "terminal onde o 12:00 Media Server esta rodando."}, 403)
             return
-        # O nome vira pasta real na nuvem/HD/pendrive (branding.pasta_biblioteca)
-        # e fica fixo depois deste momento — set() nunca mais recebe nome
-        # depois da instalacao (ver _handle_branding_set). Validado antes de
-        # criar o usuario pra nunca deixar a instalacao com admin mas sem nome.
-        nome = str(body.get("nome", "")).strip()
-        if nome != _branding.NOME_PADRAO and not _branding._nome_valido(nome):
-            self._send_json({"status": "error", "error":
-                             "Nome do app invalido: use de 1 a 40 caracteres, "
-                             'sem \\ / : * ? " < > |'}, 400)
-            return
+        # O nome do app e sempre o padrao: nao se escolhe mais na instalacao.
+        # (Instalacoes antigas com outro nome gravado no branding.json
+        # continuam com ele — ver branding.get().)
+        nome = _branding.NOME_PADRAO
         username = str(body.get("username", ""))
         problem = _create_user(username, str(body.get("password", "")), role="admin")
         if problem:

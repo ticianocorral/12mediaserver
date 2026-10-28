@@ -5333,9 +5333,7 @@
       const marca = await res.json();
       box.innerHTML =
         '<div class="user-form" style="flex-direction:column;align-items:stretch">'
-        + '<label style="font-size:12px;color:var(--text3)">Nome</label>'
-        + '<div style="padding:12px 13px;color:var(--text2)">' + escHtml(marca.nome) + '</div>'
-        + '<label style="font-size:12px;color:var(--text3);margin-top:4px">Cor</label>'
+        + '<label style="font-size:12px;color:var(--text3)">Cor</label>'
         + '<div style="display:flex;gap:8px;align-items:center">'
         + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
         + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
@@ -5344,9 +5342,8 @@
         + 'style="flex:1" placeholder="#f02828">'
         + '</div>'
         + '</div>'
-        + '<div class="rclone-help">O nome foi escolhido na instalação e não muda mais '
-        + '(é também a pasta da biblioteca na nuvem/HD). A cor aparece na tela de login, '
-        + 'no menu, no ícone do app instalado no celular e no manifesto.</div>'
+        + '<div class="rclone-help">A cor aparece na tela de login, no menu, no ícone '
+        + 'do app instalado no celular e no manifesto.</div>'
         + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
         + 'onclick="saveBranding()">Salvar</button>'
         + '<div id="brandingMsg" class="user-msg"></div>';
