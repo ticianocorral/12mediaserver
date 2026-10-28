@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import HOST, PORT
+from .config import HOST, PORT, env
 from .procutil import _pids_on_port
 
 
@@ -42,10 +42,10 @@ def _local_hostnames():
 
     No macOS o Bonjour resolve "<LocalHostName>.local" (ex.:
     Mac-mini-de-Ticiano.local) — endereço estável para celulares e TVs,
-    ao contrário do IP, que muda quando o roteador troca. "ticianoflix.local"
+    ao contrário do IP, que muda quando o roteador troca. "media-server.local"
     fica incluído para quem renomear o Mac com esse nome.
     """
-    nomes = ["ticianoflix.local"]
+    nomes = ["media-server.local"]
 
     def _qualificado(nome):
         nome = (nome or "").strip()
@@ -77,13 +77,13 @@ def _primary_local_hostname():
     """O melhor nome .local para as instrucoes de instalacao no celular.
 
     O nome Bonjour real da maquina (ex.: Mac-mini-de-Ticiano.local) resolve
-    sozinho no iPhone e no Android 12+; "ticianoflix.local" so resolve se o
+    sozinho no iPhone e no Android 12+; "media-server.local" so resolve se o
     Mac tiver sido renomeado para isso — fica como ultimo recurso.
     """
     for nome in _local_hostnames():
-        if nome != "ticianoflix.local":
+        if nome != "media-server.local":
             return nome
-    return "ticianoflix.local"
+    return "media-server.local"
 
 
 def _ensure_ssl_cert(cert_dir, local_ip):
@@ -111,7 +111,7 @@ def _ensure_ssl_cert(cert_dir, local_ip):
             missing = [t for t in required if t not in existing.stdout]
             if not missing:
                 return cert_path, key_path
-            print(f"[TicianoFlix] SSL cert outdated (missing {', '.join(missing)}), "
+            print(f"[12:00 Media Server] SSL cert outdated (missing {', '.join(missing)}), "
                   f"regenerating...", flush=True)
             cert_path.unlink(missing_ok=True)
             key_path.unlink(missing_ok=True)
@@ -121,7 +121,7 @@ def _ensure_ssl_cert(cert_dir, local_ip):
     # Prefer mkcert (CA-trusted = Cast SDK works)
     mkcert = subprocess.run(["which", "mkcert"], capture_output=True, text=True, timeout=5)
     if mkcert.returncode == 0:
-        print("[TicianoFlix] Generating CA-trusted SSL certificate via mkcert...", flush=True)
+        print("[12:00 Media Server] Generating CA-trusted SSL certificate via mkcert...", flush=True)
         try:
             subprocess.run(
                 ["mkcert", "-key-file", str(key_path), "-cert-file", str(cert_path),
@@ -129,13 +129,13 @@ def _ensure_ssl_cert(cert_dir, local_ip):
                 check=True, capture_output=True, timeout=15,
             )
             key_path.chmod(0o600)
-            print(f"[TicianoFlix] mkcert cert created: {cert_path}", flush=True)
+            print(f"[12:00 Media Server] mkcert cert created: {cert_path}", flush=True)
             return cert_path, key_path
         except Exception as e:
-            print(f"[TicianoFlix] mkcert failed ({e}), falling back to openssl...", flush=True)
+            print(f"[12:00 Media Server] mkcert failed ({e}), falling back to openssl...", flush=True)
 
     # Fallback: openssl self-signed (Cast SDK may not work)
-    print("[TicianoFlix] Generating self-signed SSL certificate via openssl...", flush=True)
+    print("[12:00 Media Server] Generating self-signed SSL certificate via openssl...", flush=True)
     san = ",".join([f"DNS:{n}" for n in hostnames] + [f"IP:{local_ip}"])
     try:
         subprocess.run(
@@ -145,17 +145,17 @@ def _ensure_ssl_cert(cert_dir, local_ip):
                 "-out", str(cert_path),
                 "-days", "3650",
                 "-nodes",
-                "-subj", "/CN=TicianoFlix",
+                "-subj", "/CN=Media Server",
                 "-addext", f"subjectAltName={san}",
             ],
             check=True, capture_output=True, timeout=15,
         )
         key_path.chmod(0o600)
-        print(f"[TicianoFlix] Self-signed cert created: {cert_path}", flush=True)
+        print(f"[12:00 Media Server] Self-signed cert created: {cert_path}", flush=True)
         return cert_path, key_path
     except Exception as e:
-        print(f"[TicianoFlix] WARNING: Could not generate SSL cert: {e}", flush=True)
-        print("[TicianoFlix] Chromecast discovery will require HTTPS.", flush=True)
+        print(f"[12:00 Media Server] WARNING: Could not generate SSL cert: {e}", flush=True)
+        print("[12:00 Media Server] Chromecast discovery will require HTTPS.", flush=True)
         return None, None
 
 
@@ -202,11 +202,11 @@ def start_https_server(handler_class, host, https_port, cert_path, key_path):
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         ACTIVE_HTTPS_PORT = https_port
-        print(f"[TicianoFlix] HTTPS on https://localhost:{https_port}", flush=True)
+        print(f"[12:00 Media Server] HTTPS on https://localhost:{https_port}", flush=True)
         return httpd
     except Exception as e:
-        print(f"[TicianoFlix] WARNING: Could not start HTTPS server: {e}", flush=True)
-        print("[TicianoFlix] Continuing with HTTP only.", flush=True)
+        print(f"[12:00 Media Server] WARNING: Could not start HTTPS server: {e}", flush=True)
+        print("[12:00 Media Server] Continuing with HTTP only.", flush=True)
         return None
 
 
@@ -217,7 +217,7 @@ def active_https_port():
 
 def find_free_port():
     """Sempre usa PORT. Se ocupada, mata a instância anterior."""
-    env_port = os.environ.get("TICIANOFLIX_PORT")
+    env_port = env("PORT") or None
     if env_port:
         return int(env_port)
 
@@ -232,7 +232,7 @@ def find_free_port():
         pids = _pids_on_port(port)
         me = str(os.getpid())
         pids = [p for p in pids if p != me]
-        print(f"[TicianoFlix] Porta {port} ocupada por {', '.join(pids) or '?'}. "
+        print(f"[12:00 Media Server] Porta {port} ocupada por {', '.join(pids) or '?'}. "
               f"Matando instância anterior...", flush=True)
         for pid in pids:
             try:
@@ -248,5 +248,5 @@ def find_free_port():
             s.close()
             return port
         except OSError:
-            print(f"[TicianoFlix] ERRO: Porta {port} ainda está ocupada. Saia a instância anterior com: pkill -9 -f 'python.*server.py'", flush=True)
+            print(f"[12:00 Media Server] ERRO: Porta {port} ainda está ocupada. Saia a instância anterior com: pkill -9 -f 'python.*server.py'", flush=True)
             sys.exit(1)

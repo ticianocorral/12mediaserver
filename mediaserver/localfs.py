@@ -118,7 +118,7 @@ def catalog_dir_name():
 # Nomes genericos que ja existiram como padrao em versoes anteriores, aceitos
 # pra sempre — ninguem deveria ter que renomear uma pasta no HD so porque o
 # app mudou a convencao de nome.
-CATALOG_DIR_NAME_LEGADO = ("ticianoflix", "mediaflix")
+CATALOG_DIR_NAME_LEGADO = ("ticianoflix", "mediaflix")  # inclui o nome de antes da troca de nome do app
 
 
 def _casa_nome_catalogo(nome):
@@ -131,7 +131,7 @@ MAX_PROBE_DIRS = 300
 
 # Quantos niveis abaixo da pasta escolhida procurar. O volume que o usuario
 # escolhe costuma ficar um ou dois niveis acima do acervo:
-# "/Volumes/MeuHD" -> "/Volumes/MeuHD/Filmes/TicianoFlix".
+# "/Volumes/MeuHD" -> "/Volumes/MeuHD/Filmes/Media Server".
 MAX_PROBE_DEPTH = 2
 
 
@@ -156,12 +156,12 @@ def _subdirs(base, limit=MAX_PROBE_DIRS):
 
 
 def find_catalog_dir(root, max_descend=MAX_PROBE_DEPTH):
-    """Acha a pasta "TicianoFlix" em `root` ou ate `max_descend` niveis abaixo.
+    """Acha a pasta "Media Server" em `root` ou ate `max_descend` niveis abaixo.
 
     Devolve None quando nao existe — o cadastro entao e recusado, em vez de
     aceitar uma pasta qualquer e produzir um catalogo vazio sem explicacao.
 
-    A comparacao ignora maiusculas: o usuario nao deve tropecar em "Ticianoflix".
+    A comparacao ignora maiusculas: o usuario nao deve tropecar em "media server".
     """
     root = Path(root)
     if _casa_nome_catalogo(root.name):

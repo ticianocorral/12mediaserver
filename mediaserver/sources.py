@@ -3,7 +3,7 @@
 A nuvem deixou de ser "o Google Drive" e passou a ser "uma" fonte. Cada fonte
 tem um ponto de montagem no namespace logico que o DB e o frontend ja usam:
 
-    Nuvem         /TicianoFlix/Terror/O Iluminado (1980)/filme.mkv
+    Nuvem         /Media Server/Terror/O Iluminado (1980)/filme.mkv
     HD externo    /Local/hd-externo/Terror/Alien (1979)/filme.mkv
 
 O registro mora num JSON ao lado do auth.json, e nao no SQLite: fonte e
@@ -385,7 +385,7 @@ def detect_volumes():
         seen.add(real)
         found.append({"path": str(real), "name": real.name or str(real),
                       "kind": kind,
-                      # Ja tem a pasta TicianoFlix dentro? A UI destaca essas,
+                      # Ja tem a pasta Media Server dentro? A UI destaca essas,
                       # para o usuario nao clicar no que vai ser recusado.
                       "pronto": _localfs.has_catalog_dir(real)})
 

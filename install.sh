@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TicianoFlix — Instalador (Linux e macOS)
+# 12:00 Media Server — Instalador (Linux e macOS)
 #
 # Uso recomendado (nao precisa clonar nada antes):
 #   curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/install.sh | bash
@@ -11,9 +11,9 @@
 # "curl | bash" ali em cima).
 set -euo pipefail
 
-REPO="${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}"
-REF="${TICIANOFLIX_REF:-main}"
-PORTA="${TICIANOFLIX_PORT:-9187}"
+REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
+REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
+PORTA="${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}"
 
 # ─── Cores ──────────────────────────────────────────────
 VERDE='\033[0;32m'
@@ -27,7 +27,7 @@ aviso(){ echo -e "  ${AMARELO}⚠${RESET} $1"; }
 erro() { echo -e "  ${VERMELHO}✗${RESET} $1"; }
 
 echo ""
-echo -e "  ${CIANO}🎬 TicianoFlix — Instalador${RESET}"
+echo -e "  ${CIANO}🎬 12:00 Media Server — Instalador${RESET}"
 echo -e "  ${CIANO}═══════════════════════════${RESET}"
 echo ""
 
@@ -52,11 +52,15 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ] \
     DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ok "Rodando a partir de um clone existente: $DIR"
 else
-    DIR="${TICIANOFLIX_DIR:-$HOME/TicianoFlix}"
-    info "Baixando o TicianoFlix (${REPO}@${REF})..."
+    DIR="${MEDIA_SERVER_DIR:-${TICIANOFLIX_DIR:-$HOME/Media-Server}}"
+    # Instalacao de antes da troca de nome: leva a pasta pro nome novo.
+    if [ ! -e "$DIR" ] && [ -d "$HOME/TicianoFlix" ] && [ -z "${MEDIA_SERVER_DIR:-${TICIANOFLIX_DIR:-}}" ]; then
+        mv "$HOME/TicianoFlix" "$DIR" && ok "Pasta ~/TicianoFlix movida para $DIR"
+    fi
+    info "Baixando o 12:00 Media Server (${REPO}@${REF})..."
     mkdir -p "$DIR"
     URL_TARBALL="https://github.com/${REPO}/archive/refs/heads/${REF}.tar.gz"
-    if ! curl -fsSL "$URL_TARBALL" | tar -xz --strip-components=1 -C "$DIR" 2>/tmp/ticianoflix-download.log; then
+    if ! curl -fsSL "$URL_TARBALL" | tar -xz --strip-components=1 -C "$DIR" 2>/tmp/media-server-download.log; then
         erro "Não consegui baixar $URL_TARBALL"
         echo "  Isso costuma acontecer quando o repositório está privado no GitHub —"
         echo "  nesse caso baixe o .zip manualmente (autenticado) e rode 'bash install.sh'"
@@ -144,7 +148,7 @@ else
     esac
     if [ "$PLATAFORMA" = "macos" ]; then RCLONE_OS="osx"; else RCLONE_OS="linux"; fi
     # Base configuravel: mirrors e proxies de empresa nao precisam de sed no script.
-    RCLONE_BASE="${TICIANOFLIX_RCLONE_BASE:-https://downloads.rclone.org}"
+    RCLONE_BASE="${MEDIA_SERVER_RCLONE_BASE:-${TICIANOFLIX_RCLONE_BASE:-https://downloads.rclone.org}}"
 
     if [ -n "$RCLONE_ARCH" ]; then
         TMP_RCLONE="$(mktemp -d)"
@@ -194,7 +198,7 @@ PYRCLONE
             case ":$PATH:" in
                 *":$LOCAL_BIN:"*) : ;;
                 *) aviso "Para o comando 'rclone' funcionar no seu terminal, adicione ~/.local/bin ao PATH."
-                   aviso "O TicianoFlix ja enxerga o rclone sem isso — e so a linha de comando." ;;
+                   aviso "O 12:00 Media Server ja enxerga o rclone sem isso — e so a linha de comando." ;;
             esac
         fi
     else
@@ -205,17 +209,17 @@ PYRCLONE
 fi
 
 # ─── 5. Diretórios de cache ──────────────────────────────
-mkdir -p "$HOME/.cache/ticianoflix/images"
-mkdir -p "$HOME/.cache/ticianoflix/subs"
-ok "Diretórios de cache prontos (~/.cache/ticianoflix)"
+mkdir -p "$HOME/.cache/media-server/images"
+mkdir -p "$HOME/.cache/media-server/subs"
+ok "Diretórios de cache prontos (~/.cache/media-server)"
 
 if [ "$PLATAFORMA" = "macos" ]; then
     # ─── 6a. Wrapper nativo (nome legível no Activity Monitor) ──
-    WRAPPER="$DIR/ticianoflix-server"
+    WRAPPER="$DIR/media-server"
     if command -v clang >/dev/null 2>&1; then
-        if [ ! -x "$WRAPPER" ] || [ "$DIR/ticianoflix-server.c" -nt "$WRAPPER" ]; then
-            info "Compilando wrapper nativo (ticianoflix-server)..."
-            clang -O2 -o "$WRAPPER" "$DIR/ticianoflix-server.c" && chmod +x "$WRAPPER" \
+        if [ ! -x "$WRAPPER" ] || [ "$DIR/media-server.c" -nt "$WRAPPER" ]; then
+            info "Compilando wrapper nativo (media-server)..."
+            clang -O2 -o "$WRAPPER" "$DIR/media-server.c" && chmod +x "$WRAPPER" \
                 && ok "Wrapper compilado" \
                 || aviso "Falha ao compilar wrapper — usará python3 direto"
         else
@@ -244,7 +248,15 @@ if [ "$PLATAFORMA" = "macos" ]; then
     fi
 
     LA_DIR="$HOME/Library/LaunchAgents"
-    PLIST="$LA_DIR/com.ticianoflix.plist"
+    # Servico de antes da troca de nome: para e remove, senao ele segue dono da porta.
+    OLD_PLIST="$LA_DIR/com.ticianoflix.plist"
+    if [ -f "$OLD_PLIST" ]; then
+        launchctl bootout "gui/$(id -u)/com.ticianoflix" 2>/dev/null \
+            || launchctl unload "$OLD_PLIST" 2>/dev/null || true
+        rm -f "$OLD_PLIST"
+        ok "Serviço antigo (com.ticianoflix) removido"
+    fi
+    PLIST="$LA_DIR/com.mediaserver.plist"
     mkdir -p "$LA_DIR"
     cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -252,7 +264,7 @@ if [ "$PLATAFORMA" = "macos" ]; then
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ticianoflix</string>
+    <string>com.mediaserver</string>
     <key>ProgramArguments</key>
     <array>
         $PROGRAM_ARGS
@@ -269,9 +281,9 @@ if [ "$PLATAFORMA" = "macos" ]; then
         <string>$LAUNCH_PATH</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>$HOME/.cache/ticianoflix/ticianoflix.log</string>
+    <string>$HOME/.cache/media-server/media-server.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/.cache/ticianoflix/ticianoflix.log</string>
+    <string>$HOME/.cache/media-server/media-server.log</string>
 </dict>
 </plist>
 PLIST_EOF
@@ -284,19 +296,25 @@ PLIST_EOF
     fi
     sleep 2
 
-    if launchctl list 2>/dev/null | grep -q "com.ticianoflix"; then
+    if launchctl list 2>/dev/null | grep -q "com.mediaserver"; then
         ok "Serviço carregado e rodando"
     else
-        aviso "Serviço não carregou. Veja o log: tail -50 ~/.cache/ticianoflix/ticianoflix.log"
+        aviso "Serviço não carregou. Veja o log: tail -50 ~/.cache/media-server/media-server.log"
     fi
 else
     # ─── 6b. systemd (Linux) ─────────────────────────────
     SERVICE_DIR="$HOME/.config/systemd/user"
-    SERVICE_FILE="$SERVICE_DIR/ticianoflix.service"
+    SERVICE_FILE="$SERVICE_DIR/media-server.service"
+    # Servico de antes da troca de nome: para e remove.
+    if [ -f "$SERVICE_DIR/ticianoflix.service" ]; then
+        systemctl --user disable --now ticianoflix.service 2>/dev/null || true
+        rm -f "$SERVICE_DIR/ticianoflix.service"
+        ok "Serviço antigo (ticianoflix) removido"
+    fi
     mkdir -p "$SERVICE_DIR"
     cat > "$SERVICE_FILE" <<UNIT
 [Unit]
-Description=TicianoFlix
+Description=12:00 Media Server
 Documentation=https://github.com/${REPO}
 After=network-online.target
 Wants=network-online.target
@@ -316,7 +334,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
-ReadWritePaths=%h/.cache/ticianoflix
+ReadWritePaths=%h/.cache/media-server
 ReadWritePaths=%h/.cache/rclone
 # O cadastro da nuvem (Ajustes > Nuvem) grava os remotes no rclone.conf via
 # "rclone config create" — sem esta linha a gravação falharia com o home
@@ -329,15 +347,15 @@ UNIT
     ok "Serviço systemd criado em $SERVICE_FILE"
 
     systemctl --user daemon-reload
-    systemctl --user enable ticianoflix.service
-    systemctl --user restart ticianoflix.service 2>/dev/null || systemctl --user start ticianoflix.service
+    systemctl --user enable media-server.service
+    systemctl --user restart media-server.service 2>/dev/null || systemctl --user start media-server.service
     loginctl enable-linger 2>/dev/null || true
     sleep 2
 
-    if systemctl --user is-active --quiet ticianoflix.service; then
+    if systemctl --user is-active --quiet media-server.service; then
         ok "Serviço ativo"
     else
-        aviso "Serviço não está ativo. Veja: journalctl --user -u ticianoflix -n 40 --no-pager"
+        aviso "Serviço não está ativo. Veja: journalctl --user -u media-server -n 40 --no-pager"
     fi
 fi
 
@@ -356,9 +374,9 @@ URL="http://localhost:${PORTA}"
 if [ -z "$RESPONDEU" ]; then
     aviso "O servidor não respondeu em 30s. Veja o log:"
     if [ "$PLATAFORMA" = "macos" ]; then
-        echo "  tail -50 ~/.cache/ticianoflix/ticianoflix.log"
+        echo "  tail -50 ~/.cache/media-server/media-server.log"
     else
-        echo "  journalctl --user -u ticianoflix -n 50 --no-pager"
+        echo "  journalctl --user -u media-server -n 50 --no-pager"
     fi
 else
     ok "Servidor no ar em $URL"
@@ -366,7 +384,7 @@ else
     if echo "$STATUS_JSON" | grep -q '"configured": *true'; then
         ok "Conta já configurada — é só abrir e entrar."
     else
-        LOG="$HOME/.cache/ticianoflix/ticianoflix.log"
+        LOG="$HOME/.cache/media-server/media-server.log"
         CODIGO=""
         for _ in $(seq 1 10); do
             # "|| true" no pipe inteiro, nao so no grep: sob "set -e -o pipefail",
@@ -400,11 +418,11 @@ echo -e "  ${VERDE}║                                                ║${RESET
 printf   "  ${VERDE}║${RESET}  🌐 %-42s${VERDE}║${RESET}\n" "$URL"
 echo -e "  ${VERDE}║                                                ║${RESET}"
 if [ "$PLATAFORMA" = "macos" ]; then
-    echo -e "  ${VERDE}║${RESET}  🔄 launchctl kickstart -k gui/\$(id -u)/com.ticianoflix"
-    echo -e "  ${VERDE}║${RESET}  📋 tail -f ~/.cache/ticianoflix/ticianoflix.log"
+    echo -e "  ${VERDE}║${RESET}  🔄 launchctl kickstart -k gui/\$(id -u)/com.mediaserver"
+    echo -e "  ${VERDE}║${RESET}  📋 tail -f ~/.cache/media-server/media-server.log"
 else
-    echo -e "  ${VERDE}║${RESET}  🔄 systemctl --user restart ticianoflix"
-    echo -e "  ${VERDE}║${RESET}  📋 journalctl --user -u ticianoflix -f"
+    echo -e "  ${VERDE}║${RESET}  🔄 systemctl --user restart media-server"
+    echo -e "  ${VERDE}║${RESET}  📋 journalctl --user -u media-server -f"
 fi
 echo -e "  ${VERDE}╚══════════════════════════════════════════════╝${RESET}"
 echo ""

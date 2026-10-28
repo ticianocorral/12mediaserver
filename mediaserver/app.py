@@ -26,7 +26,7 @@ from . import scanner as _scanner
 from .paths import remote_atual, remote_configurado
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
-from .handler import TicianoFlixHandler
+from .handler import MediaServerHandler
 
 
 def _rotacionar_log():
@@ -34,11 +34,11 @@ def _rotacionar_log():
     do processo — sem rotacao o log so cresce (ja passou de 3 MB). Copytruncate:
     guarda a versao anterior em .1 e zera o original; renomear nao serve — o fd
     aberto continuaria escrevendo no arquivo ja rotacionado."""
-    log = CACHE_DIR / "ticianoflix.log"
+    log = CACHE_DIR / "media-server.log"
     try:
         if not (log.exists() and log.stat().st_size >= 1024 * 1024):
             return
-        (CACHE_DIR / "ticianoflix.log.1").write_bytes(log.read_bytes())
+        (CACHE_DIR / "media-server.log.1").write_bytes(log.read_bytes())
         log.write_bytes(b"")
     except OSError:
         pass
@@ -63,14 +63,14 @@ def main():
     try:
         _scanner.prune_orphan_sources()
     except Exception as e:
-        print(f"[TicianoFlix] Falha ao podar fontes orfas: {e}", flush=True)
+        print(f"[12:00 Media Server] Falha ao podar fontes orfas: {e}", flush=True)
 
     # O mesmo para a nuvem: desconfigurada, o catalogo remoto antigo nao sairia
     # nunca — o scan incremental nao visita fonte que deixou de existir.
     try:
         _scanner.prune_unconfigured_cloud()
     except Exception as e:
-        print(f"[TicianoFlix] Falha ao podar catalogo da nuvem: {e}", flush=True)
+        print(f"[12:00 Media Server] Falha ao podar catalogo da nuvem: {e}", flush=True)
 
     # No auto-scan on startup — user must click refresh manually
     conn = get_db()
@@ -78,17 +78,17 @@ def main():
     conn.close()
 
     if count == 0:
-        print("[TicianoFlix] Cache vazio. Clique em 🔄 (Atualizar) para escanear as fontes.", flush=True)
+        print("[12:00 Media Server] Cache vazio. Clique em 🔄 (Atualizar) para escanear as fontes.", flush=True)
     else:
         cache_age = ""
         t = get_cache_time()
         if t:
             age_mins = (int(time.time()) - int(t)) // 60
             cache_age = f" (cached {age_mins}m ago)"
-        print(f"[TicianoFlix] Cache loaded from {db_path_abs}{cache_age}", flush=True)
+        print(f"[12:00 Media Server] Cache loaded from {db_path_abs}{cache_age}", flush=True)
 
     port = find_free_port()
-    server = http.server.ThreadingHTTPServer((BIND_HOST, port), TicianoFlixHandler)
+    server = http.server.ThreadingHTTPServer((BIND_HOST, port), MediaServerHandler)
     server.timeout = 0.5
     # Permite reuso imediato da porta ao reiniciar
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -121,13 +121,13 @@ def main():
                     continue
         if https_port:
             https_server = start_https_server(
-                TicianoFlixHandler, BIND_HOST, https_port, cert_path, key_path
+                MediaServerHandler, BIND_HOST, https_port, cert_path, key_path
             )
 
     # Build banner
     banner = f"""
 ╔══════════════════════════════════════════════╗
-║            TicianoFlix Server                ║
+║            12:00 Media Server                ║
 ║                                              ║
 ║  🌐 http://localhost:{port}                     ║
 ║  🌐 http://{local_ip}:{port}                     ║"""
@@ -167,7 +167,7 @@ def main():
 
     # Shutdown imediato — não espera threads de stream terminarem
     def shutdown(sig, frame):
-        print("\n[TicianoFlix] Desligando...")
+        print("\n[12:00 Media Server] Desligando...")
         os._exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
@@ -181,7 +181,7 @@ def main():
     finally:
         _rclone.shutdown()
         server.server_close()
-        print("[TicianoFlix] Servidor parado.")
+        print("[12:00 Media Server] Servidor parado.")
 
 
 if __name__ == "__main__":

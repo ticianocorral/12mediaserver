@@ -13,7 +13,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from .config import BACKUP_FOLDER, NUVEM_PATH
+from .config import BACKUP_FOLDER, BACKUP_FOLDER_LEGADO, NUVEM_PATH
 from . import branding as _branding
 
 _nuvem_cache_lock = threading.Lock()
@@ -122,9 +122,16 @@ def read_remote_conf(section):
 
 def destino_backup():
     """Destino raiz dos backups no remote conectado:
-    "b2:acervo/TicianoFlix Backups" (o handler acrescenta /arquivo.zip)."""
+    "b2:acervo/Media Server Backups" (o handler acrescenta /arquivo.zip)."""
     destino = remote_atual() + ":" + prefixo_nuvem() + BACKUP_FOLDER
     return destino
+
+
+def destinos_backup():
+    """Pasta de backups atual e a de antes da troca de nome, nessa ordem: quem
+    ja tinha backups na nuvem continua conseguindo restaurar."""
+    base = remote_atual() + ":" + prefixo_nuvem()
+    return [base + BACKUP_FOLDER, base + BACKUP_FOLDER_LEGADO]
 
 
 def _strip_logical_root(logical_path):

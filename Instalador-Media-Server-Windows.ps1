@@ -1,11 +1,11 @@
 # ============================================================
-#  TicianoFlix — Instalador visual para Windows
+#  12:00 Media Server — Instalador visual para Windows
 #
 #  Assistente gráfico (WinForms) que verifica pré-requisitos,
 #  instala o app e deixa ele rodando. Não precisa de PowerShell
 #  7 nem de nada além do que já vem no Windows.
 #
-#  Para executar: duplo clique no "Instalador-TicianoFlix-Windows.bat"
+#  Para executar: duplo clique no "Instalador-Media-Server-Windows.bat"
 #  (ou botão direito no .ps1 > Executar com PowerShell).
 # ============================================================
 #requires -version 5.1
@@ -106,13 +106,13 @@ function Get-Projeto {
         Write-Log "Usando os arquivos locais: $Script:PastaScript"
         return
     }
-    $dest = Join-Path $env:USERPROFILE 'TicianoFlix'
-    Write-Log "Baixando o TicianoFlix ($($Script:REPO)@$($Script:REF)) para $dest..."
-    $zip = Join-Path $env:TEMP 'ticianoflix.zip'
+    $dest = Join-Path $env:USERPROFILE 'Media-Server'
+    Write-Log "Baixando o 12:00 Media Server ($($Script:REPO)@$($Script:REF)) para $dest..."
+    $zip = Join-Path $env:TEMP 'media-server.zip'
     Invoke-WebRequest -Uri "https://github.com/$($Script:REPO)/archive/refs/heads/$($Script:REF).zip" -OutFile $zip -UseBasicParsing
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     Expand-Archive -Force $zip $env:TEMP
-    $extraido = Get-ChildItem $env:TEMP -Directory | Where-Object Name -like 'TicianoFlix-*' |
+    $extraido = Get-ChildItem $env:TEMP -Directory | Where-Object { $_.Name -like 'TicianoFlix-*' -or $_.Name -like 'Media-Server-*' } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     Move-Item $extraido.FullName $dest
     $Script:DirInstalacao = $dest
@@ -128,13 +128,13 @@ function Install-App {
     $Script:TemProjetoLocal = $true
 
     # Diretórios de cache
-    New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cache\ticianoflix\images" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cache\ticianoflix\subs" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cache\media-server\images" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cache\media-server\subs" | Out-Null
     New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cache\rclone" | Out-Null
     Write-Log '✓ Diretórios de cache prontos' 'LightGreen'
 
     # Script de execução
-    $bat = Join-Path $Script:DirInstalacao 'TicianoFlix.bat'
+    $bat = Join-Path $Script:DirInstalacao 'Media-Server.bat'
     "@echo off`r`nchcp 65001 >nul`r`ncd /d `"$($Script:DirInstalacao)`"`r`n`"$((Find-Python))`" server.py`r`npause" |
         Set-Content -Path $bat -Encoding UTF8
     Write-Log "✓ Criado $bat" 'LightGreen'
@@ -142,7 +142,8 @@ function Install-App {
     # Autostart (opcional)
     if ($Script:QueroAutostart) {
         try {
-            schtasks /Create /F /TN 'TicianoFlix' /SC ONLOGON /RL LIMITED /TR "`"$bat`"" | Out-Null
+            schtasks /Delete /TN 'TicianoFlix' /F 2>$null | Out-Null
+            schtasks /Create /F /TN 'Media Server' /SC ONLOGON /RL LIMITED /TR "`"$bat`"" | Out-Null
             Write-Log '✓ Tarefa agendada criada (inicia no login)' 'LightGreen'
         } catch {
             Write-Log '⚠ Não consegui criar a tarefa agendada (rode como administrador se quiser)' 'Khaki'
@@ -153,7 +154,7 @@ function Install-App {
 # ── Interface ────────────────────────────────────────────────
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'TicianoFlix — Instalador'
+$form.Text = '12:00 Media Server — Instalador'
 $form.Size = New-Object System.Drawing.Size(620, 480)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
@@ -162,7 +163,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 22)
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
 
 $lbTitulo = New-Object System.Windows.Forms.Label
-$lbTitulo.Text = '🎬 TicianoFlix'
+$lbTitulo.Text = '🎬 12:00 Media Server'
 $lbTitulo.Font = New-Object System.Drawing.Font('Segoe UI', 22, [System.Drawing.FontStyle]::Bold)
 $lbTitulo.ForeColor = [System.Drawing.Color]::FromArgb(229, 9, 20)
 $lbTitulo.Location = New-Object System.Drawing.Point(24, 18)
@@ -183,7 +184,7 @@ $pnOpcoes.Size = New-Object System.Drawing.Size(556, 250)
 $form.Controls.Add($pnOpcoes)
 
 $chkAutostart = New-Object System.Windows.Forms.CheckBox
-$chkAutostart.Text = 'Iniciar o TicianoFlix junto com o Windows'
+$chkAutostart.Text = 'Iniciar o 12:00 Media Server junto com o Windows'
 $chkAutostart.Checked = $true
 $chkAutostart.ForeColor = [System.Drawing.Color]::Gainsboro
 $chkAutostart.Location = New-Object System.Drawing.Point(4, 10)
@@ -191,7 +192,7 @@ $chkAutostart.Size = New-Object System.Drawing.Size(540, 24)
 $pnOpcoes.Controls.Add($chkAutostart)
 
 $chkAbrir = New-Object System.Windows.Forms.CheckBox
-$chkAbrir.Text = 'Abrir o TicianoFlix no navegador ao terminar'
+$chkAbrir.Text = 'Abrir o 12:00 Media Server no navegador ao terminar'
 $chkAbrir.Checked = $true
 $chkAbrir.ForeColor = [System.Drawing.Color]::Gainsboro
 $chkAbrir.Location = New-Object System.Drawing.Point(4, 40)
@@ -202,7 +203,7 @@ $lbDestino = New-Object System.Windows.Forms.Label
 $lbDestino.Text = if ($Script:TemProjetoLocal) {
     "Instalando a partir de: $($Script:PastaScript)"
 } else {
-    "Será instalado em: $env:USERPROFILE\TicianoFlix"
+    "Será instalado em: $env:USERPROFILE\Media-Server"
 }
 $lbDestino.ForeColor = [System.Drawing.Color]::Silver
 $lbDestino.Location = New-Object System.Drawing.Point(4, 80)
@@ -253,7 +254,7 @@ $btnInstalar.Add_Click({
     # Um handler só, com dois papéis: antes da instalação ele instala;
     # depois, vira o botão de abrir o app.
     if ($Script:Instalado) {
-        Start-Process (Join-Path $Script:DirInstalacao 'TicianoFlix.bat')
+        Start-Process (Join-Path $Script:DirInstalacao 'Media-Server.bat')
         if ($Script:QueroAbrir) {
             Start-Sleep -Seconds 3
             Start-Process "http://localhost:$($Script:PORTA)"
@@ -275,9 +276,9 @@ $btnInstalar.Add_Click({
         Write-Log ''
         Write-Log '✅ Instalação concluída!' 'LightGreen'
         Write-Log 'Abra http://localhost:9187 — o código de instalação'
-        Write-Log 'aparece na janela do servidor (TicianoFlix.bat).'
+        Write-Log 'aparece na janela do servidor (Media-Server.bat).'
         $Script:Instalado = $true
-        $btnInstalar.Text = 'Abrir TicianoFlix'
+        $btnInstalar.Text = 'Abrir 12:00 Media Server'
         $btnInstalar.Enabled = $true
     } catch {
         Write-Log ''

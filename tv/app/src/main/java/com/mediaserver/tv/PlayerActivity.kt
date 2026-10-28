@@ -1,4 +1,4 @@
-package com.ticianoflix.tv
+package com.mediaserver.tv
 
 import android.app.Activity
 import android.content.Intent
@@ -59,7 +59,7 @@ class PlayerActivity : AppCompatActivity() {
             // que o app ouviu o comando e foi o servidor/codec que recusou.
             p.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    Log.e("TicianoFlixPlayer", "erro de reproducao: $error")
+                    Log.e("12:00 Media ServerPlayer", "erro de reproducao: $error")
                     android.widget.Toast.makeText(
                         this@PlayerActivity,
                         "Falha ao tocar: ${error.errorCodeName}",

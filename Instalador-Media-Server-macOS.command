@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-#  TicianoFlix — Instalador visual para macOS
+#  12:00 Media Server — Instalador visual para macOS
 #
 #  Diálogos nativos (AppleScript) + o instalador oficial
 #  (install.sh) rodando na janela do Terminal, com a saída
 #  colorida visível — a barra de progresso de verdade.
 #
-#  Uso: duplo clique no arquivo (ou: bash Instalador-TicianoFlix-macOS.command)
+#  Uso: duplo clique no arquivo (ou: bash Instalador-Media-Server-macOS.command)
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}"
-REF="${TICIANOFLIX_REF:-main}"
+REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
+REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
 
 aviso() {
-    osascript -e "display dialog \"$1\" with title \"TicianoFlix\" buttons {\"Continuar\"} default button 1 with icon note" >/dev/null
+    osascript -e "display dialog \"$1\" with title \"12:00 Media Server\" buttons {\"Continuar\"} default button 1 with icon note" >/dev/null
 }
 
 # ── Boas-vindas ──────────────────────────────────────────────
-if ! osascript -e 'display dialog "🎬 Bem-vindo ao TicianoFlix!
+if ! osascript -e 'display dialog "🎬 Bem-vindo ao 12:00 Media Server!
 
 Seus filmes com cara de Netflix — self-hosted, leve e instantâneo.
 
@@ -28,7 +28,7 @@ O instalador vai:
   • instalar o app e o serviço que sobe com o login
   • abrir o navegador no final
 
- Continuar?" with title "TicianoFlix — Instalador" buttons {"Cancelar", "Continuar"} default button 2 with icon note' 2>/dev/null | grep -q "Continuar"; then
+ Continuar?" with title "12:00 Media Server — Instalador" buttons {"Cancelar", "Continuar"} default button 2 with icon note' 2>/dev/null | grep -q "Continuar"; then
     echo "Instalação cancelada."
     exit 0
 fi
@@ -43,7 +43,7 @@ fi
 # ── Instalar (saída visível no Terminal) ─────────────────────
 clear 2>/dev/null || true
 echo ""
-echo "  🎬 TicianoFlix — instalando..."
+echo "  🎬 12:00 Media Server — instalando..."
 echo "  (esta janela mostra o progresso de verdade; pode deixar rodando)"
 echo ""
 chmod +x "$DIR/install.sh"
@@ -55,12 +55,12 @@ fi
 # ── Encerramento ─────────────────────────────────────────────
 RESPOSTA=$(osascript -e 'display dialog "✅ Instalação concluída!
 
-O TicianoFlix já está rodando e vai iniciar junto com o Mac.
+O 12:00 Media Server já está rodando e vai iniciar junto com o Mac.
 
 Abra http://localhost:9187 — o código de instalação de 6 dígitos
 apareceu na janela do Terminal acima (e no log).
 
-Abrir o navegador agora?" with title "TicianoFlix — Instalador" buttons {"Depois", "Abrir"} default button 2 with icon note' 2>/dev/null | grep -o "Abrir\|Depois" || echo "")
+Abrir o navegador agora?" with title "12:00 Media Server — Instalador" buttons {"Depois", "Abrir"} default button 2 with icon note' 2>/dev/null | grep -o "Abrir\|Depois" || echo "")
 if [ "$RESPOSTA" = "Abrir" ]; then
     open "http://localhost:9187"
 fi

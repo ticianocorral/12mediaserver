@@ -1,4 +1,4 @@
-package com.ticianoflix.tv
+package com.mediaserver.tv
 
 import android.content.Intent
 import android.os.Bundle

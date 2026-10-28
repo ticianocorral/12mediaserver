@@ -111,7 +111,7 @@ def _migrate_auth_if_needed():
         return
     if raw and "users" not in raw and raw.get("hash"):
         _save_auth(_v1_to_v2(raw))
-        print("[TicianoFlix] Senha unica migrada para a conta 'admin'.", flush=True)
+        print("[12:00 Media Server] Senha unica migrada para a conta 'admin'.", flush=True)
 
 
 def _auth_configured():

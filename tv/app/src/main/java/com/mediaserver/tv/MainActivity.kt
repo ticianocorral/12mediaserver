@@ -1,4 +1,4 @@
-package com.ticianoflix.tv
+package com.mediaserver.tv
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -21,12 +21,12 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
- * A interface e a propria web do TicianoFlix, carregada com ?tv=1 — o modo que
+ * A interface e a propria web do 12:00 Media Server, carregada com ?tv=1 — o modo que
  * torna tudo navegavel pelo controle. Reconstruir as telas em Kotlin daria uma
  * segunda interface para manter; assim a TV herda cada novidade da web.
  *
  * A unica coisa que nao acontece na WebView e tocar o filme: para isso a pagina
- * chama TicianoFlixTV.play() e quem assume e o ExoPlayer.
+ * chama MediaServerTV.play() e quem assume e o ExoPlayer.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -62,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false)
 
-        web.addJavascriptInterface(Ponte(), "TicianoFlixTV")
+        web.addJavascriptInterface(Ponte(), "MediaServerTV")
         // WebViewClient padrao para a navegacao ficar dentro do app em vez de
         // abrir o navegador do sistema.
         aviso = findViewById(R.id.desconectado)
@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         // o botao Atualizar, que tambem re-escaneia a rede.
         lifecycleScope.launch {
             if (!Servidor.responde(base)) {
-                Log.w("TicianoFlix", "servidor salvo $base nao responde")
+                Log.w("12:00 Media Server", "servidor salvo $base nao responde")
                 mostrarAviso()
             }
         }
@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
     }
 
-    /** O que a pagina enxerga como window.TicianoFlixTV. */
+    /** O que a pagina enxerga como window.MediaServerTV. */
     inner class Ponte {
         /**
          * Chamado por app.js no lugar de abrir o player da pagina.
@@ -152,10 +152,10 @@ class MainActivity : AppCompatActivity() {
             val dados = try {
                 JSONObject(json)
             } catch (e: Exception) {
-                Log.w("TicianoFlix", "play(): json invalido: $json")
+                Log.w("12:00 Media Server", "play(): json invalido: $json")
                 return
             }
-            Log.i("TicianoFlix", "play(): url=${dados.optString("url")} legenda=${dados.optString("legenda")} posicao=${dados.optLong("posicao", 0L)}")
+            Log.i("12:00 Media Server", "play(): url=${dados.optString("url")} legenda=${dados.optString("legenda")} posicao=${dados.optLong("posicao", 0L)}")
             val i = Intent(this@MainActivity, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_URL, dados.optString("url"))
                 .putExtra(PlayerActivity.EXTRA_LEGENDA, dados.optString("legenda"))

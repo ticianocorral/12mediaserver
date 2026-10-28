@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.ticianoflix.tv"
+    namespace = "com.mediaserver.tv"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.ticianoflix.tv"
+        applicationId = "com.mediaserver.tv"
         // 21 cobre praticamente toda Android TV em uso, inclusive caixas antigas.
         minSdk = 21
         targetSdk = 34

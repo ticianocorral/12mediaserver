@@ -21,7 +21,7 @@ Em vez de recusar o filme, o servidor gera uma copia MP4 do original:
   - o MP4 sai com faststart (moov no inicio).
 
 A conversao roda em segundo plano, uma por vez, e o resultado fica em cache
-(~/.cache/ticianoflix/cast). So a primeira transmissao de cada arquivo
+(~/.cache/media-server/cast). So a primeira transmissao de cada arquivo
 espera; depois e instantaneo. Se o arquivo de origem mudar (mtime/tamanho),
 o cache vence sozinho e uma nova conversao acontece.
 
@@ -409,9 +409,9 @@ def _enqueue(fonte):
         _fila.append(chave)
         if not _worker_ligado:
             _worker_ligado = True
-            threading.Thread(target=_worker, name="ticianoflix-prepare",
+            threading.Thread(target=_worker, name="media-server-prepare",
                              daemon=True).start()
-    print("[TicianoFlix] Preparo para TV na fila: %s" % attrs["rotulo"],
+    print("[12:00 Media Server] Preparo para TV na fila: %s" % attrs["rotulo"],
           flush=True)
 
 
@@ -434,7 +434,7 @@ def _worker():
                 job = _jobs.get(chave)
                 if job:
                     job.update(state="error", error=str(e)[:300])
-            print("[TicianoFlix] Falha preparando %s: %s"
+            print("[12:00 Media Server] Falha preparando %s: %s"
                   % (job.get("rotulo", chave) if job else chave, e), flush=True)
 
 
@@ -481,7 +481,7 @@ def _convert(chave):
         # uma escreve no seu tmp e o os.replace() fica com a última — sem
         # uma sobrescrever o arquivo da outra no meio.
         tmp = mp4.with_name("%s.tmp.%d.mp4" % (mp4.name, os.getpid()))
-        print("[TicianoFlix] Preparando para TV: %s (video %s, audio %s%s)"
+        print("[12:00 Media Server] Preparando para TV: %s (video %s, audio %s%s)"
               % (rotulo_base, info.get("v"), info.get("a") or "sem",
                  ", legenda %s" % Path(sub).name if sub else ""),
               flush=True)
@@ -498,7 +498,7 @@ def _convert(chave):
                 # Legenda ruim nao pode derrubar o filme: refaz sem a faixa
                 # de texto e marca sub_erro — o cache segue valendo.
                 sub_erro = log_ultimo or ("codigo %d" % codigo)
-                print("[TicianoFlix] Legenda %s invalida, preparando sem ela"
+                print("[12:00 Media Server] Legenda %s invalida, preparando sem ela"
                       % Path(sub).name, flush=True)
                 codigo, log_ultimo = _rodar(_cmd(path, info, tmp, None),
                                             chave, dur_us, base=base)
@@ -538,7 +538,7 @@ def _convert(chave):
         meta.write_text(json.dumps(dados_meta), "utf-8")
         with _lock:
             _jobs.pop(chave, None)
-        print("[TicianoFlix] Pronto para TV: %s" % rotulo_base, flush=True)
+        print("[12:00 Media Server] Pronto para TV: %s" % rotulo_base, flush=True)
         _cleanup()
     except Exception as e:
         if tmp is not None:
@@ -550,7 +550,7 @@ def _convert(chave):
             j = _jobs.get(chave)
             if j:
                 j.update(state="error", error=str(e)[:300])
-        print("[TicianoFlix] Falha preparando %s: %s" % (rotulo, e), flush=True)
+        print("[12:00 Media Server] Falha preparando %s: %s" % (rotulo, e), flush=True)
     finally:
         if palco is not None:
             for arq in (palco.get("video"), palco.get("sub")):
@@ -604,7 +604,7 @@ def _baixar_remoto(remoto, destino, chave, base=0, teto=40):
     try:
         resp = urllib.request.urlopen(url, timeout=120)
     except Exception as e:
-        print("[TicianoFlix] Baixa da nuvem falhou (%s): %s" % (remoto, e),
+        print("[12:00 Media Server] Baixa da nuvem falhou (%s): %s" % (remoto, e),
               flush=True)
         return False
     try:
@@ -627,7 +627,7 @@ def _baixar_remoto(remoto, destino, chave, base=0, teto=40):
                         if j:
                             j["percent"] = max(0, min(teto, pct))
     except OSError as e:
-        print("[TicianoFlix] Baixa da nuvem interrompida (%s): %s"
+        print("[12:00 Media Server] Baixa da nuvem interrompida (%s): %s"
               % (remoto, e), flush=True)
         return False
     finally:

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TicianoFlix</title>
+<title>12:00 Media Server</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="alternate icon" type="image/png" sizes="32x32" href="favicon.ico">
 
@@ -18,7 +18,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TicianoFlix">
+<meta name="apple-mobile-web-app-title" content="12:00 Media Server">
 <link rel="apple-touch-icon" href="/icone-apple-touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -132,7 +132,7 @@
            limitava o tamanho. Escondida fora da tela de coleção. -->
       <img class="hero-capa" id="heroCapa" alt="" style="display:none">
       <div class="hero-content">
-        <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> TicianoFlix</div>
+        <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> 12:00 Media Server</div>
         <h1 id="heroTitle">Seus Filmes, Sua Tela</h1>
         <p id="heroDesc">Navegue pelos seus filmes com estilo Netflix.</p>
       </div>
@@ -168,7 +168,7 @@
     <button class="topbar-btn" onclick="toggleSidebar()" aria-label="Abrir menu">
       <svg class="icon-svg"><use href="#i-menu"></use></svg>
     </button>
-    <span class="topbar-logo" onclick="loadPath('')">TicianoFlix</span>
+    <img class="topbar-logo" src="/static/vcr-logo.svg" alt="12:00 Media Server" onclick="loadPath('')">
     <button class="topbar-btn" onclick="abrirBusca()" aria-label="Buscar filmes">
       <svg class="icon-svg"><use href="#i-search"></use></svg>
     </button>
@@ -178,7 +178,7 @@
   <!-- ====== SIDEBAR ====== -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <span class="logo-text"><svg class="icon-svg"><use href="#i-play"></use></svg> TicianoFlix</span>
+      <img class="logo-text" src="/static/vcr-logo.svg" alt="12:00 Media Server">
       <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
     </div>
     <div class="sidebar-nav" id="sidebarNav">

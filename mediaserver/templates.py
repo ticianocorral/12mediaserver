@@ -43,7 +43,7 @@ def _login_page(setup=False):
         extra_bottom = ""
         hint = ("Esqueceu a senha? Peca a um administrador para redefinir. "
                 "Se ninguem mais tiver acesso, apague "
-                "<code>~/.cache/ticianoflix/auth.json</code> no computador e o "
+                "<code>~/.cache/media-server/auth.json</code> no computador e o "
                 "primeiro acesso volta.")
         autocomplete = "current-password"
 

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-#  TicianoFlix — Instalador visual para Linux
+#  12:00 Media Server — Instalador visual para Linux
 #
 #  Diálogos gráficos via zenity (GNOME) ou kdialog (KDE); sem
 #  ambiente gráfico, cai para o terminal mesmo — nunca falha.
 #
-#  Uso: bash Instalador-TicianoFlix-Linux.sh
+#  Uso: bash Instalador-Media-Server-Linux.sh
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}"
-REF="${TICIANOFLIX_REF:-main}"
+REPO="${MEDIA_SERVER_REPO:-${TICIANOFLIX_REPO:-ticianocorral/TicianoFlix}}"
+REF="${MEDIA_SERVER_REF:-${TICIANOFLIX_REF:-main}}"
 
 # ── Qual caixa de diálogo temos? ─────────────────────────────
 ZENITY="$(command -v zenity 2>/dev/null || true)"
@@ -47,7 +47,7 @@ info() {
 }
 
 # ── Boas-vindas ──────────────────────────────────────────────
-pergunta "TicianoFlix — Instalador" "🎬 <b>Bem-vindo ao TicianoFlix</b>
+pergunta "12:00 Media Server — Instalador" "🎬 <b>Bem-vindo ao 12:00 Media Server</b>
 
 Seus filmes com cara de Netflix — self-hosted, leve e instantâneo.
 
@@ -89,7 +89,7 @@ Deixe-a terminar — ela mostra o progresso e o código de instalação no final
         # Acompanha pelo log até o serviço responder.
         info "Instalando..." "A instalação está rodando na janela que abri. Quando ela terminar, clique em OK para continuar."
         for _ in $(seq 1 60); do
-            curl -fsS -o /dev/null "http://localhost:${TICIANOFLIX_PORT:-9187}/api/auth/status" 2>/dev/null && break
+            curl -fsS -o /dev/null "http://localhost:${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}/api/auth/status" 2>/dev/null && break
             sleep 2
         done
     fi
@@ -98,11 +98,11 @@ else
 fi
 
 # ── Encerramento ─────────────────────────────────────────────
-URL="http://localhost:${TICIANOFLIX_PORT:-9187}"
-if pergunta "Instalação concluída" "✅ <b>O TicianoFlix está no ar</b>
+URL="http://localhost:${MEDIA_SERVER_PORT:-${TICIANOFLIX_PORT:-9187}}"
+if pergunta "Instalação concluída" "✅ <b>O 12:00 Media Server está no ar</b>
 
 Abra $URL — o código de instalação de 6 dígitos aparece no log
-(~/.cache/ticianoflix/ticianoflix.log) ou na janela do instalador.
+(~/.cache/media-server/media-server.log) ou na janela do instalador.
 
 Abrir o navegador agora?"; then
     xdg-open "$URL" >/dev/null 2>&1 || true

@@ -22,8 +22,15 @@ from pathlib import Path
 
 from .config import BRANDING_PATH, CACHE_DIR
 
-NOME_PADRAO = "TicianoFlix"
+NOME_PADRAO = "12:00 Media Server"
 COR_PADRAO = "#e50914"
+# Nome padrao de antes da troca de nome do app. Quem o tem gravado no
+# branding.json passa a usar o NOME_PADRAO novo (ver get()).
+NOME_LEGADO = "TicianoFlix"
+# O nome padrao tem ":" (nao vale em nome de pasta), entao a pasta real do
+# acervo no HD/pendrive e na nuvem usa esta forma. Nomes escolhidos na
+# instalacao ja nao podem ter ":" e viram a pasta como estao.
+PASTA_PADRAO = "Media Server"
 
 _RE_COR = re.compile(r"^#[0-9a-fA-F]{6}$")
 # O nome vira pasta real na nuvem/HD/pendrive (ver pasta_biblioteca()), entao
@@ -45,6 +52,17 @@ def _cor_valida(cor):
     return bool(_RE_COR.match(cor or ""))
 
 
+def _gravar_sem_lock(dados):
+    """Grava o branding.json; so a migracao do nome legado usa (set() faz o seu)."""
+    try:
+        tmp = BRANDING_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, BRANDING_PATH)
+        os.chmod(BRANDING_PATH, 0o600)
+    except OSError:
+        pass
+
+
 def get():
     """Marca atual. Nunca falha — sem arquivo ou com arquivo invalido, cai
     no padrao neutro em vez de quebrar a pagina."""
@@ -58,6 +76,11 @@ def get():
             if isinstance(bruto, dict):
                 if _nome_valido(bruto.get("nome")):
                     dados["nome"] = bruto["nome"].strip()
+                    if dados["nome"] == NOME_LEGADO:
+                        dados["nome"] = NOME_PADRAO
+                        if _cor_valida(bruto.get("cor")):
+                            dados["cor"] = bruto["cor"].lower()
+                        _gravar_sem_lock(dados)
                 if _cor_valida(bruto.get("cor")):
                     dados["cor"] = bruto["cor"].lower()
         except (OSError, ValueError):
@@ -103,12 +126,13 @@ def set(nome=None, cor=None):
 def pasta_biblioteca():
     """Nome real da pasta da biblioteca (nuvem, HD, pendrive): o nome escolhido
     na instalacao, imutavel depois disso — ver set() e localfs.catalog_dir_name()."""
-    return get()["nome"]
+    nome = get()["nome"]
+    return PASTA_PADRAO if nome == NOME_PADRAO else nome
 
 
 def logical_root():
     """Prefixo logico usado no banco/rclone/frontend pra raiz do acervo no
-    nuvem. Ver ticianoflix/paths.py pra como isso vira (ou nao) pasta real."""
+    nuvem. Ver mediaserver/paths.py pra como isso vira (ou nao) pasta real."""
     return "/" + pasta_biblioteca()
 
 
@@ -138,31 +162,56 @@ def css():
 # parametrizada pela cor escolhida e com cache em disco: gerar um PNG de 512px
 # pixel a pixel com supersampling 4x nao e caro o bastante pra doer, mas nao ha
 # razao pra refazer a cada requisicao quando a cor nao mudou.
+#
+# O desenho e o display "12:00" do favicon.svg: fundo preto, digitos de 7
+# segmentos na cor da marca e os segmentos apagados num tom bem escuro dela.
 _AMOSTRAS = 4
-_TRI = [(12, 8), (12, 24), (26, 16)]  # mesmas coordenadas do favicon.svg
 _RAIO_SVG = 6
+_FUNDO = (0x05, 0x05, 0x05)
+# Troque ao mudar o desenho: entra no nome do arquivo em cache, entao PNGs de
+# versoes anteriores (o triangulo de play) deixam de ser servidos.
+_VERSAO_ICONE = "v2"
+
+# Segmentos a b c d e f g de um digito (x, y, largura, altura) num quadro 6x11,
+# e quais acendem em cada digito de "12:00".
+_SEG = {"a": (1, 0, 4, 1), "b": (5, 1, 1, 4), "c": (5, 6, 1, 4), "d": (1, 10, 4, 1),
+        "e": (0, 6, 1, 4), "f": (0, 1, 1, 4), "g": (1, 5, 4, 1)}
+_ACESOS = {1: "bc", 2: "abdeg", 0: "abcdef"}
+# (digito, x) no quadro de 32 do favicon.svg; escala e y iguais aos dele
+_DIGITOS = [(1, 3.2), (2, 9.2), (0, 17.6), (0, 23.6)]
+_ESC_DIGITO = 0.85
+_Y_DIGITO = 11.3
+_DOIS_PONTOS = [(14.9, 14.2, 1.4, 1.4), (14.9, 17.2, 1.4, 1.4)]
 
 # tamanho, arredondado (cantos vivos = icone comum; sem isso = maskable, que o
-# Android recorta por cima), fator (encolhe o triangulo pra caber na zona
-# segura do maskable), centralizar (o triangulo do favicon nao e simetrico —
-# so importa recentralizar quando ele ja foi encolhido)
+# Android recorta por cima), fator (encolhe o display pra caber na zona segura
+# do maskable)
 _ICONES = {
-    "192": (192, True, 1.0, False),
-    "512": (512, True, 1.0, False),
-    "maskable-512": (512, False, 0.62, True),
-    "apple-touch": (180, False, 1.0, False),
+    "192": (192, True, 1.0),
+    "512": (512, True, 1.0),
+    "maskable-512": (512, False, 0.8),
+    "apple-touch": (180, False, 1.0),
 }
 
 
-def _dentro_triangulo(px, py, tri):
-    def lado(a, b, p):
-        return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
-    d1 = lado(tri[0], tri[1], (px, py))
-    d2 = lado(tri[1], tri[2], (px, py))
-    d3 = lado(tri[2], tri[0], (px, py))
-    neg = d1 < 0 or d2 < 0 or d3 < 0
-    pos = d1 > 0 or d2 > 0 or d3 > 0
-    return not (neg and pos)
+def _retangulos(tamanho, fator):
+    """Lista (x, y, w, h, aceso) em pixels, centralizada e escalada por fator."""
+    esc = tamanho / 32
+    centro = tamanho / 2
+    rects = []
+
+    def add(x, y, w, h, aceso):
+        rects.append((centro + (x * esc - centro) * fator,
+                      centro + (y * esc - centro) * fator,
+                      w * esc * fator, h * esc * fator, aceso))
+
+    for digito, x0 in _DIGITOS:
+        for nome, (sx, sy, sw, sh) in _SEG.items():
+            add(x0 + sx * _ESC_DIGITO, _Y_DIGITO + sy * _ESC_DIGITO,
+                sw * _ESC_DIGITO, sh * _ESC_DIGITO, nome in _ACESOS[digito])
+    for x, y, w, h in _DOIS_PONTOS:
+        add(x, y, w, h, True)
+    return rects
 
 
 def _dentro_quadrado(px, py, lado_, raio):
@@ -173,17 +222,10 @@ def _dentro_quadrado(px, py, lado_, raio):
     return (px - cx) ** 2 + (py - cy) ** 2 <= raio * raio
 
 
-def _desenhar(tamanho, cor_rgb, arredondado, fator, centralizar):
+def _desenhar(tamanho, cor_rgb, arredondado, fator):
     raio = (_RAIO_SVG / 32) * tamanho if arredondado else 0
-    esc = tamanho / 32
-    centro = tamanho / 2
-    tri = [(centro + (x * esc - centro) * fator, centro + (y * esc - centro) * fator)
-           for x, y in _TRI]
-    if centralizar:
-        dx = centro - (min(p[0] for p in tri) + max(p[0] for p in tri)) / 2
-        dy = centro - (min(p[1] for p in tri) + max(p[1] for p in tri)) / 2
-        tri = [(x + dx, y + dy) for x, y in tri]
-    branco = (0xFF, 0xFF, 0xFF)
+    apagado = tuple(round(f + (c - f) * 0.2) for f, c in zip(_FUNDO, cor_rgb))
+    rects = _retangulos(tamanho, fator)
     linhas = []
     for y in range(tamanho):
         linha = bytearray()
@@ -195,7 +237,11 @@ def _desenhar(tamanho, cor_rgb, arredondado, fator, centralizar):
                     py = y + (sy + 0.5) / _AMOSTRAS
                     if not _dentro_quadrado(px, py, tamanho, raio):
                         continue
-                    cor = branco if _dentro_triangulo(px, py, tri) else cor_rgb
+                    cor = _FUNDO
+                    for rx, ry, rw, rh, aceso in rects:
+                        if rx <= px < rx + rw and ry <= py < ry + rh:
+                            cor = cor_rgb if aceso else apagado
+                            break
                     r += cor[0]; g += cor[1]; b += cor[2]; a += 255
             n = _AMOSTRAS * _AMOSTRAS
             linha += bytes((r // n, g // n, b // n, a // n))
@@ -225,10 +271,10 @@ def icone_png(chave):
     spec = _ICONES.get(chave)
     if spec is None:
         return None
-    tamanho, arredondado, fator, centralizar = spec
+    tamanho, arredondado, fator = spec
     cor_hex = get()["cor"].lstrip("#")
     _ICONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    caminho = _ICONS_CACHE_DIR / ("%s-%s.png" % (chave, cor_hex))
+    caminho = _ICONS_CACHE_DIR / ("%s-%s-%s.png" % (chave, cor_hex, _VERSAO_ICONE))
     if caminho.exists():
         try:
             return caminho.read_bytes()
@@ -236,7 +282,7 @@ def icone_png(chave):
             pass
     cor_rgb = tuple(int(cor_hex[i:i + 2], 16) for i in (0, 2, 4))
     dados = _codificar_png(
-        _desenhar(tamanho, cor_rgb, arredondado, fator, centralizar), tamanho)
+        _desenhar(tamanho, cor_rgb, arredondado, fator), tamanho)
     try:
         tmp = caminho.with_suffix(".tmp")
         tmp.write_bytes(dados)

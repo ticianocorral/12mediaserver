@@ -1,6 +1,6 @@
-// TicianoFlix — wrapper nativo (nome legível no Activity Monitor / Login Items).
+// 12:00 Media Server — wrapper nativo (nome legível no Activity Monitor / Login Items).
 // Fica vivo como pai e roda o servidor python como filho, propagando sinais.
-// Compilado: clang -O2 -o ticianoflix-server ticianoflix-server.c
+// Compilado: clang -O2 -o media-server media-server.c
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,10 +22,10 @@ int main(void) {
     if (child == 0) {
         // Interpretador: o python3 do sistema (Apple) esta congelado no 3.9,
         // sem atualizacoes e sem hashlib.scrypt. Preferimos um python3 do
-        // Homebrew (atual); TICIANOFLIX_PYTHON permite apontar outro na mao.
+        // Homebrew (atual); MEDIA_SERVER_PYTHON permite apontar outro na mao.
         // (Fora do array: getenv pode devolver NULL e um NULL no inicio do
         // array encerraria o loop antes de testar qualquer candidato.)
-        const char *env_py = getenv("TICIANOFLIX_PYTHON");
+        const char *env_py = getenv("MEDIA_SERVER_PYTHON");
         if (env_py && env_py[0] && access(env_py, X_OK) == 0) {
             char *const args[] = {(char *)env_py, "server.py", NULL};
             execv(env_py, args);

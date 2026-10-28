@@ -21,7 +21,7 @@ def _parse_nfo(xml_text):
     # NFOs legitimos nao declaram entidades. Recusar <!ENTITY fecha o vetor de
     # bomba XML (billion laughs) do ElementTree sem dependencia externa.
     if xml_text and "<!ENTITY" in xml_text.upper():
-        sys.stderr.write("[TicianoFlix] NFO recusado: declara entidades XML\n")
+        sys.stderr.write("[12:00 Media Server] NFO recusado: declara entidades XML\n")
         return None
     try:
         root = ET.fromstring(xml_text)
@@ -146,7 +146,7 @@ def _fetch_nfo_raw(folder_path):
             return None
         raw = _localfs.read_bytes(nfo_file, MAX_NFO_BYTES)
         if raw is None:
-            sys.stderr.write("[TicianoFlix] NFO ignorado (acima de %d bytes): %s\n"
+            sys.stderr.write("[12:00 Media Server] NFO ignorado (acima de %d bytes): %s\n"
                              % (MAX_NFO_BYTES, nfo_file))
             return None
         try:
@@ -164,7 +164,7 @@ def _fetch_nfo_raw(folder_path):
         if result.returncode != 0:
             return None
         if len(result.stdout) > MAX_NFO_BYTES:
-            sys.stderr.write("[TicianoFlix] NFO ignorado (acima de %d bytes): %s\n"
+            sys.stderr.write("[12:00 Media Server] NFO ignorado (acima de %d bytes): %s\n"
                              % (MAX_NFO_BYTES, nfo_path))
             return None
         return result.stdout

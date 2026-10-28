@@ -4,7 +4,15 @@ Modulo folha: nao importa nada do proprio pacote.
 """
 
 import os
+import shutil
 from pathlib import Path
+
+
+def env(nome, padrao=""):
+    """Variavel de ambiente MEDIA_SERVER_<nome>; cai na TICIANOFLIX_<nome> de
+    antes da troca de nome, pra quem ja tinha isso no servico ou no shell."""
+    return os.environ.get("MEDIA_SERVER_" + nome,
+                          os.environ.get("TICIANOFLIX_" + nome, padrao))
 
 # ── Rede ─────────────────────────────────────────────────────
 HOST = "0.0.0.0"
@@ -15,21 +23,25 @@ HTTPS_PORT_BASE = 9443
 # mas so aceita requisicoes cujo Host seja local/privado e cujo Origin, quando
 # presente, tambem seja. Isso preserva o uso domestico e fecha DNS rebinding —
 # nesse ataque o Host e um dominio publico controlado por terceiros.
-BIND_HOST = os.environ.get("TICIANOFLIX_BIND", HOST)
+BIND_HOST = env("BIND", HOST)
 
 # ── rclone ───────────────────────────────────────────────────
 # A nuvem e qualquer remote rclone, escolhido pelo wizard da interface
 # (veja nuvem.py): um remote ja existente na lista do rclone ou um novo
 # criado por ali mesmo. O app grava a escolha no nuvem.json — o rclone.conf
 # so e tocado quando o wizard cria um remote novo.
-BACKUP_FOLDER = "TicianoFlix Backups"
+BACKUP_FOLDER = "Media Server Backups"
+# Nomes de antes da troca de nome, aceitos pra sempre ao restaurar um backup.
+BACKUP_FOLDER_LEGADO = "TicianoFlix Backups"
+NOMES_DB_BACKUP = ("media-server.db", "ticianoflix.db")
+PREFIXOS_BACKUP = ("media-server-backup-", "ticianoflix-backup-")
 RCLONE_SERVE_PORT = 18082
 RCLONE_WEBGUI_PORT = 5572
 
 # Web GUI do rclone: desligada por padrao. Ela expoe a API de controle remoto
-# do rclone, que da acesso total ao remote. Habilite com TICIANOFLIX_RCLONE_GUI=1
+# do rclone, que da acesso total ao remote. Habilite com MEDIA_SERVER_RCLONE_GUI=1
 # — nesse caso ela sobe apenas em 127.0.0.1, acessivel so do proprio computador.
-RCLONE_GUI_ENABLED = os.environ.get("TICIANOFLIX_RCLONE_GUI", "") == "1"
+RCLONE_GUI_ENABLED = env("RCLONE_GUI") == "1"
 
 # Prefixo logico (hoje calculado em branding.logical_root(), a partir do nome
 # escolhido na instalacao) que o DB e o frontend usam pra raiz da nuvem.
@@ -56,8 +68,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_PATH = PROJECT_ROOT / "index.html"
 
 # Cache vai pro home do usuario (gravavel mesmo dentro de um AppImage).
-CACHE_DIR = Path.home() / ".cache" / "ticianoflix"
-DB_PATH = CACHE_DIR / "ticianoflix.db"
+CACHE_DIR = Path.home() / ".cache" / "media-server"
+CACHE_DIR_LEGADO = Path.home() / ".cache" / "ticianoflix"
+DB_PATH = CACHE_DIR / "media-server.db"
 IMAGE_CACHE_DIR = CACHE_DIR / "images"
 SUBS_CACHE_DIR = CACHE_DIR / "subs"
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
@@ -153,9 +166,42 @@ ADMIN_PATHS = frozenset({
 })
 
 # ── Sessao e contas ──────────────────────────────────────────
-SESSION_COOKIE = "tflix_session"
+SESSION_COOKIE = "ms_session"
+SESSION_COOKIE_LEGADO = "tflix_session"   # de antes da troca de nome: ainda vale pra quem ja estava logado
 SESSION_MAX_AGE = 90 * 24 * 3600     # 90 dias por dispositivo
 CAST_TOKEN_MAX_AGE = 12 * 3600       # cobre um filme inteiro com folga
 MIN_PASSWORD_LEN = 8
 LOGIN_MAX_ATTEMPTS = 8
 LOGIN_WINDOW = 15 * 60
+
+
+def _migrar_cache_legado():
+    """Traz a pasta de cache de antes da troca de nome (~/.cache/ticianoflix)
+    pra pasta nova, sem sobrescrever nada que ja exista nela: banco, login,
+    cor da marca, fontes, nuvem, certificado e imagens continuam todos aqui.
+    O banco, o log e as copias dele trocam o prefixo do nome do arquivo. Antes
+    de mexer, guarda uma copia do banco ao lado (.pre-renomeacao.bak)."""
+    try:
+        if not CACHE_DIR_LEGADO.is_dir():
+            return
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        banco = CACHE_DIR_LEGADO / "ticianoflix.db"
+        copia = CACHE_DIR / "media-server.db.pre-renomeacao.bak"
+        if banco.is_file() and not copia.exists():
+            shutil.copy2(banco, copia)
+        for item in sorted(CACHE_DIR_LEGADO.iterdir()):
+            nome = item.name
+            if nome.startswith("ticianoflix."):
+                nome = "media-server." + nome[len("ticianoflix."):]
+            destino = CACHE_DIR / nome
+            if not destino.exists():
+                shutil.move(str(item), str(destino))
+        try:
+            CACHE_DIR_LEGADO.rmdir()
+        except OSError:
+            pass  # sobrou algo que ja existia no destino: deixa onde esta
+    except OSError:
+        pass
+
+
+_migrar_cache_legado()

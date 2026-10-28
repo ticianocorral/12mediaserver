@@ -22,7 +22,7 @@ SCHEMA = """
         path TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         parent TEXT NOT NULL DEFAULT '',
-        is_ticianoflix_root INTEGER NOT NULL DEFAULT 0,
+        is_media_server_root INTEGER NOT NULL DEFAULT 0,
         has_video INTEGER NOT NULL DEFAULT 0,
         depth INTEGER NOT NULL DEFAULT 0,
         mod_time TEXT NOT NULL DEFAULT '',
@@ -189,6 +189,7 @@ def init_db():
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_unico "
         "ON files(folder_path, name)")
+    _renomear_coluna_raiz(conn)
     _migrar_prefixo_marca(conn)
     _migrar_colecoes_nfo(conn)
     conn.commit()
@@ -263,6 +264,15 @@ def _migrar_colecoes_nfo(conn):
     conn.execute(
         "INSERT OR REPLACE INTO cache_meta (key, value) "
         "VALUES ('colecoes_app_v1', ?)", (str(time.time()),))
+
+
+def _renomear_coluna_raiz(conn):
+    """folders.is_ticianoflix_root virou is_media_server_root (troca de nome do
+    app). Bancos criados antes — e backups restaurados — ainda tem a antiga."""
+    colunas = {r[1] for r in conn.execute("PRAGMA table_info(folders)")}
+    if "is_ticianoflix_root" in colunas and "is_media_server_root" not in colunas:
+        conn.execute("ALTER TABLE folders RENAME COLUMN "
+                     "is_ticianoflix_root TO is_media_server_root")
 
 
 def _migrar_prefixo_marca(conn):
@@ -396,7 +406,7 @@ def get_cache_usage():
     return {"total": total, "details": details}
 
 
-def looks_like_ticianoflix_db(raw):
+def looks_like_media_server_db(raw):
     """Confere que o blob e um SQLite integro com o schema esperado antes de
     sobrescrever o banco real."""
     if not raw.startswith(b"SQLite format 3\x00"):

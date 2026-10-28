@@ -1,4 +1,4 @@
-package com.ticianoflix.tv
+package com.mediaserver.tv
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -18,7 +18,7 @@ import java.net.URL
 import kotlin.coroutines.resume
 
 /**
- * Onde mora o TicianoFlix e como achar.
+ * Onde mora o 12:00 Media Server e como achar.
  *
  * A descoberta e uma varredura da propria faixa da rede: para cada endereco
  * .1 a .254 batemos em /api/auth/status, que e publica e responde um JSON
@@ -29,7 +29,7 @@ object Servidor {
 
     const val PORTA = 9187
 
-    private const val PREFS = "ticianoflix"
+    private const val PREFS = "media-server"
     private const val CHAVE = "servidor"
     private const val TIMEOUT_MS = 400
 
@@ -56,7 +56,7 @@ object Servidor {
     }
 
     /**
-     * True quando o endereco responde algo que so o TicianoFlix responderia.
+     * True quando o endereco responde algo que so o 12:00 Media Server responderia.
      * Nao basta "abriu a porta": qualquer servico poderia estar ali.
      */
     suspend fun responde(base: String): Boolean = withContext(Dispatchers.IO) {
@@ -100,7 +100,7 @@ object Servidor {
         return faixas.distinct()
     }
 
-    /** Endereco base de cada TicianoFlix achado na rede. */
+    /** Endereco base de cada 12:00 Media Server achado na rede. */
     suspend fun procurar(): List<String> = coroutineScope {
         val achados = mutableListOf<String>()
         for (faixa in faixasLocais()) {
@@ -117,12 +117,20 @@ object Servidor {
 
     /**
      * Acha o servidor pelo anuncio Bonjour/mDNS que o Mac publica
-     * (_ticianoflix._tcp, via dns-sd). E o caminho que sobrevive a troca de
+     * (_media-server._tcp, via dns-sd). E o caminho que sobrevive a troca de
      * IP: nomes .local o Android so resolve nativamente a partir do 12, mas o
      * NsdManager funciona desde as versoes antigas.
+     *
+     * Quem ainda anuncia o tipo de antes da troca de nome (_ticianoflix._tcp)
+     * continua sendo achado: tenta o novo e, se nada responder, o antigo.
      */
+    suspend fun procurarViaBonjour(ctx: Context): String? =
+        descobrir(ctx, "_media-server._tcp", "media-server", 4_000L)
+            ?: descobrir(ctx, "_ticianoflix._tcp", "ticianoflix", 4_000L)
+
     @SuppressLint("ServiceCast")
-    suspend fun procurarViaBonjour(ctx: Context): String? = withTimeoutOrNull(8_000L) {
+    private suspend fun descobrir(ctx: Context, tipo: String, marca: String, ms: Long): String? =
+        withTimeoutOrNull(ms) {
         suspendCancellableCoroutine { cont ->
             val nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
             var encerrado = false
@@ -145,7 +153,7 @@ object Servidor {
 
                 override fun onServiceFound(info: NsdServiceInfo) {
                     if (encerrado || resolvendo) return
-                    if (!info.serviceName.contains("ticianoflix", ignoreCase = true)) return
+                    if (!info.serviceName.replace(" ", "-").contains(marca, ignoreCase = true)) return
                     resolvendo = true
                     nsd.resolveService(info, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(i: NsdServiceInfo, erro: Int) {
@@ -160,7 +168,7 @@ object Servidor {
                     })
                 }
             }
-            nsd.discoverServices("_ticianoflix._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
+            nsd.discoverServices(tipo, NsdManager.PROTOCOL_DNS_SD, listener)
         }
     }
 }

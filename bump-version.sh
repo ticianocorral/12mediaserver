@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bump-version.sh — Atualiza a versão do TicianoFlix (SemVer: MAJOR.MINOR.PATCH)
+# bump-version.sh — Atualiza a versão do 12:00 Media Server (SemVer: MAJOR.MINOR.PATCH)
 #
 # Uso:
 #   ./bump-version.sh <major|minor|patch|none> "Título do changelog" ["item1|item2|item3"]
@@ -14,14 +14,14 @@
 #   1. Badge na sidebar (index.html: logo-version)
 #   2. Changelog do app (_CHANGELOG em static/app.js)
 #   3. README.md (Changelog)
-#   4. __version__ do pacote (ticianoflix/__init__.py)
+#   4. __version__ do pacote (mediaserver/__init__.py)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 INDEX="$DIR/index.html"
 APPJS="$DIR/static/app.js"
 README="$DIR/README.md"
-INIT="$DIR/ticianoflix/__init__.py"
+INIT="$DIR/mediaserver/__init__.py"
 
 TYPE="${1:-none}"
 TITLE="${2:-}"
@@ -134,4 +134,4 @@ html = open('$INDEX').read()
 m = re.search(r'logo-version\"[^>]*>v([0-9.]+)', html)
 print('v' + m.group(1) if m else '?')
 ")"
-echo "   git add index.html static/app.js README.md ticianoflix/__init__.py && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""
+echo "   git add index.html static/app.js README.md mediaserver/__init__.py && git commit -m \"chore: $CUR_DISPLAY — $TITLE\""
