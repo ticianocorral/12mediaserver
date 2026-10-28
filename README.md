@@ -666,6 +666,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.24 — Renomeia para 12:00 Media Server e visual retrô discreto
+
+- Novo nome: 12:00 Media Server
+
+- Fonte Jost, cantos menores e calço nos cards
+
+- Sem breadcrumb; Sair abaixo do videocassete
+
+- Remove compatibilidade com instalações do nome antigo
+
+
 ### v1.23 — ficha do filme: 'já assisti' que desmarca, Gêneros viram Tags e o AirPlay emendando episódios
 
 - Botão 'Já assisti' na ficha vira interruptor: marca e desmarca, e o filme sai na hora de Continuar Assistindo
