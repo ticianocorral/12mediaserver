@@ -134,7 +134,7 @@
   }
   .topbar-btn:active { background: rgba(255,255,255,0.10); }
   .topbar-logo {
-    height: 30px; width: auto; cursor: pointer;
+    height: 26px; width: auto; cursor: pointer;
   }
   .sidebar-backdrop {
     display: none;

@@ -4,6 +4,11 @@ from .config import MIN_PASSWORD_LEN
 from . import branding as _branding
 
 
+# Logo de texto (o mesmo de static/wordmark.svg, sem animacao), embutido porque
+# a tela de entrada nao pode depender de arquivo estatico antes do login.
+_WORDMARK = '''<svg class="wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 25" role="img" aria-label="__MARCA__"><style>.wm-on{fill:#ff2a2a}.wm-off{fill:#3d0f12}</style><g transform="translate(0,1) scale(2.1)"><rect class="wm-off" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-off" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(14,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(34,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(48,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><rect class="wm-on" x="29" y="8.2" width="3" height="3"/><rect class="wm-on" x="29" y="14.8" width="3" height="3"/><text x="68" y="11.2" font-family="Futura,'Century Gothic','Arial Black',Helvetica,sans-serif" font-weight="900" font-size="11" textLength="55" lengthAdjust="spacing" fill="#f2ecdc">MEDIA</text><text x="68" y="23.6" font-family="Futura,'Century Gothic','Arial Black',Helvetica,sans-serif" font-weight="900" font-size="11" textLength="55" lengthAdjust="spacing" fill="#f2ecdc">SERVER</text></svg>'''
+
+
 def _login_page(setup=False):
     """Tela de entrada. Em modo setup cria o primeiro administrador, e exige o
     codigo impresso no log do servidor — assim quem esta na rede mas nao tem
@@ -60,25 +65,26 @@ def _login_page(setup=False):
   body {
     margin: 0; min-height: 100vh; display: flex; align-items: center;
     justify-content: center; padding: 24px;
-    background: radial-gradient(1200px 600px at 50% -10%, #2a1114 0%, #0b0b0d 60%);
-    color: #f2f2f4;
+    background: radial-gradient(1200px 600px at 50% -10%, #26262a 0%, #0e0e10 60%);
+    color: #f2ecdc;
     font-family: Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .card {
-    width: 100%; max-width: 390px; background: rgba(20,20,23,.92);
-    border: 1px solid #2a2a30; border-radius: 14px; padding: 34px 30px 30px;
+    width: 100%; max-width: 390px; background: rgba(26,26,29,.92);
+    border: 1px solid #2e2e33; border-radius: 14px; padding: 34px 30px 30px;
     box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
   }
-  .brand { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; color: __COR__; }
+  .brand { margin: 0; line-height: 0; }
+  .wordmark { height: 34px; width: auto; display: block; }
   h1 { font-size: 19px; font-weight: 600; margin: 18px 0 6px; }
-  p.sub { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #a0a0aa; }
+  p.sub { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #a8a296; }
   label {
     display: block; font-size: 12px; text-transform: uppercase;
-    letter-spacing: .08em; color: #8b8b95; margin: 0 0 6px;
+    letter-spacing: .08em; color: #8f8a7e; margin: 0 0 6px;
   }
   input {
     width: 100%; padding: 12px 13px; margin-bottom: 16px; font-size: 15px;
-    color: #f2f2f4; background: #141418; border: 1px solid #33333c;
+    color: #f2ecdc; background: #121214; border: 1px solid #36363b;
     border-radius: 8px; font-family: inherit;
   }
   #code { letter-spacing: .5em; font-family: ui-monospace, Menlo, monospace; text-align: center; }
@@ -92,12 +98,12 @@ def _login_page(setup=False):
   .msg { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; display: none; }
   .msg.err { display: block; background: #2c1214; color: #f5a19b; border: 1px solid #55211f; }
   .msg.ok  { display: block; background: #10241a; color: #7fce9f; border: 1px solid #1f4a33; }
-  .hint { margin: 20px 0 0; font-size: 12px; line-height: 1.55; color: #6e6e78; }
-  .hint code { color: #9a9aa4; }
+  .hint { margin: 20px 0 0; font-size: 12px; line-height: 1.55; color: #6f6a60; }
+  .hint code { color: #a8a296; }
 </style>
 </head><body>
   <form class="card" id="form" autocomplete="on">
-    <div class="brand">__MARCA__</div>
+    <div class="brand">__WORDMARK__</div>
     <h1>__HEADING__</h1>
     <p class="sub">__SUB__</p>
     __EXTRA_TOP__
@@ -161,7 +167,7 @@ def _login_page(setup=False):
         ("__BUTTON__", button), ("__EXTRA_TOP__", extra_top),
         ("__EXTRA_BOTTOM__", extra_bottom), ("__HINT__", hint),
         ("__AC__", autocomplete), ("__MIN__", str(MIN_PASSWORD_LEN)),
-        ("__MARCA__", marca["nome"]), ("__COR__", cor),
+        ("__WORDMARK__", _WORDMARK), ("__MARCA__", marca["nome"]), ("__COR__", cor),
         ("__COR_HOVER__", cor_hover), ("__COR_RGB__", cor_rgb),
     ):
         page = page.replace(token, value)

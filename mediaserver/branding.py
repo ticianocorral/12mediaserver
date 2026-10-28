@@ -302,8 +302,8 @@ def manifest_json():
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        "background_color": "#141414",
-        "theme_color": "#141414",
+        "background_color": "#0e0e10",
+        "theme_color": "#0e0e10",
         "icons": [
             {"src": "/icone-192.png", "sizes": "192x192",
              "type": "image/png", "purpose": "any"},
