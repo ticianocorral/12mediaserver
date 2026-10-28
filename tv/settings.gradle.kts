@@ -4,5 +4,5 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
-rootProject.name = "TicianoFlix TV"
+rootProject.name = "Media Server TV"
 include(":app")

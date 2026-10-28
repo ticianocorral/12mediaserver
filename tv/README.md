@@ -1,23 +1,23 @@
-# TicianoFlix na Android TV
+# 12:00 Media Server na Android TV
 
-App para abrir o TicianoFlix na TV com o controle remoto.
+App para abrir o 12:00 Media Server na TV com o controle remoto.
 
 ## Como funciona
 
-A interface **é a própria web do TicianoFlix**, carregada numa WebView com
+A interface **é a própria web do 12:00 Media Server**, carregada numa WebView com
 `?tv=1` — o modo que torna tudo navegável pelas setas do controle. Reconstruir
 as telas em Kotlin criaria uma segunda interface para manter; assim a TV herda
 cada novidade da web (coleções, séries) sem nenhum trabalho aqui.
 
 A única coisa que não acontece na WebView é tocar o filme. O Chromium que a
 WebView usa não é confiável com MKV e faixas AC3/DTS, que é o grosso do acervo,
-então a página chama `TicianoFlixTV.play()` e quem assume é o **ExoPlayer**, que
+então a página chama `MediaServerTV.play()` e quem assume é o **ExoPlayer**, que
 decodifica por hardware. A URL vai assinada pelo mesmo token do Chromecast, então
 o player nativo busca os bytes sozinho — o app nunca lida com sessão nem senha.
 
 ```
 SetupActivity   varre a rede atrás de /api/auth/status, ou aceita o IP digitado
-MainActivity    WebView em http://<ip>:9187/?tv=1  +  ponte TicianoFlixTV
+MainActivity    WebView em http://<ip>:9187/?tv=1  +  ponte MediaServerTV
 PlayerActivity  ExoPlayer com a URL assinada, devolve a posição ao sair
 ```
 
@@ -43,7 +43,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Primeiro uso
 
-O app varre a rede e lista os TicianoFlix que achar; escolha o seu. Depois
+O app varre a rede e lista os 12:00 Media Server que achar; escolha o seu. Depois
 aparece a tela de login normal — usuário e senha, uma vez só. O cookie vale 90
 dias e é gravado em disco (`CookieManager.flush()` no `onPause`), então não é
 preciso repetir a cada abertura.

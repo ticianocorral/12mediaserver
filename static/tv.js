@@ -1,7 +1,7 @@
 /* Modo TV — navegacao pelo controle remoto.
  *
  * Carregado apenas quando a URL tem ?tv=1, entao nada aqui roda para quem usa
- * o TicianoFlix no computador ou no celular.
+ * o 12:00 Media Server no computador ou no celular.
  *
  * O trabalho pesado (escolher o vizinho na direcao da seta) fica com o polyfill
  * de spatial navigation do W3C. Este arquivo cuida do que e especifico daqui:

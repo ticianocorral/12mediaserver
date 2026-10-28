@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TicianoFlix</title>
+<title>12:00 Media Server</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="alternate icon" type="image/png" sizes="32x32" href="favicon.ico">
 
@@ -14,15 +14,15 @@
      instalar em contexto seguro (HTTPS), entao la o atalho continua abrindo no
      navegador ate o certificado do servidor ser confiavel no aparelho. -->
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#0e0e10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TicianoFlix">
+<meta name="apple-mobile-web-app-title" content="12:00 Media Server">
 <link rel="apple-touch-icon" href="/icone-apple-touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
 <!-- Cor da marca: carregado depois de styles.css de proposito, para a
      mesma especificidade em :root vencer a cascata. Gerado na hora por
@@ -113,7 +113,7 @@
     <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 3 1.5 4.5 2 6v3a1 1 0 0 0 1 1h1.5v-2h1v2h1v-2h1v2h1v-2h1.5a1 1 0 0 0 1-1v-3c.5-1.5 2-3 2-6a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1.4" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
-    <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="6" fill="#e50914" stroke="none"/><polygon points="9 7 9 17 17 12" fill="#fff" stroke="none"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="6" fill="#f02828" stroke="none"/><polygon points="9 7 9 17 17 12" fill="#fff" stroke="none"/></symbol>
     <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V3a1 1 0 0 1 1-1z"/><path d="M9 3v2h6V3"/></symbol>
     <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></symbol>
@@ -132,7 +132,7 @@
            limitava o tamanho. Escondida fora da tela de coleção. -->
       <img class="hero-capa" id="heroCapa" alt="" style="display:none">
       <div class="hero-content">
-        <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> TicianoFlix</div>
+        <div class="hero-badge"><svg class="icon-svg"><use href="#i-tv"></use></svg> 12:00 Media Server</div>
         <h1 id="heroTitle">Seus Filmes, Sua Tela</h1>
         <p id="heroDesc">Navegue pelos seus filmes com estilo Netflix.</p>
       </div>
@@ -168,7 +168,7 @@
     <button class="topbar-btn" onclick="toggleSidebar()" aria-label="Abrir menu">
       <svg class="icon-svg"><use href="#i-menu"></use></svg>
     </button>
-    <span class="topbar-logo" onclick="loadPath('')">TicianoFlix</span>
+    <img class="topbar-logo" src="/static/wordmark.svg" alt="12:00 Media Server" onclick="loadPath('')">
     <button class="topbar-btn" onclick="abrirBusca()" aria-label="Buscar filmes">
       <svg class="icon-svg"><use href="#i-search"></use></svg>
     </button>
@@ -177,10 +177,6 @@
 
   <!-- ====== SIDEBAR ====== -->
   <div class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <span class="logo-text"><svg class="icon-svg"><use href="#i-play"></use></svg> TicianoFlix</span>
-      <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
-    </div>
     <div class="sidebar-nav" id="sidebarNav">
       <div class="sidebar-search">
         <span class="search-icon"><svg class="icon-svg"><use href="#i-search"></use></svg></span>
@@ -214,10 +210,16 @@
       <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
         <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
       </button>
-      <button class="sidebar-item" onclick="doLogout()" title="Encerrar a sessão neste aparelho">
-        <span class="icon"><svg class="icon-svg"><use href="#i-logout"></use></svg></span> <span id="logoutLabel">Sair</span>
-      </button>
-      <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
+    </div>
+    <div class="sidebar-header">
+      <img class="logo-text" src="/static/vcr-logo.svg" alt="12:00 Media Server">
+      <div class="sidebar-header-meta">
+        <button class="sidebar-logout" onclick="doLogout()" title="Encerrar a sessão neste aparelho"><svg class="icon-svg"><use href="#i-logout"></use></svg> <span id="logoutLabel">Sair</span></button>
+        <div class="sidebar-header-right">
+          <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
+          <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.23</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -598,7 +600,6 @@
   </div>
 
   <!-- ====== MOVIE INFO OVERLAY ====== -->
-  <div class="movie-info-breadcrumb" id="movieInfoBreadcrumb"></div>
   <div class="movie-info-overlay" id="movieInfoOverlay">
     <!-- Fica dentro da propria overlay (nao ao lado, como o breadcrumb) so
          pra herdar o show/hide de graca do .active — sem precisar de mais

@@ -1,24 +1,30 @@
 /* ====== RESET & BASE ====== */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #141414;
-    --bg2: #1a1a2e;
-    --bg3: #222;
-    --surface: #1e1e2e;
-    --primary: #e50914;
-    --primary-hover: #ff0f1f;
-    --accent: #e50914;
-    --text: #fff;
-    --text2: #999;
-    --text3: #666;
-    --radius: 8px;
-    --radius-lg: 12px;
-    --shadow: 0 4px 20px rgba(0,0,0,0.4);
-    --transition: 0.3s cubic-bezier(0.4,0,0.2,1);
+    /* Tons do logo: preto de videocassete, cinza de painel, creme de etiqueta
+       e o vermelho do display digital. */
+    --bg: #0e0e10;
+    --bg2: #1a1a1d;
+    --bg3: #26262a;
+    --surface: #212125;
+    --primary: #f02828;
+    --primary-hover: #ff5757;
+    --accent: #f02828;
+    --cream: #efe6d0;      /* etiqueta da fita */
+    --panel: #2a2a2e;      /* frente do videocassete */
+    --panel-edge: #3b3b40;
+    --text: #f2ecdc;
+    --text2: #a8a296;
+    --text3: #6f6a60;
+    --radius: 4px;
+    --radius-lg: 6px;
+    --shadow: 0 3px 0 0 rgba(0,0,0,0.6);
+    --font-display: 'Jost', Futura, 'Century Gothic', 'Segoe UI', Roboto, sans-serif;
+    --transition: 0.18s ease;
   }
   html { scroll-behavior: smooth; }
   body {
-    font-family: 'Roboto', sans-serif;
+    font-family: var(--font-display);
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -26,7 +32,7 @@
   }
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-track { background: var(--bg2); }
-  ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: var(--panel-edge); border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: #555; }
   a { color: inherit; text-decoration: none; }
 
@@ -94,22 +100,9 @@
   .toast.success { border-color: #4caf50; }
   .toast.info { border-color: #2196f3; }
   .toast.error { border-color: var(--primary); }
-  .breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 14px;
-    color: var(--text2);
-    max-width: 600px;
-  }
-  .breadcrumb a {
-    color: var(--text2);
-    cursor: pointer;
-    transition: color var(--transition);
-  }
-  .breadcrumb a:hover { color: var(--text); }
-  .breadcrumb .sep { color: var(--text3); }
+  /* Breadcrumb removido da interface: o elemento fica no HTML porque o JS
+     ainda escreve nele; a navegação é pela barra lateral e pelo botão voltar. */
+  .breadcrumb { display: none; }
 
   /* ====== BARRA SUPERIOR E GAVETA (celular) ======
      Escondidas no desktop; a media query de 768px liga as duas. */
@@ -132,9 +125,7 @@
   }
   .topbar-btn:active { background: rgba(255,255,255,0.10); }
   .topbar-logo {
-    font-size: 19px; font-weight: 800; color: var(--primary);
-    letter-spacing: -.02em; cursor: pointer;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    height: 26px; width: auto; cursor: pointer;
   }
   .sidebar-backdrop {
     display: none;
@@ -175,40 +166,54 @@
        navegadores que ainda nao suportam. */
     height: 100dvh;
     z-index: 200;    /* barra lateral */
-    background: var(--bg2);
-    border-right: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg2) 38%);
+    border-right: 1px solid var(--panel-edge);
     display: flex;
     flex-direction: column;
     box-shadow: 2px 0 20px rgba(0,0,0,0.3);
   }
   .sidebar-header {
     display: flex;
-    align-items: center;
-    /* O numero da versao cresce com cada bump automatico ("v1.8" -> "v1.10.1"):
-       sem quebra ele acabava espremendo o icone+texto do logo pra fora da
-       linha. flex-wrap deixa a versao cair pra uma segunda linha quando nao
-       cabe, em vez de quebrar o logo. */
-    flex-wrap: wrap;
-    row-gap: 2px;
-    padding: 20px 20px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-direction: column;
+    align-items: flex-start;
+    /* Logo grande em cima e a versao embaixo: o numero cresce com cada bump
+       automatico ("v1.8" -> "v1.10.1") e assim nunca disputa espaco com ele. */
+    gap: 4px;
+    padding: 12px 8px 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
   }
   .sidebar-header .logo-text {
-    font-size: 26px;
-    font-weight: 900;
-    color: var(--primary);
-    letter-spacing: -1px;
-    /* Nunca quebra o icone de play da palavra "TicianoFlix" — e o que
-       "quebrava" visualmente quando a versao ficou mais longa. */
-    white-space: nowrap;
-    flex-shrink: 0;
+    /* Videocassete com o 12:00 piscando (static/vcr-logo.svg). */
+    width: 100%;
+    height: auto;
+  }
+  .sidebar-header-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  /* Sair embaixo do logo, a esquerda; cache e versao agrupados a direita. */
+  .sidebar-logout {
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 55%;
+    background: none; border: none; padding: 0 0 0 6px; cursor: pointer;
+    font-family: var(--font-display, inherit); font-size: 13px; font-weight: 500;
+    color: var(--text2); transition: color var(--transition);
+  }
+  .sidebar-logout:hover { color: var(--text); }
+  .sidebar-logout .icon-svg { width: 14px; height: 14px; flex: 0 0 auto; }
+  .sidebar-logout span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-header-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  /* Cache embaixo do logo, a esquerda; a versao fica na direita da mesma linha. */
+  .sidebar-header .sidebar-cache-usage {
+    padding: 0 0 0 6px;
+    border-top: none;
+    margin-top: 0;
   }
   .sidebar-header .logo-version {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text3);
-    margin-left: 6px;
-    align-self: flex-end;
-    padding-bottom: 4px;
+    padding-right: 6px;
     cursor: pointer;
     user-select: none;
     transition: color 0.15s;
@@ -241,8 +246,8 @@
     color: var(--text);
   }
   .sidebar-item.active {
-    color: var(--text);
-    background: rgba(229,9,20,0.1);
+    color: var(--cream);
+    background: rgba(239,230,208,0.09);
     border-left: 3px solid var(--primary);
   }
   .sidebar-item .icon { font-size: 16px; width: 22px; text-align: center; }
@@ -317,7 +322,7 @@
     position: absolute; inset: 0;
     flex-direction: column; align-items: center; justify-content: center;
     gap: 6px; text-align: center; padding: 24px;
-    background: radial-gradient(circle at 50% 40%, #1c1c22 0%, #0b0b0e 100%);
+    background: radial-gradient(circle at 50% 40%, #1d1d20 0%, #0b0b0e 100%);
     z-index: 2;
   }
   .casting-panel.active { display: flex; }
@@ -346,8 +351,8 @@
   }
   .casting-action:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
   .casting-action.active {
-    color: var(--primary); border-color: rgba(229,9,20,0.5);
-    background: rgba(229,9,20,0.14);
+    color: var(--primary); border-color: rgba(240,40,40,0.5);
+    background: rgba(240,40,40,0.14);
   }
   .casting-action .icon-svg { width: 20px; height: 20px; }
   .casting-aa-btn { flex-direction: column; gap: 0; line-height: 1; }
@@ -362,7 +367,7 @@
     font-family: inherit; transition: all var(--transition);
     display: inline-flex; align-items: center; gap: 8px;
   }
-  .casting-stop:hover { background: rgba(229,9,20,0.22); border-color: rgba(229,9,20,0.5); }
+  .casting-stop:hover { background: rgba(240,40,40,0.22); border-color: rgba(240,40,40,0.5); }
 
   /* ====== COLECOES ====== */
   .btn-colecao {
@@ -403,7 +408,7 @@
     transition: all var(--transition);
   }
   .pill-acao-btn:hover .pill-acao-icone {
-    background: rgba(229,9,20,0.18); color: var(--primary);
+    background: rgba(240,40,40,0.18); color: var(--primary);
   }
   .pill-acao-icone .icon-svg { width: 15px; height: 15px; }
   .switch-texto { display: flex; flex-direction: column; line-height: 1.2; }
@@ -441,7 +446,7 @@
   .episodio-linha:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.2); }
   .episodio-play {
     width: 30px; height: 30px; border-radius: 50%;
-    background: rgba(229,9,20,0.15); color: var(--accent);
+    background: rgba(240,40,40,0.15); color: var(--accent);
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 12px;
     transition: all var(--transition);
@@ -458,7 +463,7 @@
     padding: 1px 5px; flex-shrink: 0;
   }
   /* Episódio em andamento: hora parada, barra e "Já assisti" */
-  .episodio-linha.em-progresso { border-color: rgba(229,9,20,0.35); }
+  .episodio-linha.em-progresso { border-color: rgba(240,40,40,0.35); }
   .episodio-linha.em-progresso .episodio-play { background: var(--accent); color: #fff; }
   .episodio-pos {
     font-size: 11px; font-weight: 700; color: var(--accent);
@@ -525,7 +530,7 @@
     transition: all var(--transition);
   }
   .wizard-remoto:hover { background: rgba(255,255,255,0.09); }
-  .wizard-remoto.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .wizard-remoto.escolhido { border-color: var(--accent); background: rgba(240,40,40,0.12); }
   .wizard-remoto-tipo {
     font-size: 11px; color: var(--text3);
     border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
@@ -561,7 +566,7 @@
   }
   .genero-chip:hover { border-color: rgba(255,255,255,0.45); color: var(--text); }
   .genero-chip.on {
-    background: rgba(229,9,20,0.18); border-color: var(--accent); color: var(--text);
+    background: rgba(240,40,40,0.18); border-color: var(--accent); color: var(--text);
   }
   .genero-nova-linha {
     display: flex; gap: 8px;
@@ -638,7 +643,7 @@
     transition: all var(--transition);
   }
   .colecao-acao-btn:hover { background: rgba(255,255,255,0.14); }
-  .colecao-acao-btn.perigo:hover { background: rgba(229,9,20,0.25); border-color: rgba(229,9,20,0.5); }
+  .colecao-acao-btn.perigo:hover { background: rgba(240,40,40,0.25); border-color: rgba(240,40,40,0.5); }
   .colecao-acoes { display: inline-flex; margin-right: 12px; }
   .colecao-campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
   .colecao-campo span { font-size: 12px; color: var(--text3); font-weight: 600; }
@@ -683,7 +688,7 @@
   }
   .colecao-filme img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
   .colecao-filme:hover { border-color: rgba(255,255,255,0.35); }
-  .colecao-filme.escolhido { border-color: var(--accent); background: rgba(229,9,20,0.12); }
+  .colecao-filme.escolhido { border-color: var(--accent); background: rgba(240,40,40,0.12); }
   .colecao-filme-sem {
     width: 100%; aspect-ratio: 2/3;
     display: flex; align-items: center; justify-content: center;
@@ -830,7 +835,9 @@
     padding: 32px 48px;
     border-radius: var(--radius-lg);
     margin-bottom: 32px;
-    background: linear-gradient(135deg, var(--bg2) 0%, var(--surface) 100%);
+    background: linear-gradient(135deg, var(--panel) 0%, var(--bg2) 100%);
+    border: 1px solid var(--panel-edge);
+    box-shadow: inset 0 3px 0 var(--primary);   /* faixa vermelha da etiqueta */
   }
   .hero-bg {
     display: none;
@@ -894,6 +901,7 @@
   .genre-title {
     font-size: 20px;
     font-weight: 700;
+    color: var(--cream);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -926,11 +934,13 @@
     cursor: pointer;
     transition: all var(--transition);
     background: var(--surface);
+    border: 1px solid var(--panel-edge);
     aspect-ratio: 2/3;
   }
   .movie-card:hover {
     transform: scale(1.05);
     z-index: 5;
+    border-color: var(--cream);
     box-shadow: var(--shadow);
   }
   .movie-card-poster {
@@ -1009,13 +1019,11 @@
     gap: 12px;
     color: var(--text2);
   }
+  /* O indicador de carregamento e o videocassete com o 12:00 piscando. */
   .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(255,255,255,0.1);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    width: 96px;
+    height: 36px;
+    background: url(/static/vcr-logo.svg) center / contain no-repeat;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -1294,7 +1302,7 @@
     font-size: 11px; font-weight: 700; letter-spacing: .04em;
     padding: 2px 8px; border-radius: 999px; white-space: nowrap;
   }
-  .user-tag.admin { background: rgba(229,9,20,0.18); color: #ff6b73; }
+  .user-tag.admin { background: rgba(240,40,40,0.18); color: #ff6b73; }
   .user-tag.me { background: rgba(255,255,255,0.10); color: var(--text3); }
   .user-btn {
     border: none; background: rgba(255,255,255,0.08); color: var(--text);
@@ -1440,8 +1448,8 @@
     border: 1px solid;
   }
   .rclone-warn-risco {
-    background: rgba(229, 9, 20, 0.10);
-    border-color: rgba(229, 9, 20, 0.45);
+    background: rgba(240,40,40, 0.10);
+    border-color: rgba(240,40,40, 0.45);
   }
   .rclone-warn-atencao {
     background: rgba(245, 166, 35, 0.10);
@@ -1633,12 +1641,8 @@
     z-index: 5;
   }
   .player-loading .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(255,255,255,0.08);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    width: 128px;
+    height: 47px;
   }
   .player-error {
     display: none;
@@ -2008,26 +2012,6 @@
   }
   .movie-info-overlay.active { display: block; }
 
-  .movie-info-breadcrumb {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    z-index: 10;     /* relativo a ficha, que ja e um contexto de empilhamento */
-    padding: 16px 24px;
-    font-size: 13px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
-    pointer-events: none;
-  }
-  .movie-info-breadcrumb a {
-    pointer-events: all;
-    cursor: pointer;
-    color: var(--text2);
-    text-decoration: none;
-    transition: color var(--transition);
-  }
-  .movie-info-breadcrumb a:hover { color: var(--text); }
 
   /* Botão circular fixo, sempre visível — o breadcrumb sozinho (texto pequeno,
      "Início" lá em cima) não é um afordance óbvio de "voltar", e no PWA
@@ -2213,14 +2197,14 @@
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
-    background: rgba(229,9,20,0.12);
+    background: rgba(240,40,40,0.12);
     color: var(--primary);
-    border: 1px solid rgba(229,9,20,0.28);
+    border: 1px solid rgba(240,40,40,0.28);
     transition: all var(--transition);
   }
   .movie-genre-tag:hover {
-    background: rgba(229,9,20,0.2);
-    border-color: rgba(229,9,20,0.45);
+    background: rgba(240,40,40,0.2);
+    border-color: rgba(240,40,40,0.45);
   }
   .movie-genre-tag .icon-svg { width: 14px; height: 14px; opacity: 0.9; }
   .movie-meta-row {
@@ -2366,7 +2350,6 @@
        sobrava uma faixa de ~155px pro breadcrumb inteiro. padding-left abre
        espaço pro botão de voltar (fixo em left:20px, 40px de largura), que
        senão ficaria por cima do texto. */
-    .movie-info-breadcrumb { left: 0; padding: 16px 16px 16px 68px; font-size: 12px; }
     .movie-info-actions { gap: 8px; }
     .movie-info-actions .btn-play,
     .movie-info-actions .pill-acao,
@@ -2473,3 +2456,31 @@
   }
 
   .icon-svg { width: 1em; height: 1em; vertical-align: -0.125em; display: inline-block; }
+
+
+/* ====== RETRO DISCRETO ======
+   Retrô só nos detalhes: títulos em Jost (geométrica, parente do Futura do logo),
+   cantos pequenos, calço de 2-3px no lugar de sombra difusa e uma fileira de
+   furinhos de rolo de filme sob os títulos de seção. */
+.hero h1, .genre-title, .modal-title, .empty-state h3, .topbar-logo, .sidebar-section-title {
+  font-family: var(--font-display); font-weight: 600; letter-spacing: .01em;
+}
+.hero h1 { font-size: 36px; line-height: 1.1; }
+.genre-title { font-size: 22px; line-height: 1.2; }
+.modal-title { font-size: 20px; }
+.sidebar-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; }
+.movie-card { border-radius: 3px; box-shadow: 0 3px 0 0 rgba(0,0,0,.65); }
+.movie-card:hover { transform: translateY(-3px); box-shadow: 0 6px 0 0 rgba(0,0,0,.65); }
+.movie-card-overlay { background: linear-gradient(0deg, rgba(0,0,0,.9) 0%, transparent 55%); }
+.progress-bar-fill { border-radius: 0; }
+.progress-bar-wrap { height: 5px; background: rgba(0,0,0,.6); }
+.btn-play { border-radius: 4px; font-size: 16px; font-weight: 600; box-shadow: 0 3px 0 0 rgba(0,0,0,.55); }
+.btn-play:hover { transform: translateY(-1px); }
+.btn-play:active { transform: translateY(2px); box-shadow: 0 1px 0 0 rgba(0,0,0,.55); }
+.sidebar-item { border-radius: 0; font-size: 15px; font-weight: 500; letter-spacing: .01em; }
+.sidebar-item.active { font-weight: 600; }
+:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Jost como fonte padrão: controles de formulário não herdam sozinhos. */
+button, input, select, textarea { font-family: inherit; }

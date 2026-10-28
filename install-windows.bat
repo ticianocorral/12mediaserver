@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-title TicianoFlix - Instalador Windows
+title 12:00 Media Server - Instalador Windows
 
 echo.
 echo  ================================================
-echo   TicianoFlix - Instalador (Windows)
+echo   12:00 Media Server - Instalador (Windows)
 echo   Netflix-style player para suas nuvens e HDs
 echo  ================================================
 echo.
@@ -13,7 +13,7 @@ echo.
 set "DIR=%~dp0"
 if not exist "%DIR%server.py" (
     echo  [ERRO] server.py nao encontrado em %DIR%
-    echo  Execute este instalador dentro da pasta do TicianoFlix.
+    echo  Execute este instalador dentro da pasta do 12:00 Media Server.
     pause
     exit /b 1
 )
@@ -92,18 +92,20 @@ echo  Verificando conexao com a nuvem...
 rclone listremotes 2>nul | findstr /r "^[a-zA-Z0-9]" >nul
 if errorlevel 1 (
     echo  [AVISO] Nuvem ainda nao configurada.
-    echo  Configure depois em Ajustes ^> Nuvem, dentro do TicianoFlix:
+    echo  Configure depois em Ajustes ^> Nuvem, dentro do 12:00 Media Server:
     echo  use um remote que ja exista no rclone ou crie um novo pelo assistente.
 ) else (
     echo  [OK] rclone pronto (conecte a nuvem em Ajustes ^> Nuvem)
 )
 
 REM ─── 4. Diretórios de cache ────────────────────────────
-if not exist "%USERPROFILE%\.cache\ticianoflix\images" mkdir "%USERPROFILE%\.cache\ticianoflix\images"
-if not exist "%USERPROFILE%\.cache\ticianoflix\subs" mkdir "%USERPROFILE%\.cache\ticianoflix\subs"
+if exist "%DIR%TicianoFlix.bat" del "%DIR%TicianoFlix.bat"
+schtasks /Delete /TN "TicianoFlix" /F >nul 2>&1
+if not exist "%USERPROFILE%\.cache\media-server\images" mkdir "%USERPROFILE%\.cache\media-server\images"
+if not exist "%USERPROFILE%\.cache\media-server\subs" mkdir "%USERPROFILE%\.cache\media-server\subs"
 if not exist "%USERPROFILE%\.cache\rclone" mkdir "%USERPROFILE%\.cache\rclone"
 echo.
-echo  [OK] Diretorios de cache prontos (%USERPROFILE%\.cache\ticianoflix)
+echo  [OK] Diretorios de cache prontos (%USERPROFILE%\.cache\media-server)
 
 REM ─── 5. Script de execução ─────────────────────────────
 (
@@ -112,14 +114,14 @@ echo chcp 65001 ^>nul
 echo cd /d "%DIR%"
 echo "%PYEXE%" server.py
 echo pause
-) > "%DIR%TicianoFlix.bat"
-echo  [OK] Criado %DIR%TicianoFlix.bat
+) > "%DIR%Media-Server.bat"
+echo  [OK] Criado %DIR%Media-Server.bat
 echo       (duplo clique nele para iniciar o servidor)
 
 REM ─── 6. Iniciar junto com o Windows? (opcional) ────────
-set /p AUTOSTART="  Iniciar o TicianoFlix junto com o Windows? (s/N): "
+set /p AUTOSTART="  Iniciar o 12:00 Media Server junto com o Windows? (s/N): "
 if /i "%AUTOSTART%"=="s" (
-    schtasks /Create /F /TN "TicianoFlix" /SC ONLOGON /RL LIMITED /TR "\"%DIR%TicianoFlix.bat\""
+    schtasks /Create /F /TN "Media Server" /SC ONLOGON /RL LIMITED /TR "\"%DIR%Media-Server.bat\""
     if errorlevel 1 (
         echo  [AVISO] Nao consegui criar a tarefa. Rode o instalador como administrador se quiser.
     ) else (
@@ -128,9 +130,9 @@ if /i "%AUTOSTART%"=="s" (
 )
 
 REM ─── 7. Iniciar agora? ─────────────────────────────────
-set /p INICIAR="  Iniciar o TicianoFlix agora? (s/N): "
+set /p INICIAR="  Iniciar o 12:00 Media Server agora? (s/N): "
 if /i "%INICIAR%"=="s" (
-    start "" cmd /c ""%DIR%TicianoFlix.bat""
+    start "" cmd /c ""%DIR%Media-Server.bat""
 )
 
 echo.
@@ -138,9 +140,9 @@ echo  ================================================
 echo   Instalacao concluida!
 echo.
 echo   Acesse:  http://localhost:8080
-echo   Logs:    %USERPROFILE%\.cache\ticianoflix\
+echo   Logs:    %USERPROFILE%\.cache\media-server\
 echo   Parar:   feche a janela do servidor
-echo   Desativar autostart: schtasks /Delete /TN "TicianoFlix" /F
+echo   Desativar autostart: schtasks /Delete /TN "Media Server" /F
 echo  ================================================
 echo.
 pause

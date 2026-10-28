@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Instalador — __NOME__</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0e0e10; --bg2: #1a1a1d; --surface: #212125; --panel: #2a2a2e; --edge: #3b3b40;
+    --cream: #efe6d0; --text: #f2ecdc; --text2: #a8a296; --text3: #6f6a60; --red: #f02828; --red-hover: #ff5757;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(1200px 600px at 50% -10%, #26262a 0%, var(--bg) 60%);
+    color: var(--text); font-family: Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card {
+    width: 100%; max-width: 560px; background: rgba(26,26,29,.94); border: 1px solid var(--edge);
+    border-radius: 14px; box-shadow: 0 24px 60px -20px rgba(0,0,0,.8); overflow: hidden;
+  }
+  header { padding: 26px 32px 18px; border-bottom: 1px solid var(--edge); background: linear-gradient(180deg, var(--panel), var(--bg2)); }
+  header img { height: 40px; width: auto; display: block; }
+  .passos { display: flex; gap: 6px; margin-top: 18px; }
+  .passos i { flex: 1; height: 3px; border-radius: 2px; background: var(--edge); }
+  .passos i.feito { background: var(--text3); }
+  .passos i.atual { background: var(--red); }
+  main { padding: 26px 32px 8px; min-height: 330px; }
+  h1 { font-size: 21px; margin: 0 0 6px; color: var(--cream); }
+  p.sub { margin: 0 0 20px; font-size: 14px; line-height: 1.55; color: var(--text2); }
+  label.campo { display: block; margin: 0 0 14px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text2); }
+  label.campo input {
+    display: block; width: 100%; margin-top: 6px; padding: 11px 12px; font-size: 15px; text-transform: none; letter-spacing: 0;
+    color: var(--text); background: #121214; border: 1px solid #36363b; border-radius: 8px; font-family: inherit;
+  }
+  label.campo input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(240,40,40,.18); }
+  label.opcao { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 10px; font-size: 14.5px; }
+  label.opcao input { width: 18px; height: 18px; accent-color: var(--red); }
+  label.opcao small { display: block; color: var(--text3); font-size: 12px; margin-top: 2px; }
+  .barra { height: 8px; background: var(--surface); border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+  .barra b { display: block; height: 100%; width: 0; background: var(--red); transition: width .4s; }
+  .etapa { font-size: 13px; color: var(--cream); margin-bottom: 10px; }
+  pre.log { margin: 0; height: 170px; overflow: auto; padding: 12px; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    color: var(--text2); background: #121214; border: 1px solid #36363b; border-radius: 8px; white-space: pre-wrap; }
+  .msg { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; display: none;
+    background: #2c1214; color: #f5a19b; border: 1px solid #55211f; }
+  .msg.ok { background: #10241a; color: #7fce9f; border-color: #1f4a33; }
+  .msg.ver { display: block; }
+  footer { display: flex; justify-content: flex-end; gap: 10px; padding: 18px 32px 26px; }
+  button, a.btn {
+    padding: 11px 22px; font-size: 15px; font-weight: 600; border-radius: 8px; border: 1px solid var(--edge); cursor: pointer;
+    font-family: inherit; text-decoration: none; color: var(--cream); background: var(--surface);
+  }
+  button.primario, a.btn.primario { color: #fff; background: var(--red); border-color: var(--red); }
+  button.primario:hover, a.btn.primario:hover { background: var(--red-hover); }
+  button:disabled { opacity: .55; cursor: default; }
+  .url { display: block; margin: 8px 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--edge);
+    border-radius: 8px; font: 14px ui-monospace, Menlo, Consolas, monospace; color: var(--cream); }
+  .url span { display: block; font: 11px Roboto, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 3px; }
+  .simulacao { background: #3a2e12; color: #f1d58a; font-size: 12px; text-align: center; padding: 6px; display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="simulacao" id="simulacao">Modo simulação: nada está sendo instalado.</div>
+  <header>
+    <img src="/logo.svg" alt="__NOME__">
+    <div class="passos" id="passos"></div>
+  </header>
+  <main id="corpo"></main>
+  <footer id="rodape"></footer>
+</div>
+<script>
+const TOKEN = "__TOKEN__";
+const SIMULAR = __SIMULAR__;
+const NOMES = ["Início", "Instalação", "Conta", "Nuvem", "Pronto"];
+const $ = (id) => document.getElementById(id);
+if (SIMULAR) $("simulacao").style.display = "block";
+
+async function api(caminho, corpo) {
+  const opt = { headers: { "X-Token": TOKEN } };
+  if (corpo !== undefined) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(corpo); }
+  const r = await fetch(caminho, opt);
+  try { return await r.json(); } catch (e) { return { status: "error", error: "Resposta inválida do instalador." }; }
+}
+function el(tag, attrs, ...filhos) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === "class") e.className = attrs[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  filhos.flat().forEach((f) => e.append(f && f.nodeType ? f : document.createTextNode(f == null ? "" : f)));
+  return e;
+}
+function tela(passo, titulo, sub, conteudo, botoes) {
+  $("passos").replaceChildren(...NOMES.map((n, i) => el("i", { class: i < passo ? "feito" : i === passo ? "atual" : "", title: n })));
+  $("corpo").replaceChildren(el("h1", {}, titulo), sub ? el("p", { class: "sub" }, sub) : "", ...conteudo);
+  $("rodape").replaceChildren(...botoes);
+}
+function campo(rotulo, id, tipo, valor) {
+  const i = el("input", { id, type: tipo || "text", autocomplete: "off", spellcheck: "false" });
+  if (valor) i.value = valor;
+  return el("label", { class: "campo" }, rotulo, i);
+}
+function opcao(id, titulo, detalhe, marcado) {
+  const i = el("input", { type: "checkbox", id });
+  i.checked = marcado;
+  return el("label", { class: "opcao" }, i, el("div", {}, titulo, detalhe ? el("small", {}, detalhe) : ""));
+}
+function mensagem() { return el("div", { class: "msg", id: "msg" }); }
+function mostrar(txt, ok) { const m = $("msg"); m.textContent = txt; m.className = "msg ver" + (ok ? " ok" : ""); }
+const btn = (txt, fn, primario) => el("button", { class: primario ? "primario" : "", onclick: fn }, txt);
+
+// ── 1. boas-vindas ──
+function boasVindas() {
+  tela(0, "Bem-vindo", "Este assistente instala o __NOME__ neste computador: o servidor, o início automático e o anúncio na rede para a TV achar sozinha. Leva poucos minutos.", [
+    opcao("o-deps", "Instalar o que falta", "rclone, para falar com a sua nuvem", true),
+    opcao("o-auto", "Iniciar com o computador", "o servidor sobe sozinho ao ligar", true),
+    opcao("o-bonjour", "Anunciar na rede (Bonjour)", "a TV encontra o servidor sem digitar endereço", true),
+  ], [btn("Instalar", () => instalar({
+    deps: $("o-deps").checked, auto: $("o-auto").checked, bonjour: $("o-bonjour").checked }), true)]);
+}
+
+// ── 2. instalação ──
+let timer = null;
+async function instalar(opts) {
+  await api("/api/instalar", opts);
+  const barra = el("b"), etapa = el("div", { class: "etapa" }, "Preparando…"), log = el("pre", { class: "log" });
+  tela(1, "Instalando", "Pode deixar esta aba aberta.", [el("div", { class: "barra" }, barra), etapa, log, mensagem()], []);
+  let desde = 0;
+  clearInterval(timer);
+  timer = setInterval(async () => {
+    const s = await api("/api/progresso?desde=" + desde);
+    if (s.linhas) { s.linhas.forEach((l) => log.append(l + "\n")); log.scrollTop = log.scrollHeight; desde = s.total; }
+    barra.style.width = Math.round((s.frac || 0) * 100) + "%";
+    if (s.etapa) etapa.textContent = s.etapa + (s.rodando ? "…" : "");
+    if (s.erro) {
+      clearInterval(timer);
+      mostrar(s.erro);
+      $("rodape").replaceChildren(btn("Tentar de novo", () => instalar(opts), true));
+    } else if (s.fim) {
+      clearInterval(timer);
+      setTimeout(() => (s.precisa_conta ? conta() : nuvem()), 500);
+    }
+  }, 700);
+}
+
+// ── 3. conta ──
+function conta() {
+  tela(2, "Conta de administrador", "É a primeira conta, a que gerencia o app. Depois dela não existe auto-cadastro: contas novas só pelo painel.", [
+    campo("Usuário", "c-usuario"),
+    campo("Senha (mín. 8 caracteres)", "c-senha", "password"), campo("Repita a senha", "c-repete", "password"), mensagem(),
+  ], [btn("Criar conta", async () => {
+    const r = await api("/api/conta", { usuario: $("c-usuario").value,
+      senha: $("c-senha").value, repete: $("c-repete").value });
+    if (r.status === "ok") nuvem(); else mostrar(r.error || "Não foi possível criar a conta.");
+  }, true)]);
+}
+
+// ── 4. nuvem ──
+async function nuvem() {
+  const provs = await api("/api/provedores");
+  let atual = null;
+  const form = el("div", { id: "n-form" });
+  const lista = provs.map((p) => {
+    const r = el("input", { type: "radio", name: "n-prov", value: p.id });
+    r.addEventListener("change", () => { atual = p; desenharForm(); });
+    return el("label", { class: "opcao" }, r, el("div", {}, p.nome, el("small", {}, p.detalhe)));
+  });
+  function desenharForm() {
+    form.replaceChildren(...atual.campos.map((c) => campo(c.rotulo, "n-" + c.id, c.segredo ? "password" : "text", c.valor)));
+    const m = $("msg"); if (m) m.className = "msg";
+  }
+  tela(3, "Nuvem", "Onde estão os seus filmes. Escolha onde eles ficam, ou pule e configure depois no app (Ajustes > Nuvem). Google Drive, OneDrive e Dropbox pedem login no navegador: configure-os pelo rclone.", [
+    ...lista, form, mensagem(),
+  ], [btn("Pular", final), btn("Conectar", async () => {
+    if (!atual) { mostrar("Escolha uma nuvem ou clique em Pular."); return; }
+    const campos = {};
+    atual.campos.forEach((c) => { campos[c.id] = $("n-" + c.id).value; });
+    const r = await api("/api/nuvem", { provedor: atual.id, campos });
+    if (r.status === "ok") final(); else mostrar(r.error || "Não foi possível conectar.");
+  }, true)]);
+}
+
+// ── 5. pronto ──
+async function final() {
+  const info = await api("/api/info");
+  const local = "http://localhost:" + info.porta;
+  const urls = [el("div", { class: "url" }, el("span", {}, "Neste computador"), local)];
+  if (info.rede) urls.push(el("div", { class: "url" }, el("span", {}, "No celular e na TV"), info.rede));
+  tela(4, "Tudo pronto", "O " + info.nome + " está rodando e abre sozinho quando o computador ligar.", urls, [
+    btn("Concluir", async () => { await api("/api/sair", {}); $("corpo").replaceChildren(el("h1", {}, "Pode fechar esta aba"));
+      $("rodape").replaceChildren(); }),
+    el("a", { class: "btn primario", href: local, target: "_blank", rel: "noopener" }, "Abrir o app"),
+  ]);
+}
+
+boasVindas();
+</script>
+</body>
+</html>

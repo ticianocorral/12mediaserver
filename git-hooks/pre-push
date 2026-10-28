@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-push — TicianoFlix: bloqueia push direto na main.
+# pre-push — 12:00 Media Server: bloqueia push direto na main.
 # Todo push para main deve vir de um Pull Request.
 # Instalado em: .git/hooks/pre-push  (não é versionado — cada clone precisa)
 #

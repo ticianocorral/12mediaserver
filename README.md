@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>🎬 TicianoFlix</h1>
+  <h1>🎬 12:00 Media Server</h1>
   <p><strong>Netflix-style movie player for your cloud, external drives and USB sticks — self-hosted, lightweight, instant.</strong></p>
   <p>
     <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
@@ -13,7 +13,7 @@
 
 ## 📖 Sobre
 
-TicianoFlix é um servidor web auto-hospedado que transforma **a sua nuvem** (qualquer remote do rclone: Backblaze B2, Google Drive, S3, SFTP...) — e também **HD externo, pendrive ou pastas do próprio computador** — num catálogo de filmes no estilo Netflix. Ele escaneia suas pastas de filmes, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
+12:00 Media Server é um servidor web auto-hospedado que transforma **a sua nuvem** (qualquer remote do rclone: Backblaze B2, Google Drive, S3, SFTP...) — e também **HD externo, pendrive ou pastas do próprio computador** — num catálogo de filmes no estilo Netflix. Ele escaneia suas pastas de filmes, extrai metadados de arquivos NFO (formato Kodi/tinyMediaManager), e serve tudo via uma interface web bonita e responsiva.
 
 ### ✨ Funcionalidades
 
@@ -54,11 +54,11 @@ Para quem prefere clicar a digitar, o projeto traz um instalador visual por plat
 
 | Arquivo | Como usar | O que faz |
 |---|---|---|
-| `Instalador-TicianoFlix-Windows.bat` | Duplo clique | Assistente gráfico (PowerShell/WinForms): verifica e instala Python e rclone, cria o atalho de execução, agenda o início com o Windows e abre o app |
-| `Instalador-TicianoFlix-macOS.command` | Duplo clique¹ | Diálogos nativos do macOS + a instalação rodando com a saída visível no Terminal; abre o navegador no final |
-| `Instalador-TicianoFlix-Linux.sh` | `bash Instalador-TicianoFlix-Linux.sh` | Diálogos gráficos (zenity no GNOME, kdialog no KDE) e a instalação numa janela de terminal; sem gráfico, funciona no terminal mesmo |
+| `Instalador-Media-Server-Windows.bat` | Duplo clique | Assistente gráfico (PowerShell/WinForms): verifica e instala Python e rclone, cria o atalho de execução, agenda o início com o Windows e abre o app |
+| `Instalador-Media-Server-macOS.command` | Duplo clique¹ | Diálogos nativos do macOS + a instalação rodando com a saída visível no Terminal; abre o navegador no final |
+| `Instalador-Media-Server-Linux.sh` | `bash Instalador-Media-Server-Linux.sh` | Diálogos gráficos (zenity no GNOME, kdialog no KDE) e a instalação numa janela de terminal; sem gráfico, funciona no terminal mesmo |
 
-¹ Se o macOS reclamar de permissão: clique com o direito > Abrir, ou `chmod +x Instalador-TicianoFlix-macOS.command`.
+¹ Se o macOS reclamar de permissão: clique com o direito > Abrir, ou `chmod +x Instalador-Media-Server-macOS.command`.
 
 Os três reaproveitam a mesma lógica do instalador de linha de comando (verificações, downloads oficiais, serviço persistente) — mudam só a embalagem. Requerem o projeto baixado ao lado (clone/zip); sem ele, tentam baixar do GitHub.
 
@@ -69,7 +69,7 @@ Os três reaproveitam a mesma lógica do instalador de linha de comando (verific
 
 É só isso. O instalador **instala o rclone sozinho** (baixa o binário oficial
 para `~/.local/bin`, sem precisar de sudo); se preferir, qualquer rclone já
-instalado no sistema é respeitado. O TicianoFlix funciona com filmes que já
+instalado no sistema é respeitado. O 12:00 Media Server funciona com filmes que já
 estão no seu computador, num HD externo ou num pendrive — veja
 [Fontes locais](#fontes-locais-hd-externo-pendrive-pasta-do-computador).
 
@@ -79,7 +79,7 @@ nada deixa de funcionar — o servidor sobe igual e nem tenta contato com a nuve
 
 ### 1. (Opcional) Conectar a nuvem (qualquer remote do rclone)
 
-A nuvem do TicianoFlix é **qualquer remote do rclone** — Backblaze B2, Google
+A nuvem do 12:00 Media Server é **qualquer remote do rclone** — Backblaze B2, Google
 Drive, S3, Dropbox, SFTP, o que for. Em **⚙️ Ajustes › ☁️ Nuvem › Conectar
 nuvem**, o assistente oferece dois caminhos:
 
@@ -90,7 +90,7 @@ nuvem**, o assistente oferece dois caminhos:
   um). O app cria, testa a conexão e conecta — sem terminal.
 
 Desconectar não apaga nada: o remote e o acervo ficam intactos. O backup do
-catálogo vai para a pasta `TicianoFlix Backups/` na mesma nuvem.
+catálogo vai para a pasta `Media Server Backups/` na mesma nuvem.
 
 ### 2. Instalar
 
@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/ticianocorral/TicianoFlix/main/inst
 >
 > ```bash
 > git clone https://github.com/ticianocorral/TicianoFlix.git
-> cd TicianoFlix
+> cd 12:00 Media Server
 > bash install.sh
 > ```
 >
@@ -117,7 +117,7 @@ O mesmo `install.sh` cuida de tudo, nos dois sistemas:
 - Instala o rclone (binário oficial em `~/.local/bin`, sem sudo; usa
   Homebrew/apt/dnf/pacman como alternativa se o download falhar)
 - No Linux, cria o serviço systemd e ativa persistência sem login (`linger`)
-- No macOS, cria o LaunchAgent `com.ticianoflix` (inicia no login, reinicia se cair)
+- No macOS, cria o LaunchAgent `com.mediaserver` (inicia no login, reinicia se cair)
 - Sobe o servidor, espera ele responder e **mostra o código de instalação na
   própria tela** — sem precisar abrir o log
 - Abre o navegador no endereço certo
@@ -130,26 +130,26 @@ acima.
 
 **Windows:** baixe o projeto e rode `install-windows.bat` de dentro da pasta.
 
-Logs em `~/.cache/ticianoflix/ticianoflix.log` (macOS/Linux).
+Logs em `~/.cache/media-server/media-server.log` (macOS/Linux).
 
 Comandos úteis:
 ```bash
 # Reiniciar
-launchctl kickstart gui/$(id -u)/com.ticianoflix
+launchctl kickstart gui/$(id -u)/com.mediaserver
 # Parar/desativar
-launchctl bootout gui/$(id -u)/com.ticianoflix
+launchctl bootout gui/$(id -u)/com.mediaserver
 ```
 
 **Windows (Task Scheduler opcional):**
 
 ```bat
-git clone https://github.com/seu-usuario/ticianoflix.git
-cd ticianoflix
+git clone https://github.com/seu-usuario/media-server.git
+cd media-server
 install-windows.bat
 ```
 
 O instalador verifica/instala Python e rclone (winget ou download oficial),
-cria o `TicianoFlix.bat` na pasta do projeto e pergunta se você quer iniciar
+cria o `Media-Server.bat` na pasta do projeto e pergunta se você quer iniciar
 junto com o Windows (tarefa agendada no login) e se quer iniciar agora.
 
 ### 3. Primeiro acesso
@@ -168,10 +168,10 @@ Onde ver o log:
 
 ```bash
 # Linux
-journalctl --user -u ticianoflix -n 20
+journalctl --user -u media-server -n 20
 
 # macOS
-tail -20 ~/.cache/ticianoflix/ticianoflix.log
+tail -20 ~/.cache/media-server/media-server.log
 ```
 
 Abra **http://localhost:9187**, informe o código e escolha usuário e senha. Essa
@@ -201,16 +201,16 @@ a senha de alguém.
 
 ```bash
 # Status
-systemctl --user status ticianoflix
+systemctl --user status media-server
 
 # Logs
-journalctl --user -u ticianoflix -f
+journalctl --user -u media-server -f
 
 # Reiniciar (após alterar server.py)
-systemctl --user restart ticianoflix
+systemctl --user restart media-server
 
 # Parar
-systemctl --user stop ticianoflix
+systemctl --user stop media-server
 ```
 
 ### Estrutura da nuvem
@@ -255,7 +255,7 @@ atribui os filmes a elas pela ficha ou pelo A-Z, de qualquer fonte.
 ### Fontes locais (HD externo, pendrive, pasta do computador)
 
 A nuvem não precisa ser o único acervo. Em **⚙️ Ajustes › 💽 Fontes do acervo** (só para
-administradores) dá pra apontar o TicianoFlix para qualquer pasta da máquina:
+administradores) dá pra apontar o 12:00 Media Server para qualquer pasta da máquina:
 
 - os **volumes conectados** aparecem prontos pra adicionar com um clique
   (`/Volumes` no macOS, `/media` e `/run/media` no Linux, letras de unidade no
@@ -277,7 +277,7 @@ dentro dela — cada filme numa pasta com o vídeo, ou como arquivo solto.
 
 **Não precisa apontar exato.** O volume que você escolhe quase sempre fica acima
 do acervo — você pluga o HD e escolhe `/Volumes/MeuHD`, mas os filmes estão em
-`/Volumes/MeuHD/Filmes/Mediaflix/...`. O TicianoFlix procura essa pasta na
+`/Volumes/MeuHD/Filmes/Mediaflix/...`. O 12:00 Media Server procura essa pasta na
 raiz escolhida e em até **dois níveis abaixo**, ancora a fonte nela e avisa qual
 encontrou. Maiúsculas não importam, e uma pasta já criada com um nome genérico
 de versão anterior (`mediaflix` ou `ticianoflix`) também é sempre aceita.
@@ -309,7 +309,7 @@ que os bytes saem direto do disco, sem passar pelo rclone.
 
 ### Na TV (Android TV)
 
-O app em `tv/` abre o TicianoFlix na TV com o controle remoto. A interface é a
+O app em `tv/` abre o 12:00 Media Server na TV com o controle remoto. A interface é a
 **própria web**, carregada numa WebView com `?tv=1` — o modo que torna tudo
 navegável pelas setas. Assim a TV herda cada novidade da web sem uma segunda
 interface para manter.
@@ -328,7 +328,7 @@ Para compilar e instalar, veja [`tv/README.md`](tv/README.md).
 
 ### Metadados NFO
 
-O TicianoFlix lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
+O 12:00 Media Server lê arquivos `.nfo` no formato **Kodi / tinyMediaManager**:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -398,11 +398,11 @@ disso — mas nada nele responde sem autenticação.
 
 - **Contas com papéis** (admin / usuário). Senhas guardadas como hash
   **PBKDF2-HMAC-SHA256** (100 000 iterações, salt de 16 bytes) em
-  `~/.cache/ticianoflix/auth.json`, com permissão `600`.
+  `~/.cache/media-server/auth.json`, com permissão `600`.
 - **Sem auto-cadastro.** O primeiro administrador exige o código de instalação
   impresso no log; os demais são criados pelo painel.
 - **Sessão sem estado**: cookie `HttpOnly`, `SameSite=Lax`, assinado por
-  HMAC-SHA256 com a chave em `~/.cache/ticianoflix/secret.key` (`600`).
+  HMAC-SHA256 com a chave em `~/.cache/media-server/secret.key` (`600`).
   Reiniciar o servidor não desloga ninguém.
 - **Revogação granular**: trocar a senha, mudar o papel ou remover a conta
   encerram as sessões daquela pessoa. "Sair de todos" derruba todo mundo.
@@ -420,16 +420,16 @@ disso — mas nada nele responde sem autenticação.
   arquivo, em vez de abrir as rotas de mídia; a versão convertida para TV
   (`/api/prepared`) usa o mesmo token do arquivo original.
 - **`rclone serve` apenas em `127.0.0.1:18082`**, read-only e montado na pasta
-  da biblioteca — nunca na raiz da nuvem. O TicianoFlix faz o proxy; nada
+  da biblioteca — nunca na raiz da nuvem. O 12:00 Media Server faz o proxy; nada
   externo alcança essa porta.
 - **Configurador do rclone desligado por padrão.** Habilite com
-  `TICIANOFLIX_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
+  `MEDIA_SERVER_RCLONE_GUI=1` — sobe apenas em `127.0.0.1`.
 
 ### Acesso à nuvem
 
 O app não guarda credencial nenhuma: tudo vive no `rclone.conf` do usuário
 (segredos obscurecidos pelo próprio rclone). O backup do catálogo é escrito na
-pasta `TicianoFlix Backups/` da nuvem conectada — o único lugar onde o app
+pasta `Media Server Backups/` da nuvem conectada — o único lugar onde o app
 escreve. Vale a pena aplicar o mínimo privilégio na nuvem: credencial de
 leitura para o acervo e, se quiser, uma de escrita para os backups, cadastrada
 como remote separado no rclone.
@@ -452,9 +452,9 @@ como remote separado no rclone.
 
 | Variável | Padrão | Para quê |
 |----------|--------|----------|
-| `TICIANOFLIX_BIND` | `0.0.0.0` | Interface de escuta. Use `127.0.0.1` para fechar na máquina. |
-| `TICIANOFLIX_PORT` | `9187` | Porta HTTP. |
-| `TICIANOFLIX_RCLONE_GUI` | desligado | `1` habilita o configurador do rclone em `127.0.0.1:5572`. |
+| `MEDIA_SERVER_BIND` | `0.0.0.0` | Interface de escuta. Use `127.0.0.1` para fechar na máquina. |
+| `MEDIA_SERVER_PORT` | `9187` | Porta HTTP. |
+| `MEDIA_SERVER_RCLONE_GUI` | desligado | `1` habilita o configurador do rclone em `127.0.0.1:5572`. |
 
 > ⚠️ Pela porta **9187** a senha trafega em claro na sua rede. O servidor também
 > sobe em **HTTPS na 9443** — prefira esse endereço, ele aparece no banner de
@@ -468,16 +468,16 @@ como remote separado no rclone.
 > público; a chave nunca é servida).
 
 A porta é fixa: se a 9187 estiver ocupada por uma instância anterior do
-TicianoFlix, o servidor a encerra e assume a porta, em vez de migrar para outra.
+12:00 Media Server, o servidor a encerra e assume a porta, em vez de migrar para outra.
 
 ---
 
 ## 📂 Estrutura do Projeto
 
 ```
-TicianoFlix/
-├── server.py              # Entrypoint (13 linhas — chama ticianoflix.app)
-├── ticianoflix/           # O backend
+12:00 Media Server/
+├── server.py              # Entrypoint (13 linhas — chama mediaserver.app)
+├── mediaserver/           # O backend
 │   ├── config.py          #   constantes, caminhos, variáveis de ambiente
 │   ├── paths.py           #   fronteira de caminhos com o rclone
 │   ├── nuvem.py           #   wizard da nuvem (qualquer remote do rclone)
@@ -506,9 +506,9 @@ TicianoFlix/
 ├── tools/check_names.py   # Detecta nomes usados mas não definidos
 ├── install.sh             # Instalador único (Linux e macOS) — baixa, instala, sobe
 ├── install-windows.bat    # Instalador (Windows)
-├── Instalador-TicianoFlix-Windows.ps1/.bat  # Instalador visual (assistente gráfico)
-├── Instalador-TicianoFlix-macOS.command     # Instalador visual (diálogos nativos)
-├── Instalador-TicianoFlix-Linux.sh          # Instalador visual (zenity/kdialog)
+├── Instalador-Media-Server-Windows.ps1/.bat  # Instalador visual (assistente gráfico)
+├── Instalador-Media-Server-macOS.command     # Instalador visual (diálogos nativos)
+├── Instalador-Media-Server-Linux.sh          # Instalador visual (zenity/kdialog)
 ├── bump-version.sh        # Versionamento SemVer
 ├── .gitignore             # Arquivos ignorados pelo Git
 ├── LICENSE                # Licença MIT
@@ -516,13 +516,13 @@ TicianoFlix/
 ```
 
 > `server.py` continua na raiz porque o `ExecStart` do systemd, o LaunchAgent
-> do macOS, o `.bat` do Windows e o wrapper nativo `ticianoflix-server.c` fixam
+> do macOS, o `.bat` do Windows e o wrapper nativo `media-server.c` fixam
 > esse caminho — movê-lo quebraria instalações existentes.
 
-Fora do repositório, em `~/.cache/ticianoflix/`:
+Fora do repositório, em `~/.cache/media-server/`:
 
 ```
-ticianoflix.db     # Catálogo (SQLite)
+media-server.db     # Catálogo (SQLite)
 auth.json          # Contas e hashes de senha  (600)
 sources.json       # Fontes locais cadastradas (600)
 secret.key         # Chave HMAC das sessões    (600)
@@ -541,7 +541,7 @@ Abra **⚙️ Ajustes › 📦 Cache offline** e clique em **Limpar tudo**, ou e
 
 ```bash
 rm -rf ~/.cache/rclone/vfs/
-systemctl --user restart ticianoflix
+systemctl --user restart media-server
 ```
 
 ### Esqueci a senha
@@ -551,7 +551,7 @@ acesso de administrador, apague o arquivo de contas na máquina do servidor — 
 fluxo de primeiro acesso volta, com um código de instalação novo:
 
 ```bash
-rm ~/.cache/ticianoflix/auth.json
+rm ~/.cache/media-server/auth.json
 # reinicie o serviço e veja o novo código no log
 ```
 
@@ -560,14 +560,14 @@ Isso apaga **todas** as contas, não só a sua. O catálogo e o cache não são 
 ### Atualizar
 
 ```bash
-cd ~/TicianoFlix
+cd ~/Media Server
 git pull
 
 # Linux
-systemctl --user restart ticianoflix
+systemctl --user restart media-server
 
 # macOS
-launchctl kickstart -k gui/$(id -u)/com.ticianoflix
+launchctl kickstart -k gui/$(id -u)/com.mediaserver
 ```
 
 > O servidor lê o `index.html` do disco a cada requisição. Depois de um `git pull`
@@ -578,7 +578,7 @@ launchctl kickstart -k gui/$(id -u)/com.ticianoflix
 
 ## 🏷️ Versionamento (SemVer)
 
-O TicianoFlix segue **Semantic Versioning** (`MAJOR.MINOR.PATCH`) — padrão de mercado.
+O 12:00 Media Server segue **Semantic Versioning** (`MAJOR.MINOR.PATCH`) — padrão de mercado.
 
 | Incremento | Quando | Exemplo |
 |---|---|---|
@@ -625,7 +625,7 @@ Mudanças na `main` **só entram via Pull Request**. Push direto é bloqueado po
 ### Instalar o hook (uma vez por clone)
 
 ```bash
-cd ~/TicianoFlix
+cd ~/Media Server
 cp git-hooks/pre-push .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
 ```
@@ -653,8 +653,8 @@ gh pr create --fill --base main        # ou pelo site do GitHub
 ```bash
 git checkout main
 git pull
-systemctl --user restart ticianoflix    # Linux
-launchctl kickstart -k gui/$(id -u)/com.ticianoflix   # macOS
+systemctl --user restart media-server    # Linux
+launchctl kickstart -k gui/$(id -u)/com.mediaserver   # macOS
 ```
 
 ---

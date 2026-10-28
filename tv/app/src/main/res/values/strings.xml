@@ -1,12 +1,12 @@
 <resources>
-    <string name="app_name">TicianoFlix</string>
-    <string name="procurando">Procurando o TicianoFlix na sua rede…</string>
+    <string name="app_name">12:00 Media Server</string>
+    <string name="procurando">Procurando o 12:00 Media Server na sua rede…</string>
     <string name="nenhum">Nenhum servidor encontrado. Confira se o computador
         esta ligado e na mesma rede, ou digite o endereco.</string>
     <string name="endereco_manual">Endereco (ex.: 192.168.0.10)</string>
     <string name="conectar">Conectar</string>
     <string name="procurar_de_novo">Procurar de novo</string>
-    <string name="desconectado_titulo">TicianoFlix desconectado</string>
+    <string name="desconectado_titulo">12:00 Media Server desconectado</string>
     <string name="desconectado_msg">Nao foi possivel falar com o servidor. Confira se o
         computador esta ligado e na mesma rede.</string>
     <string name="atualizar">Atualizar</string>

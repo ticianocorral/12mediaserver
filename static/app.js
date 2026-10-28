@@ -233,10 +233,6 @@
 
   // Agrupa os generos pela fonte dona deles. O servidor manda o Path completo
   // de cada genero, entao nao ha prefixo remontado no cliente.
-  // id da fonte -> nome de exibicao. O id e o mesmo slug que aparece no path
-  // ("/Local/hd-externo"), entao o breadcrumb mostra "HD Externo".
-  const _sourceNames = {};
-
   // Marca no menu o item da tela atual. O HTML nasce com "Início" ativo, mas
   // quem manda é esta função: toda navegação passa por loadPathInternal ou
   // loadAZ, e eles redesenham a seleção — inclusive para tag, série e
@@ -445,7 +441,7 @@
   }
 
   function isHomePage(path) {
-    return path === '' || path === '/' || path === (window.__LOGICAL_ROOT__ || '/TicianoFlix');
+    return path === '' || path === '/' || path === (window.__LOGICAL_ROOT__ || '/Media Server');
   }
 
   function renderDirectory(data) {
@@ -456,11 +452,9 @@
 
     const isHome = isHomePage(data.path);
 
-    if (!isHome) {
-      renderBreadcrumb(data.path);
-    } else {
-      document.getElementById('breadcrumb').innerHTML = '';
-    }
+    // Sem trilha do caminho de pastas: o acervo se navega por tags, series e
+    // colecoes, nao pelo caminho do disco.
+    document.getElementById('breadcrumb').innerHTML = '';
     const hasFolders = data.folders && data.folders.length > 0;
     const hasVideos = data.videos && data.videos.length > 0;
     const hasImages = data.images && data.images.length > 0;
@@ -2087,26 +2081,6 @@
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
-    document.getElementById('movieInfoBreadcrumb').style.display = 'block';
-
-    // Build breadcrumb for the overlay
-    const bcEl = document.getElementById('movieInfoBreadcrumb');
-    const path = folderPath || '';
-    const parts = path.split('/').filter(Boolean);
-    let cur = window.__LOGICAL_ROOT__ || '/TicianoFlix';
-    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-    parts.forEach((p, i) => {
-      if (i === 0) return; // pula a raiz da nuvem (LOGICAL_ROOT, o nome escolhido na instalação)
-      cur += '/' + p;
-      const name = p.replace(/[._]/g, ' ');
-      if (i === parts.length - 1) {
-        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
-      } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(cur) + '\'))">' + escHtml(name) + '</a>';
-      }
-    });
-    bcEl.innerHTML = html;
-
     content.innerHTML = '<div class="loading" style="min-height:400px"><div class="spinner"></div><span>Carregando informações...</span></div>';
     bg.style.backgroundImage = 'none';
 
@@ -2321,8 +2295,6 @@
     overlay.classList.remove('active');
     document.body.style.overflow = '';
     currentMovieFolder = null;
-    document.getElementById('movieInfoBreadcrumb').innerHTML = '';
-    document.getElementById('movieInfoBreadcrumb').style.display = 'none';
   }
 
   // Botão de voltar da ficha do filme: sem ele, no PWA instalado (tela cheia,
@@ -2398,36 +2370,6 @@
       _saveProgress();
     }
   });
-
-  // ==================== BREADCRUMB ====================
-  function renderBreadcrumb(path) {
-    const el = document.getElementById('breadcrumb');
-    if (!el) return;
-    const parts = path ? path.split('/').filter(Boolean) : [];
-    let html = '<a onclick="loadPath(\'\')"><svg class="icon-svg"><use href="#i-home"></use></svg> Início</a>';
-
-    // A raiz da fonte ocupa 1 segmento na nuvem (LOGICAL_ROOT) e 2 nas fontes
-    // locais ("/Local/hd-externo"). O caminho e montado a partir do proprio
-    // path — remontar com um prefixo fixo gerava link quebrado fora da nuvem.
-    const rootLen = isLocalPath(path) ? 2 : 1;
-    if (rootLen === 2 && parts.length >= 2) {
-      const slug = parts[1];
-      html += ' <span class="sep">›</span> <span>'
-        + escHtml(_sourceNames[slug] || slug) + '</span>';
-    }
-
-    let current = '/' + parts.slice(0, rootLen).join('/');
-    parts.slice(rootLen).forEach((part, i, rest) => {
-      current += '/' + part;
-      const name = part.replace(/[._]/g, ' ');
-      if (i === rest.length - 1) {
-        html += ' <span class="sep">›</span> <span>' + escHtml(name) + '</span>';
-      } else {
-        html += ' <span class="sep">›</span> <a onclick="loadPath(decodeURIComponent(\'' + enc(current) + '\'))">' + escHtml(name) + '</a>';
-      }
-    });
-    el.innerHTML = html;
-  }
 
   // ==================== PLAYER ====================
   let currentVideoPath = null;
@@ -2868,7 +2810,7 @@
   // fica mudo ate no Chrome do computador (sem decodificador Dolby). Em vez
   // de recusar o filme, o servidor gera um MP4 com o video copiado (sem
   // re-encodar) e faixa AAC, e guarda em cache: so a primeira transmissao
-  // de cada arquivo espera. Ver ticianoflix/prepare.py.
+  // de cada arquivo espera. Ver mediaserver/prepare.py.
   var _prepareWatch = {};
 
   async function _postPrepare(mediaPath) {
@@ -2979,8 +2921,8 @@
 
     // playMovie chama isto a cada filme; sem a trava os listeners iam
     // empilhando a cada reprodução (e o aviso de conexão repetia junto).
-    if (video._tflixAirplaySetup) return;
-    video._tflixAirplaySetup = true;
+    if (video._msAirplaySetup) return;
+    video._msAirplaySetup = true;
 
     // O evento existe pra afinar a visibilidade quando o Safari sabe que nao
     // ha receptor por perto — mas nem toda versao dispara ele de forma
@@ -3038,8 +2980,8 @@
     if (!video || !video.src) return;
     if (/[?&]t=/.test(video.src)) return;                  // nosso botão já assinou
     if (video.src.indexOf('/api/stream') < 0) return;      // só URL do próprio app
-    if (video._tflixAirplayReparando) return;
-    video._tflixAirplayReparando = true;
+    if (video._msAirplayReparando) return;
+    video._msAirplayReparando = true;
     try {
       var mediaPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
       var info = await _fetchMediaToken(video, []);
@@ -3051,7 +2993,7 @@
     } catch (e) {
       console.warn('[AirPlay] falha ao reassinar a URL:', e);
     } finally {
-      video._tflixAirplayReparando = false;
+      video._msAirplayReparando = false;
     }
   }
 
@@ -3143,7 +3085,7 @@
     }
     var mediaPath = new URL(video.src, _getBaseUrl()).searchParams.get('path') || '';
     var titleEl = document.getElementById('playerMovieName');
-    var titulo = titleEl ? titleEl.textContent : 'TicianoFlix';
+    var titulo = titleEl ? titleEl.textContent : '12:00 Media Server';
     try {
       var ok = await _castEnviarMidia(info, mediaPath, currentSubtitlePath,
                                       titulo, _castArt, video.currentTime);
@@ -3191,7 +3133,7 @@
     // ficha (arte, ano, estudio) em vez de uma tela vazia com o titulo.
     // Episódio entra com a ficha da série: o arquivo não tem pôster próprio.
     var meta = new chrome.cast.media.MovieMediaMetadata();
-    meta.title = titulo || 'TicianoFlix';
+    meta.title = titulo || '12:00 Media Server';
     arte = arte || {};
     if (arte.year) meta.releaseDate = String(arte.year) + '-01-01';
     if (arte.studio) meta.studio = arte.studio;
@@ -3453,7 +3395,7 @@
   }
 
   // ── Ponte para o player nativo da TV ─────────────────────────
-  // O app de Android TV injeta window.TicianoFlixTV. Quando ele existe, quem
+  // O app de Android TV injeta window.MediaServerTV. Quando ele existe, quem
   // toca o filme e o ExoPlayer nativo e nao o <video> desta pagina: a WebView
   // do Android nao e confiavel com MKV e faixas AC3/DTS, que e o grosso do
   // acervo, e o ExoPlayer decodifica por hardware.
@@ -3461,7 +3403,7 @@
   // A URL vai assinada pelo mesmo /api/cast-token do Chromecast, entao o player
   // nativo busca os bytes sozinho, sem depender do cookie de sessao da pagina.
   function _tvNativoDisponivel() {
-    return !!(window.TicianoFlixTV && typeof window.TicianoFlixTV.play === 'function');
+    return !!(window.MediaServerTV && typeof window.MediaServerTV.play === 'function');
   }
 
   async function _tvTocarNativo(filePath, movieName, subtitlePath, resumePosition) {
@@ -3481,7 +3423,7 @@
     const base = window.location.origin;
     const assinada = (rota, caminho, token) => base + rota
       + '?path=' + encodeURIComponent(caminho) + '&t=' + encodeURIComponent(token);
-    window.TicianoFlixTV.play(JSON.stringify({
+    window.MediaServerTV.play(JSON.stringify({
       url: assinada('/api/stream', filePath, tokens.t),
       legenda: (subtitlePath && tokens.sub)
         ? assinada('/api/subtitle', subtitlePath, tokens.sub) : '',
@@ -3499,11 +3441,11 @@
 
   // O que o sistema mostra como "tocando agora" (AirPlay, tela de bloqueio,
   // central de mídia): o título da página é a fonte clássica no WebKit — era
-  // ele que fazia a TV anunciar "TicianoFlix" — e o title do <video> cobre o
+  // ele que fazia a TV anunciar "12:00 Media Server" — e o title do <video> cobre o
   // widget do macOS. A Media Session, quando existe, fala a mesma língua.
   function _publicarNomeNaTela(nome) {
     const video = document.getElementById('videoPlayer');
-    document.title = nome || 'TicianoFlix';
+    document.title = nome || '12:00 Media Server';
     if (video) video.title = nome || '';
     try {
       if (nome && window.MediaMetadata && 'mediaSession' in navigator) {
@@ -3514,7 +3456,7 @@
 
   function _limparNomeNaTela() {
     const video = document.getElementById('videoPlayer');
-    document.title = 'TicianoFlix';
+    document.title = '12:00 Media Server';
     if (video) video.title = '';
     try {
       if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
@@ -3544,7 +3486,7 @@
 
     // Nome do vídeo na tela. No AirPlay quem anuncia é o sistema — pelo título
     // da PÁGINA (e pelo title do <video>) — e o título da página era
-    // "TicianoFlix": a TV mostrava o nome do app no lugar do filme.
+    // "12:00 Media Server": a TV mostrava o nome do app no lugar do filme.
     const nomeNaTela = movieName.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     movieTitle.textContent = nomeNaTela;
     _publicarNomeNaTela(nomeNaTela);
@@ -3973,9 +3915,9 @@
   // regular de novo a cada filme. O valor entra antes da primeira pintura dos
   // menus (os _renderSubtitleMenu logo abaixo), então a UI já nasce certa.
   try {
-    const ss = parseInt(localStorage.getItem('ticianoflix_sub_size'), 10);
+    const ss = parseInt(localStorage.getItem('media_server_sub_size') || localStorage.getItem('ticianoflix_sub_size'), 10);
     if (ss >= 0 && ss < subtitleSizes.length) subtitleSizeIndex = ss;
-    const sc = parseInt(localStorage.getItem('ticianoflix_sub_color'), 10);
+    const sc = parseInt(localStorage.getItem('media_server_sub_color') || localStorage.getItem('ticianoflix_sub_color'), 10);
     if (sc >= 0 && sc < subtitleColors.length) subtitleColorIndex = sc;
   } catch (e) { /* storage indisponível: segue no padrão */ }
 
@@ -4029,7 +3971,7 @@
 
   function selectSubtitleSize(i) {
     subtitleSizeIndex = i;
-    try { localStorage.setItem('ticianoflix_sub_size', String(i)); } catch (e) {}
+    try { localStorage.setItem('media_server_sub_size', String(i)); } catch (e) {}
     _syncSubtitleControls();
     applySubtitleSize();
     _renderSubtitleMenu('subtitleSizeMenu', subtitleSizes, subtitleSizeIndex, 'selectSubtitleSize');
@@ -4057,7 +3999,7 @@
 
   function selectSubtitleColor(i) {
     subtitleColorIndex = i;
-    try { localStorage.setItem('ticianoflix_sub_color', String(i)); } catch (e) {}
+    try { localStorage.setItem('media_server_sub_color', String(i)); } catch (e) {}
     _syncSubtitleControls();
     _renderSubtitleMenu('subtitleColorMenu', subtitleColors, subtitleColorIndex, 'selectSubtitleColor');
     fecharSubtitleMenus();
@@ -4515,13 +4457,13 @@
     if (candidates.length > 0) {
       html += '<div class="user-section-title">Detectadas neste computador</div>'
         + '<div class="src-hint">As marcadas com <svg class="icon-svg"><use href="#i-check"></use></svg> '
-        + 'já têm uma pasta <b>TicianoFlix</b> dentro e entram na hora.</div>'
+        + 'já têm uma pasta <b>Media Server</b> dentro e entram na hora.</div>'
         + '<div class="src-detected">';
       candidates.forEach(c => {
         const icon = c.kind === 'volume' ? '#i-hard-drive' : '#i-folder';
-        // Sem a pasta TicianoFlix dentro, o cadastro seria recusado — melhor
+        // Sem a pasta Media Server dentro, o cadastro seria recusado — melhor
         // deixar isso visivel antes do clique.
-        const dica = c.pronto ? c.path : c.path + ' — sem uma pasta TicianoFlix dentro';
+        const dica = c.pronto ? c.path : c.path + ' — sem uma pasta Media Server dentro';
         html += '<button class="src-detected-btn' + (c.pronto ? ' pronto' : '') + '" '
           + 'title="' + escHtml(dica) + '" '
           + 'onclick="addSource(decodeURIComponent(\'' + enc(c.name) + '\'), decodeURIComponent(\'' + enc(c.path) + '\'))">'
@@ -4534,7 +4476,7 @@
       html += '</div>';
     }
 
-    const nomeBiblioteca = (window.__LOGICAL_ROOT__ || '/Mediaflix').slice(1);
+    const nomeBiblioteca = (window.__LOGICAL_ROOT__ || '/Media Server').slice(1);
     html += '<div class="user-section-title">Adicionar uma pasta</div>'
       + '<div class="src-hint">A pasta precisa ter uma pasta <b>' + escHtml(nomeBiblioteca) + '</b> dentro '
       + '(ou até dois níveis abaixo), com os filmes nela:<br>'
@@ -4841,7 +4783,7 @@
   // disco por natureza — não foi "baixado", e misturar os dois esvaziava o
   // sentido da seção. O filter limpa o que versões anteriores gravaram.
   const _cachedSet = new Set(
-    JSON.parse(localStorage.getItem('ticianoflix_cached') || '[]')
+    JSON.parse(localStorage.getItem('media_server_cached') || localStorage.getItem('ticianoflix_cached') || '[]')
       .filter(p => !isLocalPath(p))
   );
   function _isCached(folderPath) {
@@ -4851,7 +4793,7 @@
     if (isLocalPath(folderPath)) return;
     if (!_cachedSet.has(folderPath)) {
       _cachedSet.add(folderPath);
-      localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+      localStorage.setItem('media_server_cached', JSON.stringify([..._cachedSet]));
     }
   }
   // Sync _cachedSet with server's actual cache state (e.g. after server restart)
@@ -4874,12 +4816,13 @@
         }
       });
       if (changed) {
-        localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+        localStorage.setItem('media_server_cached', JSON.stringify([..._cachedSet]));
       }
     } catch(_) {}
   }
 
   function clearCache() {
+    localStorage.removeItem('media_server_cached');
     localStorage.removeItem('ticianoflix_cached');
     _cachedSet.clear();
     showToast('🧹 Limpando cache do servidor...', '');
@@ -5325,7 +5268,7 @@
 
         // Also update _cachedSet in localStorage
         _cachedSet.delete(path);
-        localStorage.setItem('ticianoflix_cached', JSON.stringify([..._cachedSet]));
+        localStorage.setItem('media_server_cached', JSON.stringify([..._cachedSet]));
         // Re-render offline grid on home if visible
         _renderOfflineGrid();
 
@@ -5369,7 +5312,7 @@
   // ==================== APARENCIA (marca) ====================
   // Nome de exibicao e cor sao a unica coisa que muda por instalacao — onde
   // os dados moram (cache, banco, nome do servico) nunca depende disto. Ver
-  // ticianoflix/branding.py.
+  // mediaserver/branding.py.
   function openBrandingModal() {
     document.getElementById('brandingModal').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -5390,20 +5333,17 @@
       const marca = await res.json();
       box.innerHTML =
         '<div class="user-form" style="flex-direction:column;align-items:stretch">'
-        + '<label style="font-size:12px;color:var(--text3)">Nome</label>'
-        + '<div style="padding:12px 13px;color:var(--text2)">' + escHtml(marca.nome) + '</div>'
-        + '<label style="font-size:12px;color:var(--text3);margin-top:4px">Cor</label>'
+        + '<label style="font-size:12px;color:var(--text3)">Cor</label>'
         + '<div style="display:flex;gap:8px;align-items:center">'
         + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
         + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
         + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
         + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
-        + 'style="flex:1" placeholder="#e50914">'
+        + 'style="flex:1" placeholder="#f02828">'
         + '</div>'
         + '</div>'
-        + '<div class="rclone-help">O nome foi escolhido na instalação e não muda mais '
-        + '(é também a pasta da biblioteca na nuvem/HD). A cor aparece na tela de login, '
-        + 'no menu, no ícone do app instalado no celular e no manifesto.</div>'
+        + '<div class="rclone-help">A cor aparece na tela de login, no menu, no ícone '
+        + 'do app instalado no celular e no manifesto.</div>'
         + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
         + 'onclick="saveBranding()">Salvar</button>'
         + '<div id="brandingMsg" class="user-msg"></div>';
@@ -5425,7 +5365,7 @@
     const cor = (document.getElementById('brandCorTexto').value || '').trim();
     const msg = document.getElementById('brandingMsg');
     const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
-    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #e50914.', 'err'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #f02828.', 'err'); return; }
     try {
       const res = await fetch('/api/branding/set', {
         method: 'POST',
@@ -5800,7 +5740,7 @@
       html += '<div class="rclone-row"><span class="rclone-label">Pasta do acervo</span>'
         + _rcloneBadge(true, st.pasta ? escHtml(st.pasta) : 'raiz do remote', '') + '</div>';
       html += '<div class="rclone-row"><span class="rclone-label">Backup</span>'
-        + _rcloneBadge(true, 'mesma nuvem, pasta "' + 'TicianoFlix Backups"', '') + '</div>';
+        + _rcloneBadge(true, 'mesma nuvem, pasta "' + 'Media Server Backups"', '') + '</div>';
       if (s && s.acesso) html += _renderAcessoNuvem(s.acesso);
       html += '<div class="rclone-actions">'
         + '<button class="rclone-action-btn primary" onclick="openNuvemWizard()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Trocar conexão</button>'
@@ -6092,7 +6032,7 @@
       html += '<button class="rclone-action-btn" onclick="_loadRcloneStatus()"><svg class="icon-svg"><use href="#i-refresh"></use></svg> Atualizar status</button>';
       html += '</div>';
     } else {
-      html += '<div class="rclone-help">O rclone não foi encontrado. Rode o instalador do TicianoFlix '
+      html += '<div class="rclone-help">O rclone não foi encontrado. Rode o instalador do 12:00 Media Server '
         + '(ele baixa o rclone sozinho) ou instale manualmente:<br>'
         + '<b>Linux:</b> <code>sudo pacman -S rclone</code> ou <code>sudo apt install rclone</code><br>'
         + '<b>macOS:</b> <code>brew install rclone</code><br>'
@@ -6209,7 +6149,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ticianoflix-backup-' + new Date().toISOString().slice(0,10) + '.zip';
+      a.download = 'media-server-backup-' + new Date().toISOString().slice(0,10) + '.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
