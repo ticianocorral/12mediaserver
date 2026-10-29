@@ -1,8 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.media3.ui.PlayerView
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/player"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
-    android:focusable="true" />
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:focusable="true" />
+
+    <!-- Capa, nome e o botao de legenda: aparecem junto com os controles do
+         player e somem com eles. -->
+    <LinearLayout
+        android:id="@+id/barra_topo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@drawable/fundo_topo"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="48dp"
+        android:paddingTop="28dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="48dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/capa"
+            android:layout_width="72dp"
+            android:layout_height="108dp"
+            android:background="#222226"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/titulo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/contexto"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#CCCCCC"
+                android:textSize="18sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_legenda"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/btn_legenda"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="Legenda"
+            android:textAllCaps="false"
+            android:textColor="@color/btn_legenda_texto"
+            android:textSize="18sp" />
+    </LinearLayout>
+</FrameLayout>

@@ -1310,6 +1310,7 @@
         });
         _serieAtual = {
           path: seriePath,
+          name: serie.name || '',
           poster: serie.poster || null,
           fanart: serie.fanart || null,
           overview: serie.overview || null,
@@ -3405,13 +3406,30 @@
     return !!(window.MediaServerTV && typeof window.MediaServerTV.play === 'function');
   }
 
+  // Capa e contexto do que vai tocar, para o player nativo mostrar além do
+  // título. Filme: a ficha aberta (_castArt, só vale se for a pasta dele).
+  // Episódio: a capa e o nome da série aberta.
+  function _tvArte(filePath) {
+    const pasta = filePath.substring(0, filePath.lastIndexOf('/'));
+    if (_castArt.poster && _castArt.folder === pasta) {
+      return { poster: _castArt.poster, contexto: _castArt.year ? String(_castArt.year) : '' };
+    }
+    const eps = _serieAtual && _serieAtual.episodios;
+    if (eps && eps.some(function (e) { return e.path === filePath; })) {
+      return { poster: _serieAtual.poster || null, contexto: _serieAtual.name || '' };
+    }
+    return { poster: null, contexto: '' };
+  }
+
   async function _tvTocarNativo(filePath, movieName, subtitlePath, resumePosition) {
     let tokens = null;
+    const arte = _tvArte(filePath);
     try {
       const res = await fetch('/api/cast-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath, subtitle: subtitlePath || '' })
+        body: JSON.stringify({ path: filePath, subtitle: subtitlePath || '',
+                               images: arte.poster ? [arte.poster] : [] })
       });
       if (res.ok) tokens = await res.json();
     } catch (e) { /* tratado logo abaixo */ }
@@ -3427,6 +3445,11 @@
       legenda: (subtitlePath && tokens.sub)
         ? assinada('/api/subtitle', subtitlePath, tokens.sub) : '',
       titulo: (movieName || '').replace(/\.[^.]+$/, '').replace(/[._]/g, ' '),
+      contexto: arte.contexto,
+      capa: (arte.poster && tokens.imgs && tokens.imgs[arte.poster])
+        ? assinada('/api/stream', arte.poster, tokens.imgs[arte.poster]) : '',
+      legTam: subtitleSizeIndex,
+      legCor: subtitleColorIndex,
       posicao: Math.round(resumePosition || 0)
     }));
   }
@@ -3434,8 +3457,17 @@
   // Chamado pelo app nativo ao sair do filme. Reusa o mesmo _saveProgress do
   // player da web, que ja sabe ignorar os primeiros segundos e limpar o
   // progresso quando o filme acabou.
-  window.tvPlaybackEnded = function (posicao, duracao) {
+  window.tvPlaybackEnded = function (posicao, duracao, legTam, legCor) {
     _saveProgress(Number(posicao) || 0, Number(duracao) || 0);
+    // Tamanho e cor da legenda escolhidos no player nativo valem também na página.
+    if (Number.isInteger(legTam) && legTam >= 0 && legTam < subtitleSizes.length) {
+      subtitleSizeIndex = legTam;
+      try { localStorage.setItem('media_server_sub_size', String(legTam)); } catch (e) {}
+    }
+    if (Number.isInteger(legCor) && legCor >= 0 && legCor < subtitleColors.length) {
+      subtitleColorIndex = legCor;
+      try { localStorage.setItem('media_server_sub_color', String(legCor)); } catch (e) {}
+    }
   };
 
   // O que o sistema mostra como "tocando agora" (AirPlay, tela de bloqueio,
@@ -5270,6 +5302,15 @@
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.26.0',
+      title: 'Player da TV com legenda, capa e nome',
+      changes: [
+        'Botão Legenda no player da TV: liga/desliga, tamanho e cor',
+        'Capa e nome do filme ou série no topo do player',
+        'App da TV na versão 1.1',
+      ],
+    },
     {
       version: '1.25.0',
       title: 'Login único com perfis, avatares e PIN',
