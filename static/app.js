@@ -2330,7 +2330,6 @@
     ['cacheManagerModal', 'closeCacheManager'],
     ['settingsModal', 'closeSettingsModal'],
     ['sourcesModal', 'closeSourcesModal'],
-    ['usersModal', 'closeUsersModal'],
     ['brandingModal', 'closeBrandingModal'],
     ['rcloneModal', 'closeRcloneModal'],
     ['changelogModal', 'closeChangelogModal'],
@@ -4590,8 +4589,14 @@
       const data = await res.json();
       _me = data.user || null;
       if (_me) {
-        const label = document.getElementById('logoutLabel');
-        if (label) label.textContent = 'Sair (' + _me.username + ')';
+        const chip = document.getElementById('profileSwitchBtn');
+        if (chip) {
+          chip.style.display = '';
+          const img = document.getElementById('profileSwitchAvatar');
+          if (img && _me.avatar) img.src = '/static/avatars/' + _me.avatar + '.svg';
+          const nome = document.getElementById('profileSwitchName');
+          if (nome) nome.textContent = _me.username;
+        }
         if (_me.role === 'admin') {
           ['settingsUsers', 'settingsSources', 'settingsBranding', 'settingsBackup'].forEach(id => {
             const el = document.getElementById(id);
@@ -4602,146 +4607,21 @@
     } catch (e) {}
   }
 
-  function openUsersModal() {
-    document.getElementById('usersModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    _loadUsers();
+  // Perfis: o seletor "Quem está assistindo?" (/perfis) cuida de criar,
+  // editar (avatar, perfil infantil, PIN) e remover.
+  function openProfilesManager() {
+    window.location.href = '/perfis?gerenciar=1';
   }
 
-  function closeUsersModal() {
-    document.getElementById('usersModal').classList.remove('active');
-    document.body.style.overflow = '';
-  }
-
-  document.getElementById('usersModal').addEventListener('click', function (e) {
-    if (e.target === this) closeUsersModal();
-  });
-
-  function _usersMsg(text, kind) {
-    const el = document.getElementById('usersMsg');
-    if (el) { el.textContent = text; el.className = 'user-msg ' + kind; }
-  }
-
-  async function _loadUsers() {
-    const box = document.getElementById('usersBox');
-    box.innerHTML = '<div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>';
+  async function switchProfile() {
     try {
-      const res = await fetch('/api/users');
-      const data = await res.json();
-      if (!res.ok || data.status !== 'ok') {
-        box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-lock"></use></svg></div><h3>' + escHtml(data.error || 'Sem acesso') + '</h3></div>';
-        return;
-      }
-      _renderUsers(data.users || [], data.me || '');
-    } catch (e) {
-      box.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg"><use href="#i-error"></use></svg></div><h3>Erro ao carregar contas</h3></div>';
-    }
-  }
-
-  function _renderUsers(users, me) {
-    let html = '<div class="user-section-title">Quem tem acesso (' + users.length + ')</div>';
-    users.forEach(u => {
-      const isMe = u.username === me;
-      const isAdmin = u.role === 'admin';
-      const n = escHtml(u.username);
-      html += '<div class="user-row">'
-        + '<span class="user-name">' + n + '</span>'
-        + (isAdmin ? '<span class="user-tag admin">admin</span>' : '')
-        + (u.infantil ? '<span class="user-tag infantil">infantil</span>' : '')
-        + (isMe ? '<span class="user-tag me">você</span>' : '')
-        + '<button class="user-btn" title="' + (isAdmin ? 'Tornar usuário comum' : 'Tornar administrador') + '" '
-        + 'onclick="setUserRole(\'' + n + '\', \'' + (isAdmin ? 'user' : 'admin') + '\')">'
-        + (isAdmin ? '<svg class="icon-svg"><use href="#i-user"></use></svg>' : '<svg class="icon-svg"><use href="#i-crown"></use></svg>') + '</button>'
-        + '<button class="user-btn" title="Redefinir senha" onclick="togglePwForm(\'' + n + '\')"><svg class="icon-svg"><use href="#i-key"></use></svg></button>'
-        + (isMe ? '' : '<button class="user-btn" title="' + (u.infantil ? 'Desativar perfil infantil' : 'Ativar perfil infantil') + '" '
-          + 'onclick="setUserInfantil(\'' + n + '\', ' + (!u.infantil) + ')">'
-          + '<svg class="icon-svg"><use href="#i-user"></use></svg></button>')
-        + (isMe ? '' : '<button class="user-btn danger" title="Remover conta" onclick="removeUser(\'' + n + '\')"><svg class="icon-svg"><use href="#i-trash"></use></svg></button>')
-        + '</div>'
-        + '<div class="user-form" id="pw-' + n + '" style="display:none">'
-        + '<input type="password" id="pwval-' + n + '" placeholder="Nova senha de ' + n + '" autocomplete="new-password">'
-        + '<button class="rclone-action-btn primary" style="flex:0 0 auto;min-width:100px" onclick="setUserPassword(\'' + n + '\')">Salvar</button>'
-        + '</div>';
-    });
-
-    html += '<div class="user-section-title">Adicionar conta</div>'
-      + '<div class="user-form">'
-      + '<input type="text" id="newUser" placeholder="usuário" autocapitalize="none" spellcheck="false" autocomplete="off">'
-      + '<input type="password" id="newPass" placeholder="senha (mín. 8)" autocomplete="new-password">'
-      + '<label><input type="checkbox" id="newAdmin"> administrador</label>'
-      + '<label><input type="checkbox" id="newInfantil"> perfil infantil</label>'
-      + '<button class="rclone-action-btn primary" style="flex:0 0 auto;min-width:110px" onclick="addUser()">Adicionar</button>'
-      + '</div>'
-      + '<div class="rclone-help">Não existe auto-cadastro: só quem aparece nesta lista consegue entrar. '
-      + 'Remover uma conta derruba as sessões dela na hora.</div>'
-      + '<div id="usersMsg"></div>';
-
-    document.getElementById('usersBox').innerHTML = html;
-  }
-
-  function togglePwForm(username) {
-    const el = document.getElementById('pw-' + username);
-    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
-  }
-
-  async function _usersPost(url, body) {
-    try {
-      const res = await fetch(url, {
+      await fetch('/api/profiles/leave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: '{}'
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.status === 'ok') return data;
-      _usersMsg(data.error || 'Não foi possível concluir.', 'err');
-    } catch (e) {
-      _usersMsg('Falha de conexão com o servidor.', 'err');
-    }
-    return null;
-  }
-
-  async function addUser() {
-    const username = (document.getElementById('newUser').value || '').trim().toLowerCase();
-    const password = document.getElementById('newPass').value || '';
-    const role = document.getElementById('newAdmin').checked ? 'admin' : 'user';
-    const infantil = document.getElementById('newInfantil') ? document.getElementById('newInfantil').checked : false;
-    if (!username || !password) { _usersMsg('Preencha usuário e senha.', 'err'); return; }
-    const data = await _usersPost('/api/users/add', { username, password, role, infantil });
-    if (data) { _renderUsers(data.users, _me ? _me.username : ''); _usersMsg('Conta "' + username + '" criada.', 'ok'); }
-  }
-
-  async function setUserInfantil(username, infantil) {
-    const data = await _usersPost('/api/users/infantil', { username, infantil });
-    if (data) {
-      _renderUsers(data.users, _me ? _me.username : '');
-      _usersMsg('"' + username + '" agora é um ' + (infantil ? 'perfil infantil' : 'perfil normal')
-        + ' — as sessões dele foram encerradas.', 'ok');
-    }
-  }
-
-  async function removeUser(username) {
-    const data = await _usersPost('/api/users/remove', { username });
-    if (data) { _renderUsers(data.users, _me ? _me.username : ''); _usersMsg('Conta "' + username + '" removida.', 'ok'); }
-  }
-
-  async function setUserRole(username, role) {
-    const data = await _usersPost('/api/users/role', { username, role });
-    if (data) {
-      _renderUsers(data.users, _me ? _me.username : '');
-      _usersMsg('"' + username + '" agora é ' + (role === 'admin' ? 'administrador' : 'usuário comum') + '.', 'ok');
-    }
-  }
-
-  async function setUserPassword(username) {
-    const el = document.getElementById('pwval-' + username);
-    const password = el ? el.value : '';
-    if (!password) { _usersMsg('Digite a nova senha.', 'err'); return; }
-    const data = await _usersPost('/api/users/password', { username, password });
-    if (data) {
-      togglePwForm(username);
-      if (el) el.value = '';
-      _usersMsg('Senha de "' + username + '" redefinida. As sessões dela foram encerradas.', 'ok');
-    }
+    } catch (e) {}
+    window.location.replace('/');
   }
 
   // ==================== UTILS ====================
@@ -4753,7 +4633,7 @@
         body: JSON.stringify({ everywhere: false })
       });
     } catch (e) {}
-    window.location.replace('/login');
+    window.location.replace('/');
   }
 
   function escHtml(str) {
@@ -5390,6 +5270,15 @@
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.25.0',
+      title: 'Login único com perfis, avatares e PIN',
+      changes: [
+        'Um login da casa e tela Quem está assistindo?',
+        'Perfis com avatar, perfil infantil e PIN de 4 números',
+        'Progresso de exibição separado por perfil',
+      ],
+    },
     {
       version: '1.24.0',
       title: 'Renomeia para 12:00 Media Server e visual retrô discreto',

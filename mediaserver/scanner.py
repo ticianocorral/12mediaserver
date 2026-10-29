@@ -380,7 +380,7 @@ def _realinhar_progresso(conn):
     candidato, fica órfão — invisível, sem risco de achar o filme errado.
     """
     orfaos = conn.execute(
-        "SELECT folder_path, position_seconds, duration_seconds, updated_at "
+        "SELECT profile_id, folder_path, position_seconds, duration_seconds, updated_at "
         "FROM watch_progress").fetchall()
     realinhados = 0
     for row in orfaos:
@@ -399,8 +399,9 @@ def _realinhar_progresso(conn):
             (nome,)).fetchall()]
         if len(candidatos) == 1:
             conn.execute(
-                "UPDATE watch_progress SET folder_path=? WHERE folder_path=?",
-                (candidatos[0], velho))
+                "UPDATE OR REPLACE watch_progress SET folder_path=? "
+                "WHERE folder_path=? AND profile_id=?",
+                (candidatos[0], velho, row["profile_id"]))
             realinhados += 1
             continue
         # Soltos/episódios: procura o mesmo nome de arquivo em outra pasta.
@@ -409,8 +410,9 @@ def _realinhar_progresso(conn):
             (nome,)).fetchall() if r["folder_path"] + "/" + r["name"] != velho]
         if len(cand_arq) == 1:
             conn.execute(
-                "UPDATE watch_progress SET folder_path=? WHERE folder_path=?",
-                (cand_arq[0], velho))
+                "UPDATE OR REPLACE watch_progress SET folder_path=? "
+                "WHERE folder_path=? AND profile_id=?",
+                (cand_arq[0], velho, row["profile_id"]))
             realinhados += 1
     if realinhados:
         conn.commit()

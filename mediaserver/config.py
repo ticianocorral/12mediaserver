@@ -103,7 +103,7 @@ WRITE_ROUTES = frozenset({
     "/api/cache-download", "/api/backup/b2", "/api/restore/b2",
     "/api/sources/add", "/api/sources/remove", "/api/branding/set",
     "/api/nuvem/conectar", "/api/nuvem/desconectar", "/api/rclone/wizard",
-    "/api/infantil/marcar", "/api/users/infantil",
+    "/api/infantil/marcar",
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
@@ -128,6 +128,15 @@ PUBLIC_PATHS = frozenset({
     "/ca.crt",
 })
 
+# Rotas do seletor de perfis: alcancaveis com a conta logada mesmo antes de
+# escolher o perfil (cada uma confere por conta propria o que pode fazer).
+ACCOUNT_PATHS = frozenset({
+    "/perfis", "/api/profiles", "/api/profiles/select", "/api/profiles/leave",
+    "/api/profiles/unlock", "/api/profiles/save", "/api/profiles/pin",
+    "/api/profiles/delete", "/api/auth/status", "/api/auth/logout",
+    "/api/auth/login", "/branding.css",
+})
+
 # Rotas que o Chromecast busca sozinho: liberadas por token assinado.
 # /api/prepared e servido com o token do path ORIGINAL — o receptor nao
 # conhece o arquivo convertido; o mapeamento mora no prepare.py.
@@ -137,7 +146,6 @@ TOKEN_PATHS = frozenset({"/api/stream", "/api/subtitle", "/api/prepared"})
 # Apontar o servidor para uma pasta do computador expoe aquele diretorio na LAN
 # para qualquer conta logada: cadastrar e remover fonte e decisao de admin.
 ADMIN_PATHS = frozenset({
-    "/api/users", "/api/users/add", "/api/users/remove", "/api/users/role",
     "/api/sources/add", "/api/sources/remove", "/api/sources/detect",
     "/api/branding", "/api/branding/set",
     "/api/nuvem/conectar", "/api/nuvem/desconectar", "/api/nuvem/status",
@@ -147,7 +155,7 @@ ADMIN_PATHS = frozenset({
     # apontar as fontes.
     "/api/backup", "/api/backup/local", "/api/backup/b2",
     "/api/restore", "/api/restore/b2",
-    "/api/infantil/marcar", "/api/users/infantil",
+    "/api/infantil/marcar",
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear",

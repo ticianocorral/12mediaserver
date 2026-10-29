@@ -15,7 +15,7 @@ from .config import (
     DB_PATH,
 )
 from .db import get_db, init_db, get_cache_time
-from .auth import _setup_code_value, _migrate_auth_if_needed, _auth_configured
+from .auth import _setup_code_value, _migrate_auth_if_needed, _auth_configured, _list_profiles
 from .netutil import (
     _get_local_ip, _ensure_ssl_cert, start_https_server, find_free_port,
 )
@@ -44,11 +44,20 @@ def _rotacionar_log():
         pass
 
 
+def _adotar_progresso_antigo():
+    """Progresso de antes dos perfis (profile_id vazio) passa para o primeiro
+    administrador, para ninguem perder o "continuar assistindo"."""
+    perfis = [p for p in _list_profiles() if p["role"] == "admin"]
+    if perfis:
+        adotar_progresso_orfao(perfis[0]["id"])
+
+
 def main():
     _rotacionar_log()
     # Initialize database
     init_db()
     _migrate_auth_if_needed()
+    _adotar_progresso_antigo()
     db_path_abs = DB_PATH.resolve()
 
     # O rclone pode estar em ~/.local/bin (instalado pelo install.sh) fora do
