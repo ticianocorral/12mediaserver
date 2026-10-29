@@ -26,6 +26,11 @@ PlayerActivity  ExoPlayer com a URL assinada, devolve a posição ao sair
 - **Capa e nome:** no topo, junto com os controles, aparecem a capa (a do filme
   ou a da série, baixada com o mesmo token assinado) e o título. Em episódio, a
   segunda linha traz o nome da série; em filme, o ano.
+- **Próximo episódio:** em série, nos últimos 20 segundos aparece o cartão "Próximo
+  episódio" com a contagem e os botões **Assistir agora** e **Cancelar**. Ao acabar, o
+  seguinte começa sozinho (a tecla de próxima faixa do controle também pula). O app
+  recebe até 6 episódios seguintes já assinados, então emenda sem voltar para a página,
+  e o progresso de cada episódio é gravado ao sair.
 - **Legenda:** o botão **Legenda** (ou `MENU` / `CC` no controle) abre um menu com
   liga/desliga, **tamanho** (Pequena, Média, Grande, Extra grande) e **cor**
   (Amarelo, Branco). O filme pausa enquanto o menu está aberto e mostra uma
