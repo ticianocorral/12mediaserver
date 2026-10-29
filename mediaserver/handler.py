@@ -107,6 +107,8 @@ from .rclone import (
     get_rclone_status,
 )
 from . import scanner as _scanner
+from . import scraper as _scraper
+from . import organizador as _organizador
 from . import sources as _sources
 from . import branding as _branding
 from . import nuvem as _nuvem
@@ -569,6 +571,75 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             "mtime": row["mod_time"],
             "sub": sub,
         }
+
+    # ── Metadados (TMDB) e organizador ───────────────────────
+
+    def _handle_scrape_key_set(self):
+        body = self._read_json_body() or {}
+        _scraper.set_api_key(str(body.get("api_key", "")))
+        self._send_json({"status": "ok", "configurado": _scraper.configurado()})
+
+    def _handle_scrape_apply(self):
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        try:
+            tmdb_id = int(body.get("tmdb_id"))
+        except (TypeError, ValueError):
+            self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
+            return
+        if not folder_path:
+            self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
+            return
+        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 502)
+            return
+        self._send_json({"status": "ok"})
+
+    def _handle_scrape_capa(self):
+        """Troca a capa de um filme local pela escolhida (nunca fanart)."""
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        try:
+            tmdb_id = int(body.get("tmdb_id"))
+        except (TypeError, ValueError):
+            tmdb_id = 0
+        ok, erro = _scraper.aplicar_capa(folder_path, tmdb_id, str(body.get("poster_path", "")))
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 400)
+            return
+        # reindexa a fonte para o catalogo enxergar a capa nova
+        src = _sources.resolve(folder_path)
+        if src and src.get("id"):
+            _scanner.start_background_scan(src["id"])
+        self._send_json({"status": "ok"})
+
+    def _handle_organizar_aplicar(self):
+        body = self._read_json_body() or {}
+        itens = body.get("itens")
+        if not isinstance(itens, list) or not itens:
+            self._send_json({"status": "error", "error": "Nada para organizar."}, 400)
+            return
+        source_id = str(body.get("source", ""))
+        res, erro = _organizador.aplicar(source_id, [i for i in itens if isinstance(i, dict)])
+        if erro:
+            self._send_json({"status": "error", "error": erro}, 400)
+            return
+        if res["op"]:
+            # reindexa a fonte: o catalogo passa a enxergar os novos caminhos
+            _scanner.start_background_scan(source_id)
+        self._send_json({"status": "ok", **res})
+
+    def _handle_organizar_desfazer(self):
+        body = self._read_json_body() or {}
+        ok, erro = _organizador.desfazer(str(body.get("op", "")))
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 400)
+            return
+        op = next((o for o in _organizador.historico() if o["id"] == str(body.get("op", ""))), None)
+        if op:
+            _scanner.start_background_scan(op["source"])
+        self._send_json({"status": "ok"})
 
     # ── Perfis ───────────────────────────────────────────────
 
@@ -2257,6 +2328,26 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             self._handle_prepare()
             return
 
+        if path == "/api/scrape/key/set":
+            self._handle_scrape_key_set()
+            return
+
+        if path == "/api/scrape/apply":
+            self._handle_scrape_apply()
+            return
+
+        if path == "/api/scrape/capa":
+            self._handle_scrape_capa()
+            return
+
+        if path == "/api/organizar/aplicar":
+            self._handle_organizar_aplicar()
+            return
+
+        if path == "/api/organizar/desfazer":
+            self._handle_organizar_desfazer()
+            return
+
         if path == "/api/profiles/select":
             self._handle_profile_select()
             return
@@ -2415,6 +2506,52 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                              "authenticated": user is not None,
                              "account": info is not None,
                              "user": user})
+            return
+
+        if path == "/api/scrape/status":
+            _, total = _scraper.listar_pendentes(limite=1)
+            self._send_json({"configurado": _scraper.configurado(), "pendentes": total})
+            return
+
+        if path == "/api/scrape/pendentes":
+            pendentes, total = _scraper.listar_pendentes()
+            self._send_json({"pendentes": pendentes, "total": total})
+            return
+
+        if path == "/api/scrape/search":
+            folder_path = params.get("path", [""])[0]
+            query = params.get("q", [""])[0].strip() or None
+            if not folder_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
+            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/scrape/capas":
+            try:
+                tmdb_id = int(params.get("tmdb_id", ["0"])[0])
+            except ValueError:
+                tmdb_id = 0
+            capas, erro = _scraper.listar_capas(tmdb_id) if tmdb_id else ([], "Filme não informado.")
+            self._send_json({"capas": capas, "erro": erro})
+            return
+
+        if path == "/api/organizar/itens":
+            itens, erro = _organizador.listar_itens(params.get("source", [""])[0])
+            self._send_json({"itens": itens or [], "erro": erro})
+            return
+
+        if path == "/api/organizar/buscar":
+            cands, erro = _organizador.buscar(
+                params.get("source", [""])[0], params.get("origem", [""])[0],
+                params.get("q", [""])[0].strip() or None)
+            self._send_json({"candidatos": cands, "erro": erro})
+            return
+
+        if path == "/api/organizar/historico":
+            self._send_json({"operacoes": _organizador.historico()})
             return
 
         if path == "/api/profiles":
