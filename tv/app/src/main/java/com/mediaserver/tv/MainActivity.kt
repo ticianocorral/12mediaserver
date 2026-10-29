@@ -160,6 +160,11 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(PlayerActivity.EXTRA_URL, dados.optString("url"))
                 .putExtra(PlayerActivity.EXTRA_LEGENDA, dados.optString("legenda"))
                 .putExtra(PlayerActivity.EXTRA_POSICAO, dados.optLong("posicao", 0L))
+                .putExtra(PlayerActivity.EXTRA_TITULO, dados.optString("titulo"))
+                .putExtra(PlayerActivity.EXTRA_CONTEXTO, dados.optString("contexto"))
+                .putExtra(PlayerActivity.EXTRA_CAPA, dados.optString("capa"))
+                .putExtra(PlayerActivity.EXTRA_LEG_TAM, dados.optInt("legTam", 2))
+                .putExtra(PlayerActivity.EXTRA_LEG_COR, dados.optInt("legCor", 0))
             runOnUiThread { startActivityForResult(i, COD_PLAYER) }
         }
     }
@@ -170,9 +175,11 @@ class MainActivity : AppCompatActivity() {
         if (requisicao != COD_PLAYER || resultado != Activity.RESULT_OK || dados == null) return
         val posicao = dados.getLongExtra(PlayerActivity.EXTRA_POSICAO, 0L)
         val duracao = dados.getLongExtra(PlayerActivity.EXTRA_DURACAO, 0L)
+        val legTam = dados.getIntExtra(PlayerActivity.EXTRA_LEG_TAM, -1)
+        val legCor = dados.getIntExtra(PlayerActivity.EXTRA_LEG_COR, -1)
         // Quem decide se vale gravar e a propria pagina: ela ja ignora os
         // primeiros segundos e limpa o progresso de um filme terminado.
-        web.evaluateJavascript("window.tvPlaybackEnded($posicao, $duracao)", null)
+        web.evaluateJavascript("window.tvPlaybackEnded($posicao, $duracao, $legTam, $legCor)", null)
     }
 
     companion object {

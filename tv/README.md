@@ -21,6 +21,17 @@ MainActivity    WebView em http://<ip>:9187/?tv=1  +  ponte MediaServerTV
 PlayerActivity  ExoPlayer com a URL assinada, devolve a posição ao sair
 ```
 
+### O player
+
+- **Capa e nome:** no topo, junto com os controles, aparecem a capa (a do filme
+  ou a da série, baixada com o mesmo token assinado) e o título. Em episódio, a
+  segunda linha traz o nome da série; em filme, o ano.
+- **Legenda:** o botão **Legenda** (ou `MENU` / `CC` no controle) abre um menu com
+  liga/desliga, **tamanho** (Pequena, Média, Grande, Extra grande) e **cor**
+  (Amarelo, Branco). O filme pausa enquanto o menu está aberto e mostra uma
+  legenda de exemplo. As opções são as mesmas da página, e a escolha volta para
+  ela ao sair do filme.
+
 ## Compilar
 
 Precisa do Android Studio (traz o SDK e o JDK). Não há wrapper do Gradle no
