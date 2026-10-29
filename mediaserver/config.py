@@ -113,7 +113,7 @@ WRITE_ROUTES = frozenset({
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
-    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/scrape/apply", "/api/scrape/key/set", "/api/scrape/capa",
     "/api/organizar/aplicar", "/api/organizar/desfazer",
 })
 
@@ -169,6 +169,7 @@ ADMIN_PATHS = frozenset({
     "/api/generos/renomear",
     "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
     "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/scrape/capas", "/api/scrape/capa",
     "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
     "/api/organizar/desfazer", "/api/organizar/historico",
 })

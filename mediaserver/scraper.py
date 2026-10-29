@@ -18,7 +18,7 @@ vs a franquia) sem exigir nenhuma logica de desambiguacao esperta.
 Grava em dois lugares, por decisao de produto:
   - SEMPRE no banco (movie_meta). E o unico caminho para a nuvem, que o app
     trata como SOMENTE LEITURA: nada e escrito, movido nem renomeado la.
-  - COMO .nfo + poster.jpg/fanart.jpg nas pastas LOCAIS, pra interoperar com
+  - COMO .nfo + poster.jpg (so a capa, nunca fanart) nas pastas LOCAIS, pra interoperar com
     Kodi/Plex — e so quando ainda nao existe nada la. As tres regras abaixo
     (confinamento, nao sobrescrever, escrita atomica) sao o que separa
     "conveniente" de "estragou a biblioteca de alguem".
@@ -46,7 +46,8 @@ TMDB_BASE = "https://api.themoviedb.org/3"
 # Tamanhos estaveis da API do TMDB (developer.themoviedb.org/reference/configuration-details).
 # Nao vale gastar uma chamada em /configuration so pra confirmar isso a cada boot.
 IMG_POSTER = "https://image.tmdb.org/t/p/w500"
-IMG_BACKDROP = "https://image.tmdb.org/t/p/w1280"
+IMG_THUMB = "https://image.tmdb.org/t/p/w185"
+IMG_CAPA = "https://image.tmdb.org/t/p/w780"
 _TIMEOUT = 15
 _MAX_IMG_BYTES = 8 * 1024 * 1024
 
@@ -185,9 +186,9 @@ def para_movie_meta(dados):
         "source": "tmdb",
         "set_name": colecao.get("name") or None,
         "set_overview": None,
-        # Usados so pra baixar a arte; nao fazem parte do formato do NFO.
+        # Usado so pra baixar a capa; nao faz parte do formato do NFO. O app so
+        # baixa CAPA (poster), nunca fanart.
         "_poster_path": dados.get("poster_path"),
-        "_backdrop_path": dados.get("backdrop_path"),
     }
 
 
@@ -271,9 +272,11 @@ def _escrever_local_se_possivel(folder_path, meta):
     escrever_arquivos(pasta, meta)
 
 
-def escrever_arquivos(pasta, meta, nome_nfo=None):
-    """Grava NFO, poster.jpg e fanart.jpg em `pasta` (Path), so o que falta.
-    `nome_nfo` e o nome do .nfo novo (sem extensao); padrao: nome da pasta."""
+def escrever_arquivos(pasta, meta, nome_nfo=None, poster_path=None, sem_capa=False):
+    """Grava NFO e poster.jpg em `pasta` (Path), so o que falta. Nunca fanart.
+    `nome_nfo` e o nome do .nfo novo (sem extensao); padrao: nome da pasta.
+    `poster_path` e a capa escolhida (caminho do TMDB); sem ele vale a capa
+    principal do filme. `sem_capa` pula a capa."""
     novos = []
     try:
         existentes = list(pasta.iterdir())
@@ -291,8 +294,9 @@ def escrever_arquivos(pasta, meta, nome_nfo=None):
 
     tem_poster = any(p.stem.lower() in ("poster", "capa", "cover", "folder")
                      and p.suffix.lower() in (".jpg", ".jpeg", ".png") for p in existentes)
-    if not tem_poster and meta.get("_poster_path"):
-        dados_img = _baixar_imagem(IMG_POSTER + meta["_poster_path"])
+    escolhida = poster_path if _capa_valida(poster_path) else meta.get("_poster_path")
+    if not tem_poster and not sem_capa and escolhida:
+        dados_img = _baixar_imagem(IMG_POSTER + escolhida)
         if dados_img:
             try:
                 _escrever_atomico(pasta / "poster.jpg", dados_img)
@@ -300,17 +304,69 @@ def escrever_arquivos(pasta, meta, nome_nfo=None):
             except OSError:
                 pass
 
-    tem_fanart = any(p.stem.lower() in ("fanart", "background", "backdrop")
-                     and p.suffix.lower() in (".jpg", ".jpeg", ".png") for p in existentes)
-    if not tem_fanart and meta.get("_backdrop_path"):
-        dados_img = _baixar_imagem(IMG_BACKDROP + meta["_backdrop_path"])
-        if dados_img:
-            try:
-                _escrever_atomico(pasta / "fanart.jpg", dados_img)
-                novos.append(pasta / "fanart.jpg")
-            except OSError:
-                pass
     return novos
+
+
+# ── Capas: escolher entre as do TMDB ────────────────────────
+
+_RE_CAPA = re.compile(r"^/[A-Za-z0-9_-]{5,60}\.(jpg|jpeg|png)$")
+
+
+def _capa_valida(caminho):
+    """Caminho de imagem do TMDB (o host e fixo; so o nome vem de fora)."""
+    return bool(caminho and _RE_CAPA.match(str(caminho)))
+
+
+def listar_capas(tmdb_id):
+    """Capas (posters) do filme para a pessoa escolher: portugues primeiro,
+    depois as sem idioma e o resto, cada grupo pela nota do TMDB."""
+    dados, erro = _get("/movie/%d/images" % int(tmdb_id),
+                       {"include_image_language": "pt,en,null", "language": "pt-BR"})
+    if erro:
+        return [], erro
+    saida = []
+    for p in (dados or {}).get("posters", [])[:60]:
+        caminho = p.get("file_path")
+        if not _capa_valida(caminho):
+            continue
+        saida.append({
+            "path": caminho,
+            "idioma": p.get("iso_639_1") or "",
+            "largura": p.get("width"), "altura": p.get("height"),
+            "nota": p.get("vote_average") or 0,
+            "thumb": IMG_THUMB + caminho,
+        })
+    ordem = {"pt": 0, "": 1, "en": 2}
+    saida.sort(key=lambda c: (ordem.get(c["idioma"], 3), -float(c["nota"] or 0)))
+    return saida, None
+
+
+_NOMES_CAPA = ("poster", "capa", "cover", "folder")
+
+
+def aplicar_capa(folder_path, tmdb_id, poster_path):
+    """Troca a capa de UM filme em pasta LOCAL pela escolhida. A capa antiga
+    nao e apagada: vira poster.anterior.<ext>. Devolve (ok, erro)."""
+    if not _capa_valida(poster_path):
+        return False, "Capa inválida."
+    if not _sources.is_local(folder_path):
+        return False, "A nuvem é somente leitura: a capa só pode ser trocada em filmes de fontes locais."
+    pasta = _sources.local_real_path(folder_path)
+    if pasta is None or not pasta.is_dir():
+        return False, "Pasta não encontrada."
+    dados_img = _baixar_imagem(IMG_CAPA + poster_path)
+    if not dados_img:
+        return False, "Não foi possível baixar a capa."
+    try:
+        for p in sorted(pasta.iterdir()):
+            if p.is_file() and p.stem.lower() in _NOMES_CAPA \
+                    and p.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                os.replace(p, pasta / ("poster.anterior" + p.suffix.lower()))
+                break
+        _escrever_atomico(pasta / "poster.jpg", dados_img)
+    except OSError as e:
+        return False, "Não foi possível gravar a capa: %s" % e
+    return True, None
 
 
 # ── Aplicar: o unico caminho que grava alguma coisa ─────────

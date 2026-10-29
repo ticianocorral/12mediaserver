@@ -581,6 +581,24 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             return
         self._send_json({"status": "ok"})
 
+    def _handle_scrape_capa(self):
+        """Troca a capa de um filme local pela escolhida (nunca fanart)."""
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        try:
+            tmdb_id = int(body.get("tmdb_id"))
+        except (TypeError, ValueError):
+            tmdb_id = 0
+        ok, erro = _scraper.aplicar_capa(folder_path, tmdb_id, str(body.get("poster_path", "")))
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 400)
+            return
+        # reindexa a fonte para o catalogo enxergar a capa nova
+        src = _sources.resolve(folder_path)
+        if src and src.get("id"):
+            _scanner.start_background_scan(src["id"])
+        self._send_json({"status": "ok"})
+
     def _handle_organizar_aplicar(self):
         body = self._read_json_body() or {}
         itens = body.get("itens")
@@ -2300,6 +2318,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             self._handle_scrape_apply()
             return
 
+        if path == "/api/scrape/capa":
+            self._handle_scrape_capa()
+            return
+
         if path == "/api/organizar/aplicar":
             self._handle_organizar_aplicar()
             return
@@ -2487,6 +2509,15 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
             candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
             self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/scrape/capas":
+            try:
+                tmdb_id = int(params.get("tmdb_id", ["0"])[0])
+            except ValueError:
+                tmdb_id = 0
+            capas, erro = _scraper.listar_capas(tmdb_id) if tmdb_id else ([], "Filme não informado.")
+            self._send_json({"capas": capas, "erro": erro})
             return
 
         if path == "/api/organizar/itens":

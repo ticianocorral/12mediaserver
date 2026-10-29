@@ -2,7 +2,7 @@
 
 Padrao do acervo:
 
-    movies/Titulo (Ano)/Titulo (Ano).mkv      (+ legendas, .nfo, poster.jpg, fanart.jpg)
+    movies/Titulo (Ano)/Titulo (Ano).mkv      (+ legendas, .nfo e a capa poster.jpg)
 
 Regras que nao se negociam (e por que):
   - So fonte LOCAL. A nuvem e somente leitura: este modulo nunca escreve,
@@ -404,7 +404,11 @@ def _aplicar_um(src_cfg, raiz, item):
         except OSError:
             pass
 
-    novos = _scraper.escrever_arquivos(destino_dir, meta, nome_nfo=nome_base)
+    # a capa e a que a pessoa escolheu na tela; sem escolha vale a principal do
+    # TMDB, e "sem_capa" deixa a pasta sem baixar nada
+    novos = _scraper.escrever_arquivos(
+        destino_dir, meta, nome_nfo=nome_base,
+        poster_path=item.get("poster_path"), sem_capa=bool(item.get("sem_capa")))
 
     logico_antigo = _logico(src_cfg, origem_rel)
     logico_novo = _logico(src_cfg, destino_rel)
@@ -490,7 +494,7 @@ def desfazer(op_id):
             return False, erro
         src_cfg = _sources.get_source(op["source"])
         for item in reversed(op["itens"]):
-            # arquivos que o app gerou nesta operacao (NFO, poster, fanart)
+            # arquivos que o app gerou nesta operacao (NFO e capa)
             for rel in item.get("gerados", []):
                 f = _dentro(raiz, rel)
                 try:

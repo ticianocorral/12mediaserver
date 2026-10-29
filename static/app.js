@@ -1830,6 +1830,15 @@
       .finally(() => { raiz.style.pointerEvents = ''; });
   }
 
+  function pillCapaHtml(alvo, titulo) {
+    return '<button class="pill-acao pill-acao-btn" '
+      + 'onclick="openCapaModal(decodeURIComponent(\'' + enc(alvo) + '\'), decodeURIComponent(\'' + enc(titulo) + '\'))" title="Escolher outra capa do TMDB">'
+      + '<span class="pill-acao-icone"><svg class="icon-svg"><use href="#i-film"></use></svg></span>'
+      + '<span class="switch-texto"><span class="switch-rotulo">Capa</span>'
+      + '<span class="switch-nota">Trocar</span></span>'
+      + '</button>';
+  }
+
   function pillTagsHtml(alvo, titulo, tags) {
     const n = (tags || []).length;
     const nota = n === 0 ? 'Sem tags' : (n + (n === 1 ? ' tag' : ' tags'));
@@ -2246,6 +2255,9 @@
             ${switchAssistidoHtml(folderPath, !!detail.watched)}
             ${(_me && _me.role === 'admin')
                 ? pillTagsHtml(folderPath, titleClean, detail.tags)
+                : ''}
+            ${(_me && _me.role === 'admin' && isLocalPath(folderPath))
+                ? pillCapaHtml(folderPath, titleClean)
                 : ''}
             ${(_me && _me.role === 'admin')
                 ? switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
@@ -5422,12 +5434,16 @@
         + '<div class="src-main" style="min-width:0">'
         + '<div class="user-name" style="word-break:break-all">' + escHtml(it.nome)
         + ' <span class="user-tag ' + (it.tipo === 'pasta' ? 'local' : 'cloud') + '">' + (it.tipo === 'pasta' ? 'pasta' : 'arquivo') + '</span></div>'
-        + (esc ? '<div class="src-hint" style="color:#a5d6a7">→ ' + escHtml(esc.destino) + '/</div>'
+        + (esc ? '<div class="src-hint" style="color:#a5d6a7">→ ' + escHtml(esc.destino) + '/ · capa: '
+               + (esc.sem_capa ? 'nenhuma' : (esc.poster_path ? 'escolhida' : 'padrão do TMDB')) + '</div>'
                : '<div class="src-hint">Palpite: ' + escHtml(it.titulo || '?') + (it.ano ? ' (' + it.ano + ')' : '') + '</div>')
         + '</div>'
-        + '<button class="user-btn" onclick="_orgBuscar(\'' + it.id + '\')">' + (esc ? 'Trocar' : 'Buscar') + '</button>'
+        + '<button class="user-btn" onclick="_orgBuscar(\'' + it.id + '\')">' + (esc ? 'Trocar filme' : 'Buscar') + '</button>'
+        + (esc ? '<button class="user-btn" onclick="_orgAbrirCapas(\'' + it.id + '\')">Capa</button>' : '')
         + (esc ? '<button class="user-btn" title="Tirar da seleção" onclick="_orgLimpar(\'' + it.id + '\')">✕</button>' : '')
-        + '<div id="orgBusca-' + it.id + '" style="flex:1 1 100%"></div></div>';
+        + '<div id="orgBusca-' + it.id + '" style="flex:1 1 100%"></div>'
+        + (_org.capasAberto === it.id && esc ? '<div style="flex:1 1 100%"><button class="user-btn" onclick="_orgSemCapa(\'' + it.id + '\')">Não baixar capa</button></div>' : '')
+        + '<div id="orgCapas-' + it.id + '" style="flex:1 1 100%"></div></div>';
     }
     html += '<div style="margin-top:14px;display:flex;gap:10px;align-items:center">'
       + '<button class="rclone-action-btn primary"' + (n ? '' : ' disabled') + ' onclick="_orgAplicar()">Aplicar ' + n
@@ -5435,6 +5451,11 @@
       + '<div id="orgResultado"></div>';
     lista.innerHTML = html;
     for (const id in _org.busca) if (_org.busca[id]) _orgMostrarCandidatos(id, _org.busca[id]);
+    const ab = _org.capasAberto && _orgItem(_org.capasAberto);
+    if (ab && _org.escolha[ab.origem]) {
+      const e = _org.escolha[ab.origem];
+      _capasGrade('orgCapas-' + ab.id, e.tmdb_id, e.poster_path, c => _orgEscolherCapa(ab.id, c));
+    }
   }
 
   function _orgItem(id) { return _org.itens.find(i => i.id === id); }
@@ -5475,10 +5496,55 @@
     const it = _orgItem(id); const d = _org.busca[id];
     if (!it || !d || !d.candidatos[i]) return;
     const c = d.candidatos[i];
-    _org.escolha[it.origem] = { tmdb_id: c.id, destino: c.destino, titulo: c.titulo };
+    _org.escolha[it.origem] = { tmdb_id: c.id, destino: c.destino, titulo: c.titulo, poster_path: null, sem_capa: false };
     _org.busca[id] = null;
+    _org.capasAberto = id;
     _orgDesenhar();
   }
+
+  // Grade de capas do TMDB: a pessoa escolhe, em vez de ficar com a primeira.
+  async function _capasGrade(elId, tmdbId, selecionado, aoEscolher) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.innerHTML = '<div class="loading" style="min-height:60px"><div class="spinner"></div><span>Buscando capas...</span></div>';
+    let d;
+    try { d = await (await fetch('/api/scrape/capas?tmdb_id=' + encodeURIComponent(tmdbId))).json(); }
+    catch (e) { el.innerHTML = '<div class="user-msg err">Falha de conexão.</div>'; return; }
+    if (d.erro) { el.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
+    const capas = d.capas || [];
+    if (!capas.length) { el.innerHTML = '<div class="user-msg">O TMDB não tem capas para este filme.</div>'; return; }
+    window._capasLista = window._capasLista || {};
+    window._capasLista[elId] = { capas: capas, aoEscolher: aoEscolher };
+    el.innerHTML = '<div class="src-hint" style="margin:6px 0">Escolha a capa (português primeiro):</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px">'
+      + capas.map((c, i) => '<button type="button" title="' + escHtml((c.idioma || 'sem idioma') + ' · ' + (c.largura || '?') + '×' + (c.altura || '?')) + '" '
+        + 'onclick="_capaClicada(\'' + elId + '\',' + i + ')" style="padding:0;border:2px solid '
+        + (c.path === selecionado ? 'var(--cream)' : 'transparent') + ';border-radius:4px;background:none;cursor:pointer;overflow:hidden;position:relative">'
+        + '<img src="' + c.thumb + '" alt="" loading="lazy" style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover">'
+        + (c.idioma ? '<span style="position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.7);color:#fff;padding:1px 4px;border-radius:3px">' + escHtml(c.idioma) + '</span>' : '')
+        + '</button>').join('') + '</div>';
+  }
+
+  function _capaClicada(elId, i) {
+    const reg = (window._capasLista || {})[elId];
+    if (reg && reg.capas[i]) reg.aoEscolher(reg.capas[i].path);
+  }
+
+  function _orgEscolherCapa(id, caminho) {
+    const it = _orgItem(id); const e = it && _org.escolha[it.origem];
+    if (!e) return;
+    e.poster_path = caminho; e.sem_capa = false; _org.capasAberto = null;
+    _orgDesenhar();
+  }
+
+  function _orgSemCapa(id) {
+    const it = _orgItem(id); const e = it && _org.escolha[it.origem];
+    if (!e) return;
+    e.sem_capa = true; e.poster_path = null; _org.capasAberto = null;
+    _orgDesenhar();
+  }
+
+  function _orgAbrirCapas(id) { _org.capasAberto = (_org.capasAberto === id) ? null : id; _orgDesenhar(); }
 
   function _orgNorm(t) {
     return (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -5508,7 +5574,8 @@
   }
 
   async function _orgAplicar() {
-    const itens = Object.keys(_org.escolha).map(o => ({ origem: o, tmdb_id: _org.escolha[o].tmdb_id }));
+    const itens = Object.keys(_org.escolha).map(o => ({ origem: o, tmdb_id: _org.escolha[o].tmdb_id,
+      poster_path: _org.escolha[o].poster_path, sem_capa: !!_org.escolha[o].sem_capa }));
     if (!itens.length) return;
     if (!window.confirm('Mover e renomear ' + itens.length + ' filme(s) na fonte? Você pode desfazer depois pelo Histórico.')) return;
     const area = document.getElementById('orgResultado');
@@ -5543,6 +5610,54 @@
     const r = await _scrapePost('/api/organizar/desfazer', { op: op });
     showToast(r.ok ? 'Desfeito. O catálogo está sendo atualizado.' : (r.data.error || 'Não foi possível desfazer.'), r.ok ? 'success' : 'error');
     _orgHistorico();
+  }
+
+  // ----- Trocar a capa de UM filme (ficha do filme; só fonte local) -----
+  async function openCapaModal(path, titulo) {
+    document.getElementById('scrapeModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    const st = await (await fetch('/api/scrape/status')).json().catch(() => ({}));
+    if (!st.configurado) { _scrapeFormChave(); return; }
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML = '<div class="rclone-help">Escolha o filme certo no TMDB e depois a capa. A capa atual '
+      + 'não é apagada: vira <b>poster.anterior.jpg</b> na pasta. Só a capa é baixada, sem fanart.</div>'
+      + '<div class="user-form"><input type="text" id="capaQuery" value="' + escHtml((titulo || '').replace(/\s*\(\d{4}\)\s*$/, '').trim()) + '" style="flex:1 1 auto" '
+      + 'onkeydown="if(event.key===\'Enter\')_capaBuscar()"><button class="rclone-action-btn primary" onclick="_capaBuscar()">Buscar filme</button></div>'
+      + '<div id="capaCands" style="margin-top:10px"></div><div id="capaGrade" style="margin-top:10px"></div><div id="capaMsg"></div>';
+    window._capaAlvo = path;
+    _capaBuscar();
+  }
+
+  async function _capaBuscar() {
+    const q = (document.getElementById('capaQuery').value || '').trim();
+    const area = document.getElementById('capaCands');
+    area.innerHTML = '<div class="loading" style="min-height:60px"><div class="spinner"></div><span>Buscando no TMDB...</span></div>';
+    const d = await (await fetch('/api/scrape/search?path=' + encodeURIComponent(window._capaAlvo) + '&q=' + encodeURIComponent(q))).json();
+    if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
+    const c = d.candidatos || [];
+    area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
+      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div></div>'
+      + '<button class="user-btn" onclick="_capaEscolherFilme(' + x.id + ')">Ver capas</button></div>').join('')
+      : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
+  }
+
+  function _capaEscolherFilme(tmdbId) {
+    window._capaTmdb = tmdbId;
+    _capasGrade('capaGrade', tmdbId, null, caminho => _capaAplicar(caminho));
+  }
+
+  async function _capaAplicar(caminho) {
+    if (!window.confirm('Usar esta capa? A atual vira poster.anterior.jpg na pasta.')) return;
+    const msg = document.getElementById('capaMsg');
+    msg.innerHTML = '<div class="loading" style="min-height:40px"><div class="spinner"></div><span>Baixando a capa...</span></div>';
+    const r = await _scrapePost('/api/scrape/capa', { path: window._capaAlvo, tmdb_id: window._capaTmdb, poster_path: caminho });
+    if (r.ok) {
+      msg.innerHTML = '<div class="user-msg ok">Capa trocada. O catálogo está sendo atualizado.</div>';
+      showToast('Capa trocada.', 'success');
+    } else {
+      msg.innerHTML = '<div class="user-msg err">' + escHtml(r.data.error || 'Não foi possível trocar a capa.') + '</div>';
+    }
   }
 
   // ----- Sem metadado (preenche só o banco, e NFO/poster se a pasta for local) -----
