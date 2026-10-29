@@ -4,6 +4,7 @@ Modulo folha: nao importa nada do proprio pacote.
 """
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -53,7 +54,13 @@ LOCAL_ROOT = "/Local"
 # ── Caminhos ─────────────────────────────────────────────────
 # A raiz do projeto e o diretorio acima do pacote: o index.html e os favicons
 # ficam la, ao lado do server.py.
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Empacotado (PyInstaller), os arquivos do app ficam na pasta de dados do
+# pacote (sys._MEIPASS), nao ao lado deste modulo.
+FROZEN = bool(getattr(sys, "frozen", False))
+if FROZEN:
+    PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_PATH = PROJECT_ROOT / "index.html"
 
 # Cache vai pro home do usuario (gravavel mesmo dentro de um AppImage).
@@ -81,6 +88,12 @@ SECRET_PATH = CACHE_DIR / "secret.key"
 # de dentro dele onde mora o acervo. Segredos (quando o wizard cria um remote
 # novo) ficam obscurecidos no rclone.conf; aqui fica so o endereço.
 NUVEM_PATH = CACHE_DIR / "nuvem.json"
+# A chave do TMDB e da pessoa que instalou, nunca do projeto: uma chave
+# embutida no codigo publico ficaria exposta e todo mundo dividiria o mesmo
+# limite de uso. Fica fora do SQLite pelo mesmo motivo do sources.json.
+TMDB_KEY_PATH = CACHE_DIR / "tmdb.json"
+# Historico das organizacoes (renomear/mover) de fontes locais, para desfazer.
+ORGANIZAR_LOG_PATH = CACHE_DIR / "organizar-historico.json"
 
 for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, CAST_CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -107,6 +120,8 @@ WRITE_ROUTES = frozenset({
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
+    "/api/scrape/apply", "/api/scrape/key/set", "/api/scrape/capa",
+    "/api/organizar/aplicar", "/api/organizar/desfazer",
 })
 
 # Rotas alcancaveis sem sessao.
@@ -159,6 +174,11 @@ ADMIN_PATHS = frozenset({
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear",
+    "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
+    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/scrape/capas", "/api/scrape/capa",
+    "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
+    "/api/organizar/desfazer", "/api/organizar/historico",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

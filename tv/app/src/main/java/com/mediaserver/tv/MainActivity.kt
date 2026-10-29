@@ -165,6 +165,8 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(PlayerActivity.EXTRA_CAPA, dados.optString("capa"))
                 .putExtra(PlayerActivity.EXTRA_LEG_TAM, dados.optInt("legTam", 2))
                 .putExtra(PlayerActivity.EXTRA_LEG_COR, dados.optInt("legCor", 0))
+                .putExtra(PlayerActivity.EXTRA_PATH, dados.optString("path"))
+                .putExtra(PlayerActivity.EXTRA_FILA, dados.optJSONArray("fila")?.toString() ?: "[]")
             runOnUiThread { startActivityForResult(i, COD_PLAYER) }
         }
     }
@@ -177,9 +179,12 @@ class MainActivity : AppCompatActivity() {
         val duracao = dados.getLongExtra(PlayerActivity.EXTRA_DURACAO, 0L)
         val legTam = dados.getIntExtra(PlayerActivity.EXTRA_LEG_TAM, -1)
         val legCor = dados.getIntExtra(PlayerActivity.EXTRA_LEG_COR, -1)
+        // Episodios que o player emendou antes de sair, e o que estava tocando ao sair.
+        val saidas = dados.getStringExtra(PlayerActivity.EXTRA_SAIDAS) ?: "[]"
+        val atual = JSONObject.quote(dados.getStringExtra(PlayerActivity.EXTRA_ATUAL).orEmpty())
         // Quem decide se vale gravar e a propria pagina: ela ja ignora os
         // primeiros segundos e limpa o progresso de um filme terminado.
-        web.evaluateJavascript("window.tvPlaybackEnded($posicao, $duracao, $legTam, $legCor)", null)
+        web.evaluateJavascript("window.tvPlaybackEnded($posicao, $duracao, $legTam, $legCor, $saidas, $atual)", null)
     }
 
     companion object {

@@ -1,0 +1,4 @@
+Jost (variável, pesos 400 a 700, subconjunto latino) — © The Jost Project Authors.
+Licença: SIL Open Font License 1.1 (https://openfontlicense.org).
+Fonte original: https://fonts.google.com/specimen/Jost
+O arquivo fica no próprio app para ele ficar igual sem internet.

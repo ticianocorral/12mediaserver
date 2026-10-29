@@ -22,6 +22,7 @@
 - **👶 Perfil infantil** — perfis marcados como infantis veem apenas os filmes que o administrador liberou: o filtro vale para o catálogo, a busca e até o streaming (por URL direta não passa). Os filmes são marcados na própria ficha, com um toque
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
 - **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
+- **⏭️ Próximo episódio** — nos últimos 20 s de um episódio aparece o cartão com a contagem ("Assistir agora" ou "Cancelar") e o seguinte começa sozinho; no navegador, no AirPlay e na TV
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando
@@ -47,6 +48,35 @@
 ---
 
 ## 🚀 Instalação Rápida
+
+### Instaladores nativos (recomendado)
+
+Cada [release](https://github.com/ticianocorral/12mediaserver/releases) traz um
+instalador pronto para o seu sistema, com **Python e rclone embutidos**: não é
+preciso instalar nada antes.
+
+| Sistema | Arquivo | Como instalar |
+|---|---|---|
+| Windows 10/11 | `Instalador-12-00-Media-Server-<versão>-Windows.exe` | Duplo clique. Instala só para o seu usuário (sem administrador), cria os atalhos e, se você deixar marcado, inicia junto com o Windows |
+| macOS (Apple Silicon) | `12-00-Media-Server-<versão>-macOS-arm64.dmg` | Arraste **Media Server** para Aplicativos e abra. Na primeira vez: botão direito > Abrir |
+| Linux (Debian/Ubuntu, 64 bits) | `12-00-media-server_<versão>_amd64.deb` | `sudo apt install ./12-00-media-server_*.deb` e abra **12:00 Media Server** no menu |
+
+Ao abrir o app, o servidor sobe em segundo plano e o navegador abre em
+`http://localhost:9187`. No primeiro acesso o código de instalação já vem
+preenchido (só quando a página é aberta no próprio computador). O servidor
+inicia sozinho no login do usuário.
+
+> Os instaladores ainda não são assinados digitalmente: o macOS mostra o aviso
+> de "desenvolvedor não verificado" e o Windows o SmartScreen ("Mais
+> informações > Executar assim mesmo"). Para o Chromecast e a conversão de
+> vídeo para a TV, instale também o `mkcert` e o `ffmpeg` (opcionais).
+> Intel Mac: use o instalador de linha de comando abaixo.
+
+A fonte (Jost) vai dentro do app, então a interface fica igual sem internet. Só o botão de
+transmitir para o Chromecast depende de um componente do Google que precisa de internet.
+
+Os instaladores são gerados pelo workflow `Instaladores nativos`
+(`.github/workflows/installers.yml`) quando uma release é publicada.
 
 ### Instalador visual (Windows, macOS e Linux)
 
@@ -217,6 +247,29 @@ systemctl --user restart media-server
 # Parar
 systemctl --user stop media-server
 ```
+
+### Organizar e metadados (sem tinyMediaManager)
+
+Em **⚙️ Ajustes › Organizar e metadados** (só administradores) o app faz o que o
+tinyMediaManager fazia, direto do TMDB (com a **sua** chave gratuita; ela fica só
+neste computador):
+
+- **Organizar:** escolha uma fonte **local** (pasta, HD ou pendrive). O app lista os
+  filmes fora do padrão `movies/Título (Ano)/Título (Ano).mkv`, sugere o filme certo
+  pelo nome do arquivo e mostra para onde cada um iria. **Nada muda até você
+  confirmar.** Legendas e arquivos ao lado vêm junto, e o app grava o `.nfo` e a
+  capa (`poster.jpg`) que faltarem. **Só a capa:** o app nunca baixa fanart. O progresso de exibição, as coleções e
+  as tags do filme acompanham a mudança.
+- **Capa:** você escolhe a capa entre as do TMDB (português primeiro), em vez de ficar com
+  a primeira da busca. Na ficha do filme (fonte local), **Trocar capa** busca outra; a antiga
+  vira `poster.anterior.jpg`, sem apagar nada.
+- **Desfazer:** cada organização fica no **Histórico** e volta ao que era com um clique.
+- **Sem metadado:** filmes sem sinopse, elenco e nota; busque e aplique.
+- **A nuvem é somente leitura.** O app nunca renomeia, move nem grava nada nela. Para
+  organizar o acervo da nuvem, organize no disco e copie para lá. Nos filmes da nuvem
+  sem metadado, os dados do TMDB ficam só no catálogo do app.
+- Nunca sobrescreve arquivo nem apaga nada (só pasta que ficou vazia), e tudo fica
+  confinado à raiz da fonte. Por enquanto só filmes; séries ainda não.
 
 ### Estrutura da nuvem
 
@@ -670,6 +723,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 ---
 
 ## 📋 Changelog
+
+### v1.27 — Instaladores nativos, organizador com capas e próximo episódio
+
+- Instaladores nativos (Windows .exe, macOS .dmg, Linux .deb) com Python e rclone embutidos
+
+- Fonte Jost embutida: interface igual sem internet
+
+- Organizador local e metadados via TMDB: renomeia filmes, escolhe a capa, desfaz; nuvem somente leitura
+
+- Próximo episódio com contagem no navegador, no AirPlay e na TV
+
 
 ### v1.26 — Player da TV com legenda, capa e nome
 
