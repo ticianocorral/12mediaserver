@@ -5735,6 +5735,15 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.27.1',
+      title: 'Hotfix: servidor volta a subir com conta existente',
+      changes: [
+        'Corrige falha na inicialização do app instalado quando já havia conta',
+        'Remove a opção Aparência dos Ajustes',
+        'Perfil fica abaixo de Ajustes no menu lateral',
+      ],
+    },
+    {
       version: '1.27.0',
       title: 'Instaladores nativos, organizador com capas e próximo episódio',
       changes: [
