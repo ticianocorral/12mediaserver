@@ -3,6 +3,7 @@
 import datetime
 import http.server
 import os
+import shutil
 import signal
 import socket
 import ssl
@@ -119,8 +120,7 @@ def _ensure_ssl_cert(cert_dir, local_ip):
             pass
 
     # Prefer mkcert (CA-trusted = Cast SDK works)
-    mkcert = subprocess.run(["which", "mkcert"], capture_output=True, text=True, timeout=5)
-    if mkcert.returncode == 0:
+    if shutil.which("mkcert"):
         print("[12:00 Media Server] Generating CA-trusted SSL certificate via mkcert...", flush=True)
         try:
             subprocess.run(

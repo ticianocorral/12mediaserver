@@ -48,6 +48,32 @@
 
 ## 🚀 Instalação Rápida
 
+### Instaladores nativos (recomendado)
+
+Cada [release](https://github.com/ticianocorral/12mediaserver/releases) traz um
+instalador pronto para o seu sistema, com **Python e rclone embutidos**: não é
+preciso instalar nada antes.
+
+| Sistema | Arquivo | Como instalar |
+|---|---|---|
+| Windows 10/11 | `Instalador-12-00-Media-Server-<versão>-Windows.exe` | Duplo clique. Instala só para o seu usuário (sem administrador), cria os atalhos e, se você deixar marcado, inicia junto com o Windows |
+| macOS (Apple Silicon) | `12-00-Media-Server-<versão>-macOS-arm64.dmg` | Arraste **Media Server** para Aplicativos e abra. Na primeira vez: botão direito > Abrir |
+| Linux (Debian/Ubuntu, 64 bits) | `12-00-media-server_<versão>_amd64.deb` | `sudo apt install ./12-00-media-server_*.deb` e abra **12:00 Media Server** no menu |
+
+Ao abrir o app, o servidor sobe em segundo plano e o navegador abre em
+`http://localhost:9187`. No primeiro acesso o código de instalação já vem
+preenchido (só quando a página é aberta no próprio computador). O servidor
+inicia sozinho no login do usuário.
+
+> Os instaladores ainda não são assinados digitalmente: o macOS mostra o aviso
+> de "desenvolvedor não verificado" e o Windows o SmartScreen ("Mais
+> informações > Executar assim mesmo"). Para o Chromecast e a conversão de
+> vídeo para a TV, instale também o `mkcert` e o `ffmpeg` (opcionais).
+> Intel Mac: use o instalador de linha de comando abaixo.
+
+Os instaladores são gerados pelo workflow `Instaladores nativos`
+(`.github/workflows/installers.yml`) quando uma release é publicada.
+
 ### Instalador visual (Windows, macOS e Linux)
 
 Para quem prefere clicar a digitar, o projeto traz um instalador visual por plataforma, na raiz do repositório:

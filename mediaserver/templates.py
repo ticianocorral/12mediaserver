@@ -9,7 +9,7 @@ from . import branding as _branding
 _WORDMARK = '''<svg class="wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 25" role="img" aria-label="__MARCA__"><style>.wm-on{fill:#ff2a2a}.wm-off{fill:#3d0f12}</style><g transform="translate(0,1) scale(2.1)"><rect class="wm-off" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-off" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(14,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-off" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(34,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><g transform="translate(48,1) scale(2.1)"><rect class="wm-on" x="1" y="0" width="4" height="1" rx=".4"/><rect class="wm-on" x="5" y="1" width="1" height="4" rx=".4"/><rect class="wm-on" x="5" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="1" y="10" width="4" height="1" rx=".4"/><rect class="wm-on" x="0" y="6" width="1" height="4" rx=".4"/><rect class="wm-on" x="0" y="1" width="1" height="4" rx=".4"/><rect class="wm-off" x="1" y="5" width="4" height="1" rx=".4"/></g><rect class="wm-on" x="29" y="8.2" width="3" height="3"/><rect class="wm-on" x="29" y="14.8" width="3" height="3"/><text x="68" y="11.2" font-family="Futura,'Century Gothic','Arial Black',Helvetica,sans-serif" font-weight="900" font-size="11" textLength="55" lengthAdjust="spacing" fill="#f2ecdc">MEDIA</text><text x="68" y="23.6" font-family="Futura,'Century Gothic','Arial Black',Helvetica,sans-serif" font-weight="900" font-size="11" textLength="55" lengthAdjust="spacing" fill="#f2ecdc">SERVER</text></svg>'''
 
 
-def _login_page(setup=False):
+def _login_page(setup=False, codigo=None):
     """Tela de entrada. Em modo setup cria o primeiro administrador, e exige o
     codigo impresso no log do servidor — assim quem esta na rede mas nao tem
     acesso ao computador nao consegue tomar a conta inicial."""
@@ -19,15 +19,23 @@ def _login_page(setup=False):
     cor_rgb = "%d,%d,%d" % (int(cor[1:3], 16), int(cor[3:5], 16), int(cor[5:7], 16))
     if setup:
         heading = "Criar a conta"
-        sub = ("Primeiro acesso. O codigo de 6 digitos aparece no terminal onde "
-               "o %s esta rodando. Esta e a conta unica da casa: depois voce cria "
-               "os perfis de cada pessoa." % marca["nome"])
+        if codigo:
+            # Quem abre a pagina no proprio computador ja tem acesso a maquina,
+            # entao o codigo (que existe para barrar a rede) vem preenchido.
+            sub = ("Primeiro acesso. Como voce esta neste computador, o codigo "
+                   "ja veio preenchido. Esta e a conta unica da casa: depois "
+                   "voce cria os perfis de cada pessoa.")
+        else:
+            sub = ("Primeiro acesso. O codigo de 6 digitos aparece no terminal "
+                   "onde o %s esta rodando. Esta e a conta unica da casa: depois "
+                   "voce cria os perfis de cada pessoa." % marca["nome"])
         action = "/api/auth/setup"
         button = "Criar conta e entrar"
         extra_top = (
             '<label for="code">Codigo de instalacao</label>'
             '<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" '
-            'maxlength="6" autocomplete="off" required placeholder="000000">')
+            'maxlength="6" autocomplete="off" required placeholder="000000"%s>'
+            % (' value="%s"' % codigo if codigo else ""))
         extra_bottom = (
             '<label for="confirm">Repita a senha</label>'
             '<input id="confirm" type="password" autocomplete="new-password" '

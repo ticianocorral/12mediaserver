@@ -4,6 +4,7 @@ Modulo folha: nao importa nada do proprio pacote.
 """
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -53,7 +54,13 @@ LOCAL_ROOT = "/Local"
 # ── Caminhos ─────────────────────────────────────────────────
 # A raiz do projeto e o diretorio acima do pacote: o index.html e os favicons
 # ficam la, ao lado do server.py.
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Empacotado (PyInstaller), os arquivos do app ficam na pasta de dados do
+# pacote (sys._MEIPASS), nao ao lado deste modulo.
+FROZEN = bool(getattr(sys, "frozen", False))
+if FROZEN:
+    PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_PATH = PROJECT_ROOT / "index.html"
 
 # Cache vai pro home do usuario (gravavel mesmo dentro de um AppImage).

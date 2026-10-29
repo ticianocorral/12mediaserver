@@ -1,0 +1,140 @@
+name: Instaladores nativos
+
+# Gera o instalador de cada sistema e anexa à release. Roda quando uma release é
+# publicada (empacota o código da própria tag), ou na mão (Actions > Instaladores
+# nativos > Run workflow) informando a tag que recebe os arquivos: nesse caso
+# empacota o código do branch escolhido, útil para releases anteriores ao
+# workflow. Atenção: o nome dos arquivos usa a versão do código empacotado.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release que recebe os arquivos (ex.: v1.26.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  RCLONE_VERSAO: "1.68.2"
+  PYINSTALLER_VERSAO: "6.10.0"
+  PYTHON_VERSAO: "3.12"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSAO }}
+      - name: Versão e rclone
+        shell: bash
+        run: |
+          VERSAO=$(python -c "import re;print(re.search(r'__version__ = \"([^\"]+)\"',open('mediaserver/__init__.py').read()).group(1))")
+          echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
+          base="https://downloads.rclone.org/v${RCLONE_VERSAO}"
+          arq="rclone-v${RCLONE_VERSAO}-windows-amd64.zip"
+          curl -fsSLO "$base/$arq"
+          curl -fsSL "$base/SHA256SUMS" | grep "$arq" | sha256sum -c -
+          unzip -q "$arq"
+          echo "RCLONE_BIN=$PWD/rclone-v${RCLONE_VERSAO}-windows-amd64/rclone.exe" >> "$GITHUB_ENV"
+      - name: Empacotar
+        shell: bash
+        run: |
+          pip install "pyinstaller==${PYINSTALLER_VERSAO}"
+          python packaging/gerar_icones.py build/icones
+          export ICONES="$PWD/build/icones"
+          pyinstaller --noconfirm --distpath dist --workpath build/pyi packaging/media-server.spec
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DVersao=$env:VERSAO" "/DOrigem=$PWD\dist\media-server" "/DIcone=$PWD\build\icones\app.ico" "/O$PWD\saida" packaging\windows\media-server.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-windows
+          path: saida/*.exe
+      - name: Anexar à release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" saida/*.exe --clobber
+
+  macos:
+    runs-on: macos-latest   # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSAO }}
+      - name: Versão e rclone
+        run: |
+          VERSAO=$(python -c "import re;print(re.search(r'__version__ = \"([^\"]+)\"',open('mediaserver/__init__.py').read()).group(1))")
+          echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
+          base="https://downloads.rclone.org/v${RCLONE_VERSAO}"
+          arq="rclone-v${RCLONE_VERSAO}-osx-arm64.zip"
+          curl -fsSLO "$base/$arq"
+          curl -fsSL "$base/SHA256SUMS" | grep "$arq" | shasum -a 256 -c -
+          unzip -q "$arq"
+          echo "RCLONE_BIN=$PWD/rclone-v${RCLONE_VERSAO}-osx-arm64/rclone" >> "$GITHUB_ENV"
+      - name: Empacotar
+        run: |
+          pip install "pyinstaller==${PYINSTALLER_VERSAO}"
+          python packaging/gerar_icones.py build/icones
+          export ICONES="$PWD/build/icones"
+          pyinstaller --noconfirm --distpath dist --workpath build/pyi packaging/media-server.spec
+      - name: DMG
+        run: packaging/macos/build-dmg.sh dist "$VERSAO" arm64 saida
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-macos
+          path: saida/*.dmg
+      - name: Anexar à release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" saida/*.dmg --clobber
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSAO }}
+      - name: Versão e rclone
+        run: |
+          VERSAO=$(python -c "import re;print(re.search(r'__version__ = \"([^\"]+)\"',open('mediaserver/__init__.py').read()).group(1))")
+          echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
+          base="https://downloads.rclone.org/v${RCLONE_VERSAO}"
+          arq="rclone-v${RCLONE_VERSAO}-linux-amd64.zip"
+          curl -fsSLO "$base/$arq"
+          curl -fsSL "$base/SHA256SUMS" | grep "$arq" | sha256sum -c -
+          unzip -q "$arq"
+          echo "RCLONE_BIN=$PWD/rclone-v${RCLONE_VERSAO}-linux-amd64/rclone" >> "$GITHUB_ENV"
+      - name: Empacotar
+        run: |
+          pip install "pyinstaller==${PYINSTALLER_VERSAO}"
+          python packaging/gerar_icones.py build/icones
+          export ICONES="$PWD/build/icones"
+          pyinstaller --noconfirm --distpath dist --workpath build/pyi packaging/media-server.spec
+      - name: Pacote .deb
+        run: packaging/linux/build-deb.sh dist/media-server "$VERSAO" saida build/icones
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-linux
+          path: saida/*.deb
+      - name: Anexar à release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" saida/*.deb --clobber

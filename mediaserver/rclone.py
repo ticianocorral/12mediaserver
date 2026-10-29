@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import (
-    CACHED_FILES_PATH, RCLONE_GUI_ENABLED,
+    CACHED_FILES_PATH, PROJECT_ROOT, RCLONE_GUI_ENABLED,
     RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
 )
 from .paths import rc_remote as _rc_remote, remote_configurado
@@ -57,6 +57,12 @@ def ensure_rclone_in_path():
 
     Devolve True quando ha um rclone alcancavel.
     """
+    # Instalador nativo: o rclone vai dentro do pacote (bin/), numa versao
+    # conhecida, e tem prioridade sobre o do sistema.
+    embutido = PROJECT_ROOT / "bin" / ("rclone.exe" if os.name == "nt" else "rclone")
+    if embutido.is_file():
+        os.environ["PATH"] = str(embutido.parent) + os.pathsep + os.environ.get("PATH", "")
+        return True
     if shutil.which("rclone"):
         return True
     local = Path.home() / ".local" / "bin" / "rclone"

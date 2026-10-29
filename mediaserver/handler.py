@@ -251,6 +251,17 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             set_perfil_atual(self._user_cache["id"] if self._user_cache else "")
         return self._user_cache
 
+    def _requisicao_local(self):
+        """True quando a pagina esta sendo aberta no proprio computador: cliente
+        em loopback e endereco localhost (nao o IP da rede)."""
+        cliente = self.client_address[0] if self.client_address else ""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        return cliente in ("127.0.0.1", "::1") and host in ("localhost", "127.0.0.1", "::1")
+
+    def _pagina_de_setup(self):
+        return _login_page(setup=True,
+                           codigo=_setup_code_value() if self._requisicao_local() else None)
+
     def _can_manage_profiles(self):
         """Perfil administrador, ou conta que acabou de redigitar a senha."""
         info = self._session_info()
@@ -307,7 +318,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                         "/favicon.ico", "/favicon.svg"):
                 return True
             if path in ("/", "/index.html", "/login") or self._wants_html():
-                self._send_html(_login_page(setup=True))
+                self._send_html(self._pagina_de_setup())
                 return False
             self._send_json({"status": "error", "error": "setup_required"}, 401)
             return False
@@ -820,7 +831,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            self._send_html(_login_page(setup=not _auth_configured()))
+            self._send_html(self._pagina_de_setup() if not _auth_configured() else _login_page())
             return
 
         if path == "/" or path == "/index.html":
@@ -1469,14 +1480,17 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if rel in ("favicon.ico", "favicon.svg"):
             base = project_root
         elif rel.startswith("static/"):
-            base = (project_root / "static").resolve()
+            base = project_root / "static"
             rel = rel[len("static/"):]
         else:
             self._send_error("Forbidden", 403)
             return
+        # A contencao e conferida no texto do caminho (normpath), nao seguindo
+        # symlinks: no app empacotado do macOS os arquivos de dados sao links
+        # para Resources/, e resolver os dois lados os fazia "sair" de static/.
         try:
-            requested = (base / rel).resolve()
-            requested.relative_to(base)
+            requested = Path(os.path.normpath(base / rel))
+            requested.relative_to(Path(os.path.normpath(base)))
         except (ValueError, RuntimeError):
             self._send_error("Forbidden", 403)
             return
@@ -2387,7 +2401,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            self._send_html(_login_page(setup=not _auth_configured()))
+            self._send_html(self._pagina_de_setup() if not _auth_configured() else _login_page())
             return
 
         if path == "/api/auth/status":
