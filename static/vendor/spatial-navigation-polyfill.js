@@ -1,7 +1,7 @@
 /* Spatial Navigation Polyfill do W3C/WICG (LG Electronics), licenca MIT.
  * https://github.com/WICG/spatial-navigation
  *
- * Vendorizado sem alteracoes: o TicianoFlix nao tem etapa de build nem
+ * Vendorizado sem alteracoes: o 12:00 Media Server nao tem etapa de build nem
  * gerenciador de pacotes, e nao vale depender de CDN para uma TV que precisa
  * funcionar so com a rede de casa.
  *
