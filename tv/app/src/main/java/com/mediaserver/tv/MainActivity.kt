@@ -56,6 +56,10 @@ class MainActivity : AppCompatActivity() {
         // fonte da TV em um nivel alto a pagina inteira estufa como se tivesse
         // recebido 125%. Travar em 100 deixa a escala nas maos do viewport.
         web.settings.textZoom = 100
+        // Sem isto a WebView ignora o <meta viewport width=...> do modo TV e a
+        // pagina renderiza em 960px CSS (densidade 2): tudo 2x maior.
+        web.settings.useWideViewPort = true
+        web.settings.loadWithOverviewMode = true
 
         // O cookie de sessao vale 90 dias, mas so sobrevive a fechar o app se
         // for gravado em disco. Sem o flush do onPause, cada abertura do app
