@@ -63,8 +63,7 @@ class MainActivity : AppCompatActivity() {
         // Mesmo valor do viewport de static/tv.js. A WebView so aplica a escala
         // sozinha se a pagina carregar depois; fixar evita a pagina larga demais
         // aparecer cortada (so a metade esquerda visivel).
-        val dm = resources.displayMetrics
-        web.setInitialScale((dm.widthPixels / LARGURA_CSS / dm.density * 100).toInt())
+        aplicarEscala()
 
         // O cookie de sessao vale 90 dias, mas so sobrevive a fechar o app se
         // for gravado em disco. Sem o flush do onPause, cada abertura do app
@@ -81,18 +80,26 @@ class MainActivity : AppCompatActivity() {
 
         web.webViewClient = object : WebViewClient() {
             // A ponte MediaServerTV fica exposta a qualquer pagina carregada:
-            // so o servidor salvo pode navegar dentro do app.
+            // so o servidor salvo pode navegar dentro do app. E trocar de
+            // perfil passa por /perfis e volta para "/" sem ?tv=1: a pagina
+            // perdia o modo TV e a escala, entao o ?tv=1 e reposto.
             override fun shouldOverrideUrlLoading(
                 view: WebView, request: WebResourceRequest
             ): Boolean {
-                val host = request.url.host
-                if (host != null && host == Uri.parse(view.url ?: "").host) return false
-                Log.w("12:00 Media Server", "navegacao bloqueada: ${request.url}")
+                val uri = request.url
+                val host = uri.host
+                if (host == null || host != Uri.parse(view.url ?: "").host) {
+                    Log.w("12:00 Media Server", "navegacao bloqueada: $uri")
+                    return true
+                }
+                if (!request.isForMainFrame || uri.getQueryParameter("tv") != null) return false
+                view.loadUrl(uri.buildUpon().appendQueryParameter("tv", "1").build().toString())
                 return true
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 hostServidor = Uri.parse(url ?: "").host
+                aplicarEscala()
             }
 
             // So a pagina principal: falha de imagem ou de outro recurso nao
@@ -218,6 +225,11 @@ class MainActivity : AppCompatActivity() {
         // Quem decide se vale gravar e a propria pagina: ela ja ignora os
         // primeiros segundos e limpa o progresso de um filme terminado.
         web.evaluateJavascript("window.tvPlaybackEnded($posicao, $duracao, $legTam, $legCor, $saidas, $atual)", null)
+    }
+
+    private fun aplicarEscala() {
+        val dm = resources.displayMetrics
+        web.setInitialScale((dm.widthPixels / LARGURA_CSS / dm.density * 100).toInt())
     }
 
     companion object {
