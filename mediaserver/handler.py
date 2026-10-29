@@ -38,6 +38,7 @@ from .config import (
     PUBLIC_PATHS,
     TOKEN_PATHS,
     ADMIN_PATHS,
+    ACCOUNT_PATHS,
     SESSION_COOKIE,
     SESSION_MAX_AGE,
 )
@@ -53,6 +54,10 @@ from . import keepawake
 from . import prepare
 from .db import (
     get_db,
+    perfil_atual,
+    set_perfil_atual,
+    adotar_progresso_orfao,
+    apagar_progresso_do_perfil,
     get_cache_time,
     is_cache_stale,
     get_cache_usage,
@@ -63,14 +68,21 @@ from .auth import (
     _setup_code_value,
     _auth_configured,
     _norm_username,
-    _list_users,
-    _create_user,
-    _remove_user,
-    _set_user_role,
-    _set_user_password,
+    AVATARES,
+    MAX_PERFIS,
+    GERENCIAR_SEGUNDOS,
+    _list_profiles,
+    _get_profile,
+    _create_account,
+    _create_profile,
+    _update_profile,
+    _delete_profile,
+    _set_pin,
+    _pin_confere,
     _check_credentials,
     _revoke_all_sessions,
     _issue_session,
+    _session_info,
     _session_user,
     _issue_media_token,
     _valid_media_token,
@@ -78,7 +90,7 @@ from .auth import (
     _record_login_failure,
     _clear_login_failures,
 )
-from .templates import _login_page
+from .templates import _login_page, _profiles_page
 from .netutil import (
     _get_local_ip, mkcert_root_ca_path, _primary_local_hostname, active_https_port,
 )
@@ -206,6 +218,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         sem isso, cookies e usuario vazariam de uma requisicao para a seguinte."""
         self._pending_cookies = []
         self._user_cache = _UNSET
+        self._info_cache = _UNSET
+        set_perfil_atual("")
         # HEAD roda os mesmos caminhos do GET; esta flag e o que impede os
         # corpos de sairem (ver do_HEAD).
         self._head_only = False
@@ -221,12 +235,29 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 jar[k.strip()] = v.strip()
         return jar
 
+    def _session_info(self):
+        """Sessao da conta: {'account','profile','manage'} ou None. 'profile'
+        e None enquanto a pessoa ainda nao escolheu quem esta assistindo."""
+        if getattr(self, "_info_cache", _UNSET) is _UNSET:
+            self._info_cache = _session_info(self._cookies().get(SESSION_COOKIE))
+        return self._info_cache
+
     def _current_user(self):
+        """O perfil escolhido (ou None). E o que o resto do servidor chama de
+        usuario: papel, infantil e o dono do progresso de exibicao."""
         if getattr(self, "_user_cache", _UNSET) is _UNSET:
-            jar = self._cookies()
             self._user_cache = _session_user(
-                jar.get(SESSION_COOKIE))
+                self._cookies().get(SESSION_COOKIE))
+            set_perfil_atual(self._user_cache["id"] if self._user_cache else "")
         return self._user_cache
+
+    def _can_manage_profiles(self):
+        """Perfil administrador, ou conta que acabou de redigitar a senha."""
+        info = self._session_info()
+        if not info:
+            return False
+        p = info["profile"]
+        return bool(info["manage"] or (p and p.get("role") == "admin"))
 
     def _has_session(self):
         return self._current_user() is not None
@@ -259,10 +290,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         daria certo e a sessao sumiria na requisicao seguinte."""
         return "; Secure" if isinstance(self.request, ssl.SSLSocket) else ""
 
-    def _start_session(self, username):
+    def _start_session(self, profile_id="", manage=False):
         self._user_cache = _UNSET
+        self._info_cache = _UNSET
+        manage_ate = time.time() + GERENCIAR_SEGUNDOS if manage else 0
         self._queue_cookie("%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s"
-                           % (SESSION_COOKIE, _issue_session(username),
+                           % (SESSION_COOKIE, _issue_session(profile_id, manage_ate),
                               SESSION_MAX_AGE, self._cookie_secure()))
 
     def _auth_gate(self, path, params):
@@ -281,6 +314,18 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
 
         if path in PUBLIC_PATHS:
             return True
+
+        info = self._session_info()
+        if info and not info["profile"]:
+            # Entrou com a conta mas ainda nao escolheu o perfil: so o seletor
+            # (e o que ele precisa) responde.
+            if path in ACCOUNT_PATHS or path.startswith("/static/avatars/"):
+                return True
+            if path in ("/", "/index.html") or self._wants_html():
+                self._send_html(_profiles_page())
+                return False
+            self._send_json({"status": "error", "error": "profile_required"}, 401)
+            return False
 
         if self._has_session():
             if path in ADMIN_PATHS and not self._is_admin():
@@ -335,14 +380,18 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         # continuam com ele — ver branding.get().)
         nome = _branding.NOME_PADRAO
         username = str(body.get("username", ""))
-        problem = _create_user(username, str(body.get("password", "")), role="admin")
+        pid, problem = _create_account(username, str(body.get("password", "")),
+                                       str(body.get("perfil", "")))
         if problem:
             self._send_json({"status": "error", "error": problem}, 400)
             return
         _branding.set(nome=nome)
         _clear_login_failures(ip)
-        self._start_session(username)
-        print("[12:00 Media Server] Administrador '%s' criado." % _norm_username(username),
+        adotar_progresso_orfao(pid)
+        # O primeiro perfil (administrador) ja entra: o seletor aparece nos
+        # proximos acessos, quando houver mais de um perfil.
+        self._start_session(pid)
+        print("[12:00 Media Server] Conta '%s' criada." % _norm_username(username),
               flush=True)
         self._send_json({"status": "ok"})
 
@@ -364,7 +413,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                              "error": "Usuario ou senha incorretos"}, 401)
             return
         _clear_login_failures(ip)
-        self._start_session(user["username"])
+        # So a conta entrou: o perfil e escolhido no seletor.
+        self._start_session("")
         self._send_json({"status": "ok", "user": user})
 
     def _handle_auth_logout(self, everywhere=False):
@@ -505,58 +555,151 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             "sub": sub,
         }
 
-    def _handle_users_list(self):
-        me = self._current_user() or {}
-        self._send_json({"status": "ok", "me": me.get("username"),
-                         "users": _list_users()})
+    # ── Perfis ───────────────────────────────────────────────
 
-    def _handle_user_add(self):
+    def _perfis_resposta(self, **extra):
+        info = self._session_info() or {}
+        me = info.get("profile")
+        dados = {"status": "ok", "profiles": _list_profiles(),
+                 "me": me["id"] if me else None,
+                 "canManage": self._can_manage_profiles(),
+                 "max": MAX_PERFIS, "avatars": list(AVATARES)}
+        dados.update(extra)
+        self._send_json(dados)
+
+    def _handle_profiles_list(self):
+        self._perfis_resposta()
+
+    def _handle_profile_select(self):
+        """Escolhe o perfil da sessao. Perfil com PIN pede os 4 numeros."""
         body = self._read_json_body() or {}
-        problem = _create_user(str(body.get("username", "")),
-                               str(body.get("password", "")),
-                               role=str(body.get("role", "user")),
-                               infantil=bool(body.get("infantil")))
-        if problem:
-            self._send_json({"status": "error", "error": problem}, 400)
+        pid = str(body.get("id", ""))
+        perfil = _get_profile(pid)
+        if not perfil:
+            self._send_json({"status": "error", "error": "Perfil não encontrado"}, 404)
             return
-        self._send_json({"status": "ok", "users": _list_users()})
+        chave = "%s|pin|%s" % (self._client_ip(), pid)
+        if perfil.get("pin"):
+            if _login_blocked(chave):
+                self._send_json({"status": "error", "error":
+                                 "Muitas tentativas. Espere alguns minutos."}, 429)
+                return
+            if not _pin_confere(pid, str(body.get("pin", ""))):
+                _record_login_failure(chave)
+                self._send_json({"status": "error", "error": "PIN incorreto"}, 401)
+                return
+            _clear_login_failures(chave)
+        info = self._session_info() or {}
+        self._start_session(pid, manage=bool(info.get("manage")))
+        self._send_json({"status": "ok"})
 
-    def _handle_user_remove(self):
-        body = self._read_json_body() or {}
-        me = (self._current_user() or {}).get("username", "")
-        problem = _remove_user(str(body.get("username", "")), me)
-        if problem:
-            self._send_json({"status": "error", "error": problem}, 400)
+    def _handle_profile_leave(self):
+        """Volta ao seletor ("Trocar de perfil"), mantendo a conta logada."""
+        self._start_session("")
+        self._send_json({"status": "ok"})
+
+    def _handle_profile_unlock(self):
+        """Libera a edicao de perfis a partir do seletor: a conta redigita a
+        senha. Vale 10 minutos nesta sessao."""
+        ip = self._client_ip()
+        if _login_blocked(ip):
+            self._send_json({"status": "error", "error":
+                             "Muitas tentativas. Espere alguns minutos."}, 429)
             return
-        self._send_json({"status": "ok", "users": _list_users()})
-
-    def _handle_user_role(self):
         body = self._read_json_body() or {}
-        me = (self._current_user() or {}).get("username", "")
-        problem = _set_user_role(str(body.get("username", "")),
-                                 str(body.get("role", "user")), me)
-        if problem:
-            self._send_json({"status": "error", "error": problem}, 400)
+        conta = (self._session_info() or {}).get("account", "")
+        if not _check_credentials(conta, str(body.get("password", ""))):
+            _record_login_failure(ip)
+            self._send_json({"status": "error", "error": "Senha incorreta"}, 401)
             return
-        self._send_json({"status": "ok", "users": _list_users()})
+        _clear_login_failures(ip)
+        info = self._session_info() or {}
+        self._start_session((info.get("profile") or {}).get("id", ""), manage=True)
+        self._send_json({"status": "ok"})
 
-    def _handle_user_password(self):
-        """Admin redefine a senha de qualquer conta; cada um troca a propria."""
-        body = self._read_json_body() or {}
-        me = self._current_user() or {}
-        target = _norm_username(str(body.get("username", "")) or me.get("username", ""))
-        if target != me.get("username") and me.get("role") != "admin":
+    def _perfil_atual_id(self):
+        return ((self._session_info() or {}).get("profile") or {}).get("id", "")
+
+    def _handle_profile_save(self):
+        if not self._can_manage_profiles():
             self._send_json({"status": "error",
                              "error": "Apenas administradores"}, 403)
             return
-        problem = _set_user_password(target, str(body.get("password", "")))
+        body = self._read_json_body() or {}
+        pid = str(body.get("id", ""))
+        criado = None
+        nome = body.get("name")
+        avatar = body.get("avatar")
+        infantil = bool(body.get("infantil"))
+        role = "admin" if body.get("role") == "admin" else "user"
+        if pid:
+            problem = _update_profile(
+                pid, name=None if nome is None else str(nome),
+                avatar=None if avatar is None else str(avatar),
+                infantil=infantil, role=role)
+        else:
+            novo, problem = _create_profile(str(nome or ""), str(avatar or ""),
+                                            infantil=infantil, role=role)
+            if not problem:
+                pid = novo["id"]
+                criado = pid
         if problem:
             self._send_json({"status": "error", "error": problem}, 400)
             return
-        # Trocar a propria senha derruba as outras sessoes: renova a atual.
-        if target == me.get("username"):
-            self._start_session(target)
-        self._send_json({"status": "ok"})
+        if pid and pid == self._perfil_atual_id():
+            # Mudar o proprio papel derruba a sessao: renova a atual.
+            info = self._session_info() or {}
+            self._start_session(pid, manage=bool(info.get("manage")))
+        self._perfis_resposta(created=criado)
+
+    def _handle_profile_pin(self):
+        """Define ou remove o PIN. Quem gerencia mexe em qualquer perfil; cada
+        pessoa (que nao seja perfil infantil) mexe no seu, confirmando o PIN
+        atual quando ja existe."""
+        body = self._read_json_body() or {}
+        pid = str(body.get("id", ""))
+        perfil = _get_profile(pid)
+        if not perfil:
+            self._send_json({"status": "error", "error": "Perfil não encontrado"}, 404)
+            return
+        proprio = pid == self._perfil_atual_id()
+        if not self._can_manage_profiles():
+            if not proprio or perfil.get("infantil"):
+                self._send_json({"status": "error",
+                                 "error": "Apenas administradores"}, 403)
+                return
+            if perfil.get("pin"):
+                chave = "%s|pin|%s" % (self._client_ip(), pid)
+                if _login_blocked(chave) or not _pin_confere(pid, str(body.get("current", ""))):
+                    _record_login_failure(chave)
+                    self._send_json({"status": "error", "error": "PIN atual incorreto"}, 401)
+                    return
+        novo = body.get("pin")
+        problem = _set_pin(pid, None if novo in (None, "") else str(novo))
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        if proprio:
+            info = self._session_info() or {}
+            self._start_session(pid, manage=bool(info.get("manage")))
+        self._perfis_resposta()
+
+    def _handle_profile_delete(self):
+        if not self._can_manage_profiles():
+            self._send_json({"status": "error",
+                             "error": "Apenas administradores"}, 403)
+            return
+        pid = str((self._read_json_body() or {}).get("id", ""))
+        if pid == self._perfil_atual_id():
+            self._send_json({"status": "error", "error":
+                             "Não dá para remover o perfil em uso. Troque de perfil antes."}, 400)
+            return
+        problem = _delete_profile(pid)
+        if problem:
+            self._send_json({"status": "error", "error": problem}, 400)
+            return
+        apagar_progresso_do_perfil(pid)
+        self._perfis_resposta()
 
     def _media_token_ok(self):
         """True quando a requisicao traz um token de midia valido para o proprio
@@ -671,7 +814,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/login":
-            if self._has_session():
+            if self._session_info():
                 self.send_response(303)
                 self.send_header("Location", "/")
                 self.send_header("Content-Length", "0")
@@ -1830,11 +1973,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             if on:
                 conn.execute(
                     "INSERT OR REPLACE INTO watch_progress "
-                    "(folder_path, position_seconds, duration_seconds, updated_at) "
-                    "VALUES (?, 0, 0, ?)", (alvo, time.time()))
+                    "(profile_id, folder_path, position_seconds, duration_seconds, updated_at) "
+                    "VALUES (?, ?, 0, 0, ?)", (perfil_atual(), alvo, time.time()))
             else:
                 conn.execute(
-                    "DELETE FROM watch_progress WHERE folder_path=?", (alvo,))
+                    "DELETE FROM watch_progress WHERE profile_id=? AND folder_path=?",
+                    (perfil_atual(), alvo))
             conn.commit()
         finally:
             conn.close()
@@ -1968,16 +2112,6 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                          "message": ("Marcado para o perfil infantil."
                                      if on else "Desmarcado do perfil infantil.")})
 
-    def _handle_user_infantil(self):
-        body = self._read_json_body() or {}
-        me = (self._current_user() or {}).get("username", "")
-        problem = _set_user_infantil(str(body.get("username", "")),
-                                     bool(body.get("infantil")), me)
-        if problem:
-            self._send_json({"status": "error", "error": problem}, 400)
-            return
-        self._send_json({"status": "ok", "users": _list_users()})
-
     # ── Nuvem (qualquer remote rclone, via wizard) ─────────────
 
     def _handle_nuvem_status(self):
@@ -2105,24 +2239,28 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             self._handle_prepare()
             return
 
-        if path == "/api/users/add":
-            self._handle_user_add()
+        if path == "/api/profiles/select":
+            self._handle_profile_select()
             return
 
-        if path == "/api/users/remove":
-            self._handle_user_remove()
+        if path == "/api/profiles/leave":
+            self._handle_profile_leave()
             return
 
-        if path == "/api/users/role":
-            self._handle_user_role()
+        if path == "/api/profiles/unlock":
+            self._handle_profile_unlock()
             return
 
-        if path == "/api/users/infantil":
-            self._handle_user_infantil()
+        if path == "/api/profiles/save":
+            self._handle_profile_save()
             return
 
-        if path == "/api/users/password":
-            self._handle_user_password()
+        if path == "/api/profiles/pin":
+            self._handle_profile_pin()
+            return
+
+        if path == "/api/profiles/delete":
+            self._handle_profile_delete()
             return
 
         # Rotas que antes eram GET e alteravam estado (scan, cache, restore).
@@ -2159,8 +2297,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                     return
                 conn = get_db()
                 conn.execute(
-                    "INSERT OR REPLACE INTO watch_progress (folder_path, position_seconds, duration_seconds, updated_at) VALUES (?, ?, ?, ?)",
-                    (folder_path, position, duration, time.time())
+                    "INSERT OR REPLACE INTO watch_progress (profile_id, folder_path, position_seconds, duration_seconds, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (perfil_atual(), folder_path, position, duration, time.time())
                 )
                 conn.commit()
                 conn.close()
@@ -2254,13 +2392,19 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/auth/status":
             user = self._current_user()
+            info = self._session_info()
             self._send_json({"configured": _auth_configured(),
                              "authenticated": user is not None,
+                             "account": info is not None,
                              "user": user})
             return
 
-        if path == "/api/users":
-            self._handle_users_list()
+        if path == "/api/profiles":
+            self._handle_profiles_list()
+            return
+
+        if path == "/perfis":
+            self._send_html(_profiles_page())
             return
 
         # Rotas de escrita chegam aqui apenas quando redespachadas por do_POST.
@@ -2877,7 +3021,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             titulos = _titulos_nfo_de_pastas(conn, [r["path"] for r in movie_rows])
             assistidos = {r["folder_path"] for r in conn.execute(
                 "SELECT folder_path FROM watch_progress "
-                "WHERE position_seconds <= 0").fetchall()}
+                "WHERE profile_id=? AND position_seconds <= 0",
+                (perfil_atual(),)).fetchall()}
             conn.close()
 
             movies = []
@@ -2901,9 +3046,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             rows = conn.execute(
                 """SELECT p.*, f.name FROM watch_progress p
                    LEFT JOIN folders f ON f.path = p.folder_path
-                   WHERE p.position_seconds > 0
+                   WHERE p.profile_id = ? AND p.position_seconds > 0
                    ORDER BY p.updated_at DESC
-                   LIMIT 20"""
+                   LIMIT 20""",
+                (perfil_atual(),)
             ).fetchall()
             # Pôster e título de filme em lote, na mesma conexão do laço.
             posters = _posters_de_pastas(conn, [r["folder_path"] for r in rows])
@@ -2993,8 +3139,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 return
             conn = get_db()
             row = conn.execute(
-                "SELECT * FROM watch_progress WHERE folder_path=?",
-                (folder_path,)
+                "SELECT * FROM watch_progress WHERE profile_id=? AND folder_path=?",
+                (perfil_atual(), folder_path)
             ).fetchone()
             conn.close()
             if row:

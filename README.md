@@ -17,9 +17,9 @@
 
 ### ✨ Funcionalidades
 
-- **🔐 Login com contas** — usuário e senha por pessoa, sessão de 90 dias por aparelho, sem auto-cadastro
-- **👥 Painel de contas** — administradores adicionam, removem, promovem, redefinem senhas e ativam o perfil infantil
-- **👶 Perfil infantil** — contas marcadas como infantis veem apenas os filmes que o administrador liberou: o filtro vale para o catálogo, a busca e até o streaming (por URL direta não passa). Os filmes são marcados na própria ficha, com um toque
+- **🔐 Um login, vários perfis** — uma conta única da casa (usuário e senha, sessão de 90 dias por aparelho, sem auto-cadastro); depois de entrar cada pessoa escolhe o perfil, como num serviço de streaming
+- **🧑 Perfis com avatar e PIN** — 12 avatares ilustrados, até 6 perfis, e PIN opcional de 4 números por perfil; cada perfil tem o seu histórico e o seu Continuar assistindo
+- **👶 Perfil infantil** — perfis marcados como infantis veem apenas os filmes que o administrador liberou: o filtro vale para o catálogo, a busca e até o streaming (por URL direta não passa). Os filmes são marcados na própria ficha, com um toque
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
 - **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
@@ -180,18 +180,23 @@ conta vira o administrador.
 O código existe para fechar a janela em que qualquer pessoa na sua rede poderia
 criar a conta inicial antes de você — quem não tem acesso ao terminal da máquina
 não passa dessa tela. Depois disso o código não vale mais: contas novas só pelo
-painel **⚙️ Ajustes › 👥 Contas**.
+tela de perfis (**⚙️ Ajustes › 👥 Perfis**).
 
 Feito o login, clique em 🔄 para escanear sua nuvem.
 
-### 4. Criar contas para a casa
+### 4. Criar os perfis da casa
 
-Em **⚙️ Ajustes › 👥 Contas** (visível apenas para administradores) dá para
-adicionar pessoas, remover, promover a administrador e redefinir senhas.
-Não existe auto-cadastro: só quem está nessa lista consegue entrar.
+O login é um só (a conta que você criou no primeiro acesso). Depois de entrar,
+aparece a tela **Quem está assistindo?**. Em **Gerenciar perfis** (ou **⚙️ Ajustes › 👥 Perfis**,
+para administradores) dá para criar, editar e remover perfis: nome, avatar,
+**perfil infantil**, permissão de administrador e **PIN de 4 números** opcional.
 
-Remover uma conta encerra as sessões dela na hora. O mesmo vale para redefinir
-a senha de alguém.
+- Quem não é administrador pode gerenciar perfis redigitando a senha da conta
+  (vale 10 minutos).
+- O PIN é pedido toda vez que o perfil é escolhido. Esqueceu? Um administrador
+  remove ou troca o PIN em Gerenciar perfis.
+- Remover um perfil apaga o histórico de exibição dele. O último administrador
+  não pode ser removido.
 
 ---
 

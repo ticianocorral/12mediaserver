@@ -64,11 +64,15 @@ SCHEMA = """
         updated_at REAL NOT NULL DEFAULT 0
     );
 
+    -- Progresso por perfil: cada perfil tem o seu "continuar assistindo" e os
+    -- seus assistidos. Linha com position_seconds = 0 e "assistido".
     CREATE TABLE IF NOT EXISTS watch_progress (
-        folder_path TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL DEFAULT '',
+        folder_path TEXT NOT NULL,
         position_seconds REAL NOT NULL DEFAULT 0,
         duration_seconds REAL NOT NULL DEFAULT 0,
-        updated_at REAL NOT NULL DEFAULT 0
+        updated_at REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (profile_id, folder_path)
     );
 
     -- Colecoes legadas, alimentadas pela tag <set> do NFO (tinyMediaManager).
@@ -138,6 +142,20 @@ SCHEMA = """
 """
 
 
+# Perfil da requisicao em andamento. Cada requisicao roda numa thread propria
+# (ThreadingHTTPServer): o handler grava aqui quem esta logado e as consultas
+# de progresso filtram por isso, sem passar o perfil por todas as assinaturas.
+_contexto = threading.local()
+
+
+def set_perfil_atual(profile_id):
+    _contexto.perfil = profile_id or ""
+
+
+def perfil_atual():
+    return getattr(_contexto, "perfil", "")
+
+
 def like_prefix(path):
     """Prefixo para `LIKE ? ESCAPE '\\'`, com os curingas do LIKE neutralizados.
 
@@ -189,6 +207,7 @@ def init_db():
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_unico "
         "ON files(folder_path, name)")
+    _migrar_progresso_por_perfil(conn)
     _migrar_prefixo_marca(conn)
     _migrar_colecoes_nfo(conn)
     conn.commit()
@@ -263,6 +282,52 @@ def _migrar_colecoes_nfo(conn):
     conn.execute(
         "INSERT OR REPLACE INTO cache_meta (key, value) "
         "VALUES ('colecoes_app_v1', ?)", (str(time.time()),))
+
+
+def _migrar_progresso_por_perfil(conn):
+    """Bancos de antes dos perfis tinham watch_progress com a chave so no
+    folder_path. Reconstroi a tabela com profile_id; as linhas antigas ficam
+    com profile_id='' e sao adotadas pelo primeiro perfil (ver
+    adotar_progresso_orfao)."""
+    colunas = {r[1] for r in conn.execute("PRAGMA table_info(watch_progress)")}
+    if not colunas or "profile_id" in colunas:
+        return
+    conn.executescript("""
+        ALTER TABLE watch_progress RENAME TO watch_progress_antiga;
+        CREATE TABLE watch_progress (
+            profile_id TEXT NOT NULL DEFAULT '',
+            folder_path TEXT NOT NULL,
+            position_seconds REAL NOT NULL DEFAULT 0,
+            duration_seconds REAL NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (profile_id, folder_path)
+        );
+        INSERT INTO watch_progress (profile_id, folder_path, position_seconds,
+                                    duration_seconds, updated_at)
+            SELECT '', folder_path, position_seconds, duration_seconds, updated_at
+            FROM watch_progress_antiga;
+        DROP TABLE watch_progress_antiga;
+    """)
+
+
+def adotar_progresso_orfao(profile_id):
+    """Passa o progresso sem dono (de antes dos perfis) para este perfil."""
+    conn = get_db()
+    try:
+        conn.execute("UPDATE OR IGNORE watch_progress SET profile_id=? "
+                     "WHERE profile_id=''", (profile_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def apagar_progresso_do_perfil(profile_id):
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM watch_progress WHERE profile_id=?", (profile_id,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _migrar_prefixo_marca(conn):

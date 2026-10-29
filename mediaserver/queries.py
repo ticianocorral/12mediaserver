@@ -9,7 +9,7 @@ from pathlib import Path
 from .config import (
     IMAGE_EXTENSIONS, SUBTITLE_EXTENSIONS, VIDEO_EXTENSIONS,
 )
-from .db import get_db, like_prefix
+from .db import get_db, like_prefix, perfil_atual
 from .nfo import _fetch_nfo
 
 def _assistidos_alvo(conn):
@@ -22,7 +22,8 @@ def _assistidos_alvo(conn):
     """
     return {r["folder_path"] for r in conn.execute(
         "SELECT folder_path FROM watch_progress "
-        "WHERE position_seconds <= 0").fetchall()}
+        "WHERE profile_id=? AND position_seconds <= 0",
+        (perfil_atual(),)).fetchall()}
 
 
 def cached_list_directory(path, so_infantil=False):
@@ -232,8 +233,9 @@ def cached_movie_detail(folder_path):
         # assistir ate o fim tambem zera). Sem linha = nunca visto; positivo =
         # em andamento. Assim o interruptor da ficha nasce no estado certo.
         prog = conn.execute(
-            "SELECT position_seconds FROM watch_progress WHERE folder_path=?",
-            (folder_path,)).fetchone()
+            "SELECT position_seconds FROM watch_progress "
+            "WHERE profile_id=? AND folder_path=?",
+            (perfil_atual(), folder_path)).fetchone()
         result["watched"] = bool(prog) and prog["position_seconds"] <= 0
     finally:
         conn.close()
@@ -817,8 +819,8 @@ def _entrada_de_filme(conn, alvo):
     """alvo -> card de filme (pasta ou arquivo solto), ou None se sumiu."""
     visto = bool(conn.execute(
         "SELECT 1 FROM watch_progress "
-        "WHERE folder_path=? AND position_seconds <= 0 LIMIT 1",
-        (alvo,)).fetchone())
+        "WHERE profile_id=? AND folder_path=? AND position_seconds <= 0 LIMIT 1",
+        (perfil_atual(), alvo)).fetchone())
     pasta = conn.execute(
         """SELECT f.path, f.name, m.title, m.year FROM folders f
            LEFT JOIN movie_meta m ON m.folder_path = f.path
@@ -959,7 +961,8 @@ def cached_serie(serie_path, so_infantil=False):
                     (temp["path"], stem + "%")).fetchone()
                 prog = conn.execute(
                     "SELECT position_seconds, duration_seconds FROM watch_progress "
-                    "WHERE folder_path=?", (ep_path,)).fetchone()
+                    "WHERE profile_id=? AND folder_path=?",
+                    (perfil_atual(), ep_path)).fetchone()
                 eps.append({
                     "path": ep_path,
                     "name": fi["name"],

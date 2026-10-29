@@ -2484,3 +2484,10 @@
 
 /* Jost como fonte padrão: controles de formulário não herdam sozinhos. */
 button, input, select, textarea { font-family: inherit; }
+
+/* Perfil em uso: avatar + nome + atalho para trocar de perfil. */
+.sidebar-profile { gap: 10px; }
+.sidebar-profile .profile-avatar { width: 26px; height: 26px; border-radius: 4px; flex: 0 0 auto; display: block; }
+.sidebar-profile #profileSwitchName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.sidebar-profile .profile-trocar { font-size: 12px; color: var(--text3); }
+.sidebar-profile:hover .profile-trocar { color: var(--text); }

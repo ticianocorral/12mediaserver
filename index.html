@@ -207,6 +207,11 @@
         </div>
         <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
       </div>
+      <button class="sidebar-item sidebar-profile" id="profileSwitchBtn" style="display:none" onclick="switchProfile()" title="Trocar de perfil">
+        <img class="profile-avatar" id="profileSwitchAvatar" src="/static/avatars/a01.svg" alt="">
+        <span id="profileSwitchName">Perfil</span>
+        <span class="profile-trocar">Trocar</span>
+      </button>
       <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
         <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
       </button>
@@ -214,7 +219,7 @@
     <div class="sidebar-header">
       <img class="logo-text" src="/static/vcr-logo.svg" alt="12:00 Media Server">
       <div class="sidebar-header-meta">
-        <button class="sidebar-logout" onclick="doLogout()" title="Encerrar a sessão neste aparelho"><svg class="icon-svg"><use href="#i-logout"></use></svg> <span id="logoutLabel">Sair</span></button>
+        <button class="sidebar-logout" onclick="doLogout()" title="Encerrar a sessão neste aparelho"><svg class="icon-svg"><use href="#i-logout"></use></svg> <span id="logoutLabel">Sair da conta</span></button>
         <div class="sidebar-header-right">
           <div class="sidebar-cache-usage" id="cacheUsage" onclick="openCacheManager()" title="Gerenciar cache — baixar ou apagar filmes"><svg class="icon-svg"><use href="#i-box"></use></svg> <span id="cacheUsageSize">—</span></div>
           <span class="logo-version" id="versionBadge" onclick="openChangelogModal()" title="Ver changelog">v1.24</span>
@@ -340,11 +345,11 @@
             <div class="backup-option-desc">Salvar o catálogo num arquivo ou na nuvem, e restaurar depois</div>
           </div>
         </div>
-        <div class="backup-option" id="settingsUsers" style="display:none" onclick="fromSettings(openUsersModal)">
+        <div class="backup-option" id="settingsUsers" style="display:none" onclick="openProfilesManager()">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-users"></use></svg></span>
           <div>
-            <div class="backup-option-title">Contas</div>
-            <div class="backup-option-desc">Quem tem acesso, senhas e permissões</div>
+            <div class="backup-option-title">Perfis</div>
+            <div class="backup-option-desc">Avatares, perfil infantil, PIN e permissões</div>
           </div>
         </div>
         <div class="backup-option" onclick="fromSettings(openRcloneModal)">
@@ -386,20 +391,6 @@
       <div class="modal-body">
         <div id="sourcesBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando fontes...</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="usersModal">
-    <div class="modal" style="width:560px">
-      <div class="modal-header">
-        <span class="modal-title"><svg class="icon-svg"><use href="#i-users"></use></svg> Contas</span>
-        <button class="modal-close" onclick="closeUsersModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
-      </div>
-      <div class="modal-body">
-        <div id="usersBox">
-          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando contas...</span></div>
         </div>
       </div>
     </div>
