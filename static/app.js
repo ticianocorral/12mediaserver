@@ -5271,6 +5271,15 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.25.0',
+      title: 'Login único com perfis, avatares e PIN',
+      changes: [
+        'Um login da casa e tela Quem está assistindo?',
+        'Perfis com avatar, perfil infantil e PIN de 4 números',
+        'Progresso de exibição separado por perfil',
+      ],
+    },
+    {
       version: '1.24.0',
       title: 'Renomeia para 12:00 Media Server e visual retrô discreto',
       changes: [

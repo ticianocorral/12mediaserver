@@ -671,6 +671,15 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.25 — Login único com perfis, avatares e PIN
+
+- Um login da casa e tela Quem está assistindo?
+
+- Perfis com avatar, perfil infantil e PIN de 4 números
+
+- Progresso de exibição separado por perfil
+
+
 ### v1.24 — Renomeia para 12:00 Media Server e visual retrô discreto
 
 - Novo nome: 12:00 Media Server
