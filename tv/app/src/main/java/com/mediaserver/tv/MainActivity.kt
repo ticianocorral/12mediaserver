@@ -60,6 +60,11 @@ class MainActivity : AppCompatActivity() {
         // pagina renderiza em 960px CSS (densidade 2): tudo 2x maior.
         web.settings.useWideViewPort = true
         web.settings.loadWithOverviewMode = true
+        // Mesmo valor do viewport de static/tv.js. A WebView so aplica a escala
+        // sozinha se a pagina carregar depois; fixar evita a pagina larga demais
+        // aparecer cortada (so a metade esquerda visivel).
+        val dm = resources.displayMetrics
+        web.setInitialScale((dm.widthPixels / LARGURA_CSS / dm.density * 100).toInt())
 
         // O cookie de sessao vale 90 dias, mas so sobrevive a fechar o app se
         // for gravado em disco. Sem o flush do onPause, cada abertura do app
@@ -217,5 +222,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val COD_PLAYER = 1
+        private const val LARGURA_CSS = 1536f
     }
 }
