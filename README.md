@@ -724,6 +724,17 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.27 — Instaladores nativos, organizador com capas e próximo episódio
+
+- Instaladores nativos (Windows .exe, macOS .dmg, Linux .deb) com Python e rclone embutidos
+
+- Fonte Jost embutida: interface igual sem internet
+
+- Organizador local e metadados via TMDB: renomeia filmes, escolhe a capa, desfaz; nuvem somente leitura
+
+- Próximo episódio com contagem no navegador, no AirPlay e na TV
+
+
 ### v1.26 — Player da TV com legenda, capa e nome
 
 - Botão Legenda no player da TV: liga/desliga, tamanho e cor

@@ -5815,6 +5815,16 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.27.0',
+      title: 'Instaladores nativos, organizador com capas e próximo episódio',
+      changes: [
+        'Instaladores nativos (Windows .exe, macOS .dmg, Linux .deb) com Python e rclone embutidos',
+        'Fonte Jost embutida: interface igual sem internet',
+        'Organizador local e metadados via TMDB: renomeia filmes, escolhe a capa, desfaz; nuvem somente leitura',
+        'Próximo episódio com contagem no navegador, no AirPlay e na TV',
+      ],
+    },
+    {
       version: '1.26.0',
       title: 'Player da TV com legenda, capa e nome',
       changes: [
