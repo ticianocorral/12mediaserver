@@ -117,6 +117,11 @@ MIT — veja [LICENSE](LICENSE). Histórico completo no changelog do próprio ap
 
 ## 📋 Changelog
 
+### v1.27.2 — v1.27.1 — servidor volta a subir com conta existente; remove Aparência
+
+- v1.27.1 — servidor volta a subir com conta existente; remove Aparência
+
+
 ### v1.27.1 — Hotfix: servidor volta a subir com conta existente
 
 - Corrige falha na inicialização do app instalado quando já havia conta

@@ -5735,6 +5735,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.27.2',
+      title: 'v1.27.1 — servidor volta a subir com conta existente; remove Aparência',
+      changes: [
+        'v1.27.1 — servidor volta a subir com conta existente; remove Aparência',
+      ],
+    },
+    {
       version: '1.27.1',
       title: 'Hotfix: servidor volta a subir com conta existente',
       changes: [

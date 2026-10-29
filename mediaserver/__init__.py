@@ -5,4 +5,4 @@ entrypoint: o systemd, o LaunchAgent do macOS, o .bat do Windows e o wrapper
 nativo `media-server.c` fixam esse caminho.
 """
 
-__version__ = "1.27.1"
+__version__ = "1.27.2"
