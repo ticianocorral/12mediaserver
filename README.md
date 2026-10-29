@@ -671,6 +671,15 @@ MIT — veja o arquivo [LICENSE](LICENSE).
 
 ## 📋 Changelog
 
+### v1.26 — Player da TV com legenda, capa e nome
+
+- Botão Legenda no player da TV: liga/desliga, tamanho e cor
+
+- Capa e nome do filme ou série no topo do player
+
+- App da TV na versão 1.1
+
+
 ### v1.25 — Login único com perfis, avatares e PIN
 
 - Um login da casa e tela Quem está assistindo?

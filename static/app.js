@@ -5303,6 +5303,15 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.26.0',
+      title: 'Player da TV com legenda, capa e nome',
+      changes: [
+        'Botão Legenda no player da TV: liga/desliga, tamanho e cor',
+        'Capa e nome do filme ou série no topo do player',
+        'App da TV na versão 1.1',
+      ],
+    },
+    {
       version: '1.25.0',
       title: 'Login único com perfis, avatares e PIN',
       changes: [
