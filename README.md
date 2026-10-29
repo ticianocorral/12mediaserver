@@ -71,6 +71,9 @@ inicia sozinho no login do usuário.
 > vídeo para a TV, instale também o `mkcert` e o `ffmpeg` (opcionais).
 > Intel Mac: use o instalador de linha de comando abaixo.
 
+A fonte (Jost) vai dentro do app, então a interface fica igual sem internet. Só o botão de
+transmitir para o Chromecast depende de um componente do Google que precisa de internet.
+
 Os instaladores são gerados pelo workflow `Instaladores nativos`
 (`.github/workflows/installers.yml`) quando uma release é publicada.
 

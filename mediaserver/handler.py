@@ -312,6 +312,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
     def _auth_gate(self, path, params):
         """Decide quem entra. O Chromecast nao manda cookie — para ele o acesso
         vem de um token assinado por arquivo, emitido por /api/cast-token."""
+        # A fonte do app (so este arquivo, nome exato: nada de prefixo, senao um ".." liberaria o resto de static/) e publica: as telas de entrada
+        # carregam antes de existir sessao.
+        if path == "/static/fonts/jost-latin.woff2":
+            return True
         if not _auth_configured():
             # Primeiro acesso: so a criacao do administrador responde.
             if path in ("/api/auth/setup", "/api/auth/status",
