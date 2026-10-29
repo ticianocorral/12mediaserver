@@ -2344,7 +2344,6 @@
     ['settingsModal', 'closeSettingsModal'],
     ['sourcesModal', 'closeSourcesModal'],
     ['scrapeModal', 'closeScrapeModal'],
-    ['brandingModal', 'closeBrandingModal'],
     ['rcloneModal', 'closeRcloneModal'],
     ['changelogModal', 'closeChangelogModal'],
   ];
@@ -4748,7 +4747,7 @@
           if (nome) nome.textContent = _me.username;
         }
         if (_me.role === 'admin') {
-          ['settingsUsers', 'settingsScrape', 'settingsSources', 'settingsBranding', 'settingsBackup'].forEach(id => {
+          ['settingsUsers', 'settingsScrape', 'settingsSources', 'settingsBackup'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
@@ -5338,85 +5337,6 @@
     if (e.target === this) closeRcloneModal();
   });
 
-  // ==================== APARENCIA (marca) ====================
-  // Nome de exibicao e cor sao a unica coisa que muda por instalacao — onde
-  // os dados moram (cache, banco, nome do servico) nunca depende disto. Ver
-  // mediaserver/branding.py.
-  function openBrandingModal() {
-    document.getElementById('brandingModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    _loadBranding();
-  }
-  function closeBrandingModal() {
-    document.getElementById('brandingModal').classList.remove('active');
-    document.body.style.overflow = '';
-  }
-  document.getElementById('brandingModal').addEventListener('click', function(e) {
-    if (e.target === this) closeBrandingModal();
-  });
-
-  async function _loadBranding() {
-    const box = document.getElementById('brandingBox');
-    try {
-      const res = await fetch('/api/branding');
-      const marca = await res.json();
-      box.innerHTML =
-        '<div class="user-form" style="flex-direction:column;align-items:stretch">'
-        + '<label style="font-size:12px;color:var(--text3)">Cor</label>'
-        + '<div style="display:flex;gap:8px;align-items:center">'
-        + '<input type="color" id="brandCorPicker" value="' + marca.cor + '" '
-        + 'style="width:44px;height:36px;padding:2px;border-radius:var(--radius);'
-        + 'border:1px solid rgba(255,255,255,0.14);background:transparent;cursor:pointer">'
-        + '<input type="text" id="brandCorTexto" value="' + marca.cor + '" maxlength="7" '
-        + 'style="flex:1" placeholder="#f02828">'
-        + '</div>'
-        + '</div>'
-        + '<div class="rclone-help">A cor aparece na tela de login, no menu, no ícone '
-        + 'do app instalado no celular e no manifesto.</div>'
-        + '<button class="rclone-action-btn primary" style="width:100%;margin-top:12px" '
-        + 'onclick="saveBranding()">Salvar</button>'
-        + '<div id="brandingMsg" class="user-msg"></div>';
-
-      const picker = document.getElementById('brandCorPicker');
-      const texto = document.getElementById('brandCorTexto');
-      // Os dois campos de cor ficam sincronizados nos dois sentidos: o seletor
-      // visual e o texto hexadecimal, pra quem preferir digitar direto.
-      picker.addEventListener('input', () => { texto.value = picker.value; });
-      texto.addEventListener('input', () => {
-        if (/^#[0-9a-fA-F]{6}$/.test(texto.value)) picker.value = texto.value;
-      });
-    } catch (e) {
-      box.innerHTML = '<div class="user-msg err">Falha ao carregar.</div>';
-    }
-  }
-
-  async function saveBranding() {
-    const cor = (document.getElementById('brandCorTexto').value || '').trim();
-    const msg = document.getElementById('brandingMsg');
-    const mostrar = (texto, tipo) => { msg.textContent = texto; msg.className = 'user-msg ' + tipo; };
-    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) { mostrar('Cor precisa ser hexadecimal, ex: #f02828.', 'err'); return; }
-    try {
-      const res = await fetch('/api/branding/set', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cor })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.status === 'ok') {
-        mostrar('Salvo! Atualizando...', 'ok');
-        // Recarrega em vez de repintar na hora: a cor nova tem que sair do
-        // proprio HTML que o servidor gera (branding.css, icones, login),
-        // e nao so do CSS injetado aqui — mais simples e mais confiavel do
-        // que sincronizar cada um desses pontos manualmente.
-        setTimeout(() => location.reload(), 600);
-      } else {
-        mostrar(data.error || 'Não foi possível salvar.', 'err');
-      }
-    } catch (e) {
-      mostrar('Falha de conexão com o servidor.', 'err');
-    }
-  }
-
   // ==================== ORGANIZAR E METADADOS (TMDB) ====================
   // Substitui o tinyMediaManager: acha filmes fora do padrão numa fonte LOCAL,
   // sugere o filme no TMDB, mostra a prévia do destino ("movies/Título (Ano)/")
@@ -5814,6 +5734,15 @@
   // ==================== CHANGELOG MODAL ====================
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
+    {
+      version: '1.27.1',
+      title: 'Hotfix: servidor volta a subir com conta existente',
+      changes: [
+        'Corrige falha na inicialização do app instalado quando já havia conta',
+        'Remove a opção Aparência dos Ajustes',
+        'Perfil fica abaixo de Ajustes no menu lateral',
+      ],
+    },
     {
       version: '1.27.0',
       title: 'Instaladores nativos, organizador com capas e próximo episódio',

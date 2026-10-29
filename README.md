@@ -117,6 +117,15 @@ MIT — veja [LICENSE](LICENSE). Histórico completo no changelog do próprio ap
 
 ## 📋 Changelog
 
+### v1.27.1 — Hotfix: servidor volta a subir com conta existente
+
+- Corrige falha na inicialização do app instalado quando já havia conta
+
+- Remove a opção Aparência dos Ajustes
+
+- Perfil fica abaixo de Ajustes no menu lateral
+
+
 ### v1.27 — Instaladores nativos, organizador com capas e próximo episódio
 
 - Instaladores nativos (Windows .exe, macOS .dmg, Linux .deb) com Python e rclone embutidos

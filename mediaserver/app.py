@@ -14,7 +14,7 @@ from .config import (
     CACHE_DIR,
     DB_PATH,
 )
-from .db import get_db, init_db, get_cache_time
+from .db import get_db, init_db, get_cache_time, adotar_progresso_orfao
 from .auth import _setup_code_value, _migrate_auth_if_needed, _auth_configured, _list_profiles
 from .netutil import (
     _get_local_ip, _ensure_ssl_cert, start_https_server, find_free_port,
