@@ -22,6 +22,7 @@
 - **👶 Perfil infantil** — perfis marcados como infantis veem apenas os filmes que o administrador liberou: o filtro vale para o catálogo, a busca e até o streaming (por URL direta não passa). Os filmes são marcados na própria ficha, com um toque
 - **💽 Fontes locais** — HD externo, pendrive e pastas do computador entram no mesmo catálogo, sem subir nada pra nuvem
 - **📁 Scan manual** — o botão **Atualizar** varre todas as fontes; cada uma também pode ser escaneada sozinha em **⚙️ Ajustes › 💽 Fontes**. Protegido contra scans concorrentes
+- **⏭️ Próximo episódio** — nos últimos 20 s de um episódio aparece o cartão com a contagem ("Assistir agora" ou "Cancelar") e o seguinte começa sozinho; no navegador, no AirPlay e na TV
 - **🎞️ Streaming direto** via `rclone serve http` — sem downloads, sem buffers infinitos
 - **💾 Cache SQLite** — navegação instantânea após o primeiro scan
 - **📥 Download em background** — pause o filme e o cache VFS continua baixando

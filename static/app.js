@@ -3215,6 +3215,56 @@
     return true;
   }
 
+  // ── Próximo episódio (player do navegador/AirPlay) ─────────
+  // Nos últimos segundos de um episódio que tem sucessor aparece o cartão
+  // "Próximo episódio" com a contagem; ao acabar o episódio ele começa sozinho,
+  // a menos que a pessoa cancele. "Assistir agora" pula direto.
+  const PROXIMO_AVISO_SEG = 20;
+  let _proximoCancelado = false;
+
+  function _proximoDaFila() {
+    return (_castPlaylist && _castPlaylist.itens[_castPlaylist.idx + 1]) || null;
+  }
+
+  function _esconderCartaoProximo() {
+    const card = document.getElementById('proximoCard');
+    if (card) card.style.display = 'none';
+  }
+
+  function _atualizarCartaoProximo(video) {
+    const prox = _proximoDaFila();
+    const btn = document.getElementById('nextBtn');
+    if (btn) btn.style.display = prox ? '' : 'none';
+    const card = document.getElementById('proximoCard');
+    if (!card) return;
+    const resta = video && video.duration ? video.duration - video.currentTime : Infinity;
+    if (!prox || _proximoCancelado || _isCasting() || !(resta > 0 && resta <= PROXIMO_AVISO_SEG)) {
+      if (card.style.display !== 'none') _esconderCartaoProximo();
+      return;
+    }
+    document.getElementById('proximoTitulo').textContent = prox.title || '';
+    document.getElementById('proximoConta').textContent = 'Começa em ' + Math.ceil(resta) + ' s';
+    if (card.style.display === 'none') {
+      card.style.display = '';
+      const agora = document.getElementById('proximoAgora');
+      if (agora) { try { agora.focus({ preventScroll: true }); } catch (e) {} }
+    }
+  }
+
+  function cancelarProximo() {
+    _proximoCancelado = true;
+    _esconderCartaoProximo();
+  }
+
+  // Botão "Assistir agora" e o ▶| da barra de controles.
+  function proximoEpisodio() {
+    const video = document.getElementById('videoPlayer');
+    if (!_proximoDaFila()) return;
+    if (video && video.duration) _saveProgress(video.currentTime, video.duration);
+    _esconderCartaoProximo();
+    _avancarFilaNoPlayer();
+  }
+
   // Emenda o próximo episódio da fila quando o atual termina na TV. A fila
   // nasce do playMovie (página da série ou da temporada) — ver
   // _arteEPlaylistDoEpisodio.
@@ -3248,6 +3298,8 @@
     var proximo = _castPlaylist.itens[_castPlaylist.idx + 1];
     if (!proximo) return;
     _castAvancando = true;
+    _proximoCancelado = false;
+    _esconderCartaoProximo();
     showToast('▶ Próximo episódio: ' + proximo.title, 'info');
     playMovie(proximo.path, proximo.title, proximo.sub || '', 0, proximo.path);
     // AirPlay: o src nasce sem token (o <video> local usa o cookie da sessão)
@@ -3453,7 +3505,12 @@
     const base = window.location.origin;
     const assinada = (rota, caminho, token) => base + rota
       + '?path=' + encodeURIComponent(caminho) + '&t=' + encodeURIComponent(token);
+    // Próximos episódios (até 6), já assinados: o player nativo emenda um no
+    // outro sem voltar para a página.
+    const fila = await _tvMontarFila(filePath, assinada);
     window.MediaServerTV.play(JSON.stringify({
+      path: filePath,
+      fila: fila,
       url: assinada('/api/stream', filePath, tokens.t),
       legenda: (subtitlePath && tokens.sub)
         ? assinada('/api/subtitle', subtitlePath, tokens.sub) : '',
@@ -3467,10 +3524,52 @@
     }));
   }
 
+  // Episódios que vêm depois de `filePath` na série aberta (ou na pasta da
+  // temporada), com URL, legenda e capa assinadas. Filme não tem fila.
+  async function _tvMontarFila(filePath, assinada) {
+    _arteEPlaylistDoEpisodio(filePath);
+    const pl = _castPlaylist;
+    if (!pl || !pl.itens) return [];
+    const seguintes = pl.itens.slice(pl.idx + 1, pl.idx + 7);
+    const saida = [];
+    for (const it of seguintes) {
+      try {
+        const arte = it.arte || {};
+        const res = await fetch('/api/cast-token', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: it.path, subtitle: it.sub || '',
+                                 images: arte.poster ? [arte.poster] : [] })
+        });
+        if (!res.ok) break;
+        const t = await res.json();
+        saida.push({
+          path: it.path,
+          url: assinada('/api/stream', it.path, t.t),
+          legenda: (it.sub && t.sub) ? assinada('/api/subtitle', it.sub, t.sub) : '',
+          titulo: (it.title || '').replace(/\.[^.]+$/, '').replace(/[._]/g, ' '),
+          contexto: (_serieAtual && _serieAtual.name) || '',
+          capa: (arte.poster && t.imgs && t.imgs[arte.poster]) ? assinada('/api/stream', arte.poster, t.imgs[arte.poster]) : ''
+        });
+      } catch (e) { break; }
+    }
+    return saida;
+  }
+
   // Chamado pelo app nativo ao sair do filme. Reusa o mesmo _saveProgress do
   // player da web, que ja sabe ignorar os primeiros segundos e limpar o
   // progresso quando o filme acabou.
-  window.tvPlaybackEnded = function (posicao, duracao, legTam, legCor) {
+  window.tvPlaybackEnded = function (posicao, duracao, legTam, legCor, saidas, atual) {
+    // Episódios que o player nativo emendou antes de sair: cada um fecha com o
+    // próprio progresso (acabou = assistido), usando a chave dele.
+    (Array.isArray(saidas) ? saidas : []).forEach(function (s) {
+      if (!s || !s.path) return;
+      const chave = _currentPlayFolder;
+      _currentPlayFolder = s.path;
+      _saveProgress(Number(s.pos) || 0, Number(s.dur) || 0);
+      _currentPlayFolder = chave;
+    });
+    // O que estava tocando ao sair pode ser outro episódio que não o aberto.
+    if (typeof atual === 'string' && atual) _currentPlayFolder = atual;
     _saveProgress(Number(posicao) || 0, Number(duracao) || 0);
     // Tamanho e cor da legenda escolhidos no player nativo valem também na página.
     if (Number.isInteger(legTam) && legTam >= 0 && legTam < subtitleSizes.length) {
@@ -3519,6 +3618,8 @@
     // sempre). Episódios passam o path do próprio arquivo — cada episódio tem
     // seu progresso, em vez de todos dividirem a linha da temporada.
     _currentPlayFolder = progressKey || filePath.substring(0, filePath.lastIndexOf('/'));
+    _proximoCancelado = false;
+    _esconderCartaoProximo();
 
     // Na TV quem toca e o player nativo. Fica depois de _currentPlayFolder de
     // proposito: e dele que _saveProgress depende quando o app devolve a
@@ -3742,6 +3843,7 @@
       // Auto-save progress every ~30 seconds
       if (_progressSaveTimer) clearTimeout(_progressSaveTimer);
       _progressSaveTimer = setTimeout(_saveProgress, 30000);
+      _atualizarCartaoProximo(video);
     };
     video.onplay = function() {
       document.getElementById('playBtn').innerHTML = '<svg class="icon-svg"><use href="#i-pause"></use></svg>';
@@ -3760,6 +3862,8 @@
       // Fecha o episódio que acabou (pct > 95 vira "assistido"), antes de a
       // chave de progresso passar para o próximo.
       _saveProgress(video.duration, video.duration);
+      // "Cancelar" no cartão do próximo episódio vale até o fim deste episódio.
+      if (_proximoCancelado) { _esconderCartaoProximo(); return; }
       _avancarFilaNoPlayer();
     };
 
@@ -3911,6 +4015,7 @@
     video.onvolumechange = null;
     video.onloadeddata = null;
     video.onended = null;
+    _esconderCartaoProximo();
     // Stop background download
     _stopBgDownload();
     loading.style.display = 'none';

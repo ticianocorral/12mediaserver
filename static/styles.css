@@ -2500,3 +2500,23 @@ button, input, select, textarea { font-family: inherit; }
 .sidebar-profile #profileSwitchName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .sidebar-profile .profile-trocar { font-size: 12px; color: var(--text3); }
 .sidebar-profile:hover .profile-trocar { color: var(--text); }
+
+/* Cartão "Próximo episódio" no player (navegador/AirPlay). */
+.proximo-card {
+  position: absolute; right: 32px; bottom: 120px; z-index: 30; width: min(320px, calc(100% - 48px));
+  background: rgba(14,14,16,0.92); border: 1px solid var(--panel-edge); border-radius: 6px;
+  box-shadow: 0 3px 0 0 rgba(0,0,0,.65); padding: 16px 18px;
+}
+.proximo-rotulo { font-size: 12px; color: var(--text2); letter-spacing: .04em; }
+.proximo-titulo { margin-top: 4px; font-size: 17px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proximo-conta { margin-top: 2px; font-size: 14px; color: var(--cream); }
+.proximo-acoes { display: flex; gap: 8px; margin-top: 12px; }
+.proximo-btn {
+  flex: 1; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--panel-edge);
+  background: var(--panel); color: var(--text); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.proximo-btn:hover { background: var(--panel-edge); }
+.proximo-btn.primario { background: var(--primary); border-color: transparent; color: #fff; }
+.proximo-btn.primario:hover { background: var(--primary-hover); }
+.proximo-btn:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+@media (max-width: 700px) { .proximo-card { right: 12px; bottom: 100px; } }
