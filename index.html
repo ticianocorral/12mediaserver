@@ -206,13 +206,13 @@
         </div>
         <div class="scan-progress-text" id="scanProgressText">Escaneando...</div>
       </div>
+      <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
+        <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
+      </button>
       <button class="sidebar-item sidebar-profile" id="profileSwitchBtn" style="display:none" onclick="switchProfile()" title="Trocar de perfil">
         <img class="profile-avatar" id="profileSwitchAvatar" src="/static/avatars/a01.svg" alt="">
         <span id="profileSwitchName">Perfil</span>
         <span class="profile-trocar">Trocar</span>
-      </button>
-      <button class="sidebar-item" onclick="openSettingsModal()" title="Fontes, cache, backup, contas e rclone">
-        <span class="icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span> Ajustes
       </button>
     </div>
     <div class="sidebar-header">
@@ -365,13 +365,6 @@
             <div class="backup-option-desc">Status da conexão com a nuvem e nível de acesso</div>
           </div>
         </div>
-        <div class="backup-option" id="settingsBranding" style="display:none" onclick="fromSettings(openBrandingModal)">
-          <span class="backup-icon"><svg class="icon-svg"><use href="#i-gear"></use></svg></span>
-          <div>
-            <div class="backup-option-title">Aparência</div>
-            <div class="backup-option-desc">Cor do app — o nome foi escolhido na instalação e não muda mais</div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -411,21 +404,6 @@
       </div>
       <div class="modal-body">
         <div id="scrapeBox">
-          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ====== APARENCIA (nome e cor da marca) ====== -->
-  <div class="modal-overlay" id="brandingModal">
-    <div class="modal" style="width:480px">
-      <div class="modal-header">
-        <span class="modal-title"><svg class="icon-svg"><use href="#i-gear"></use></svg> Aparência</span>
-        <button class="modal-close" onclick="closeBrandingModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
-      </div>
-      <div class="modal-body">
-        <div id="brandingBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
