@@ -14,10 +14,10 @@
   // ── Layout previsivel ────────────────────────────────────────
   // O viewport e "width=device-width", e a largura em CSS px de uma TV varia
   // com a densidade — perto demais do corte de 768px do layout de celular.
-  // Fixar 1280 garante o layout de desktop em qualquer aparelho, e de quebra
-  // amplia tudo: numa tela de 1920 a WebView escala 1280 para 1920.
+  // Fixar 1707 garante o layout de desktop em qualquer aparelho, e de quebra
+  // amplia tudo: numa tela de 1920 a WebView escala 1707 para 1920 (1,12x).
   var vp = document.querySelector('meta[name="viewport"]');
-  if (vp) vp.setAttribute('content', 'width=1280, initial-scale=1.0');
+  if (vp) vp.setAttribute('content', 'width=1707, initial-scale=1.0');
   document.documentElement.classList.add('modo-tv');
 
   // ── O que vira focavel ───────────────────────────────────────

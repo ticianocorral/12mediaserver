@@ -59,7 +59,7 @@ class PlayerActivity : AppCompatActivity() {
 
     // Mesmos tamanhos e cores da pagina (app.js: subtitleSizes / subtitleColors),
     // para a escolha valer nos dois lugares. O indice volta no resultado.
-    private var tamanhoLegenda = 2
+    private var tamanhoLegenda = 1
     private var corLegenda = 0
     private var legendaAtiva = true
 
@@ -88,7 +88,7 @@ class PlayerActivity : AppCompatActivity() {
         val url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
         val legenda = intent.getStringExtra(EXTRA_LEGENDA).orEmpty()
         val posicao = intent.getLongExtra(EXTRA_POSICAO, 0L)
-        tamanhoLegenda = intent.getIntExtra(EXTRA_LEG_TAM, tamanhoLegenda).coerceIn(0, TAMANHOS.size - 1)
+        // Sempre abre em Média; a escolha vale só até sair do filme.
         corLegenda = intent.getIntExtra(EXTRA_LEG_COR, corLegenda).coerceIn(0, CORES.size - 1)
 
         val item = montarItem(url, legenda)
@@ -332,7 +332,7 @@ class PlayerActivity : AppCompatActivity() {
             "Cor: " + CORES[corLegenda].nome,
             "Fechar"
         )
-        val adaptador = ArrayAdapter(this, android.R.layout.simple_list_item_1, linhas())
+        val adaptador = ArrayAdapter(this, android.R.layout.simple_list_item_1, linhas().toMutableList())
         val dialogo = AlertDialog.Builder(this)
             .setTitle("Legenda")
             .setAdapter(adaptador, null)
