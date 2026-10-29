@@ -218,6 +218,26 @@ systemctl --user restart media-server
 systemctl --user stop media-server
 ```
 
+### Organizar e metadados (sem tinyMediaManager)
+
+Em **⚙️ Ajustes › Organizar e metadados** (só administradores) o app faz o que o
+tinyMediaManager fazia, direto do TMDB (com a **sua** chave gratuita; ela fica só
+neste computador):
+
+- **Organizar:** escolha uma fonte **local** (pasta, HD ou pendrive). O app lista os
+  filmes fora do padrão `movies/Título (Ano)/Título (Ano).mkv`, sugere o filme certo
+  pelo nome do arquivo e mostra para onde cada um iria. **Nada muda até você
+  confirmar.** Legendas e arquivos ao lado vêm junto, e o app grava o `.nfo`, o
+  `poster.jpg` e o `fanart.jpg` que faltarem. O progresso de exibição, as coleções e
+  as tags do filme acompanham a mudança.
+- **Desfazer:** cada organização fica no **Histórico** e volta ao que era com um clique.
+- **Sem metadado:** filmes sem sinopse, elenco e nota; busque e aplique.
+- **A nuvem é somente leitura.** O app nunca renomeia, move nem grava nada nela. Para
+  organizar o acervo da nuvem, organize no disco e copie para lá. Nos filmes da nuvem
+  sem metadado, os dados do TMDB ficam só no catálogo do app.
+- Nunca sobrescreve arquivo nem apaga nada (só pasta que ficou vazia), e tudo fica
+  confinado à raiz da fonte. Por enquanto só filmes; séries ainda não.
+
 ### Estrutura da nuvem
 
 Organize seus filmes assim na nuvem, dentro de uma pasta com o nome escolhido

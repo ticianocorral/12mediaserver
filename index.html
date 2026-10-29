@@ -324,6 +324,13 @@
             <div class="backup-option-desc">Vire app no iPhone/Android pelo endereço .local — instruções passo a passo</div>
           </div>
         </div>
+        <div class="backup-option" id="settingsScrape" style="display:none" onclick="fromSettings(openScrapeModal)">
+          <span class="backup-icon"><svg class="icon-svg"><use href="#i-clipboard"></use></svg></span>
+          <div>
+            <div class="backup-option-title">Organizar e metadados</div>
+            <div class="backup-option-desc">Renomear filmes locais e buscar sinopse e pôster no TMDB</div>
+          </div>
+        </div>
         <div class="backup-option" id="settingsSources" style="display:none" onclick="fromSettings(openSourcesModal)">
           <span class="backup-icon"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg></span>
           <div>
@@ -391,6 +398,21 @@
       <div class="modal-body">
         <div id="sourcesBox">
           <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando fontes...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== ORGANIZAR E METADADOS (TMDB) ====== -->
+  <div class="modal-overlay" id="scrapeModal">
+    <div class="modal" style="width:680px;max-width:96vw">
+      <div class="modal-header">
+        <span class="modal-title"><svg class="icon-svg"><use href="#i-clipboard"></use></svg> Organizar e metadados</span>
+        <button class="modal-close" onclick="closeScrapeModal()"><svg class="icon-svg"><use href="#i-close"></use></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="scrapeBox">
+          <div class="loading" style="min-height:100px"><div class="spinner"></div><span>Carregando...</span></div>
         </div>
       </div>
     </div>

@@ -81,6 +81,12 @@ SECRET_PATH = CACHE_DIR / "secret.key"
 # de dentro dele onde mora o acervo. Segredos (quando o wizard cria um remote
 # novo) ficam obscurecidos no rclone.conf; aqui fica so o endereço.
 NUVEM_PATH = CACHE_DIR / "nuvem.json"
+# A chave do TMDB e da pessoa que instalou, nunca do projeto: uma chave
+# embutida no codigo publico ficaria exposta e todo mundo dividiria o mesmo
+# limite de uso. Fica fora do SQLite pelo mesmo motivo do sources.json.
+TMDB_KEY_PATH = CACHE_DIR / "tmdb.json"
+# Historico das organizacoes (renomear/mover) de fontes locais, para desfazer.
+ORGANIZAR_LOG_PATH = CACHE_DIR / "organizar-historico.json"
 
 for _d in (CACHE_DIR, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, CAST_CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -107,6 +113,8 @@ WRITE_ROUTES = frozenset({
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
+    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/organizar/aplicar", "/api/organizar/desfazer",
 })
 
 # Rotas alcancaveis sem sessao.
@@ -159,6 +167,10 @@ ADMIN_PATHS = frozenset({
     "/api/colecoes/create", "/api/colecoes/update", "/api/colecoes/delete",
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear",
+    "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
+    "/api/scrape/apply", "/api/scrape/key/set",
+    "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
+    "/api/organizar/desfazer", "/api/organizar/historico",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────
