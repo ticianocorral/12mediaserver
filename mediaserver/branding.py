@@ -297,6 +297,11 @@ def icone_png(chave):
     return dados
 
 
+# Muda quando o desenho do icone muda: o Chrome so atualiza o icone de um PWA
+# ja instalado se a URL do icone no manifesto for outra.
+_ICONE_REV = "vcr1"
+
+
 def manifest_json():
     """Conteudo do manifest.webmanifest, com o nome escolhido."""
     marca = get()
@@ -310,11 +315,11 @@ def manifest_json():
         "background_color": "#0e0e10",
         "theme_color": "#0e0e10",
         "icons": [
-            {"src": "/icone-192.png", "sizes": "192x192",
+            {"src": "/icone-192.png?v=" + _ICONE_REV, "sizes": "192x192",
              "type": "image/png", "purpose": "any"},
-            {"src": "/icone-512.png", "sizes": "512x512",
+            {"src": "/icone-512.png?v=" + _ICONE_REV, "sizes": "512x512",
              "type": "image/png", "purpose": "any"},
-            {"src": "/icone-maskable-512.png", "sizes": "512x512",
+            {"src": "/icone-maskable-512.png?v=" + _ICONE_REV, "sizes": "512x512",
              "type": "image/png", "purpose": "maskable"},
         ],
     }, ensure_ascii=False, indent=2)
