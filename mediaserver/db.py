@@ -210,6 +210,10 @@ def init_db():
     _migrar_progresso_por_perfil(conn)
     _migrar_prefixo_marca(conn)
     _migrar_colecoes_nfo(conn)
+    # Capa antiga (poster.anterior.*) indexada como imagem solta virava fundo
+    # da ficha; o scanner agora a ignora, isto corrige catalogos ja indexados.
+    conn.execute("UPDATE files SET file_type='other' "
+                 "WHERE name LIKE 'poster.anterior.%' AND file_type='image'")
     conn.commit()
     conn.close()
 

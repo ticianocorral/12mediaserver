@@ -609,6 +609,10 @@ def _index_file(conn, folder_path, item):
             file_type = "set_poster"
         elif stem in ("movieset-fanart", "collection-fanart"):
             file_type = "set_fanart"
+        elif stem.startswith("poster.anterior"):
+            # Capa antiga guardada ao trocar a capa no app: sem isto caia em
+            # "image" e virava o fundo (fanart) da ficha — a capa velha voltava.
+            file_type = "other"
         elif stem in ("poster", "capa", "cover", "folder"):
             file_type = "poster"
         elif stem in ("fanart", "background", "backdrop", "banner"):
