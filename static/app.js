@@ -50,8 +50,12 @@
     const fullPath = imageName.indexOf('/') === -1
       ? folderPath + '/' + imageName
       : imageName;
-    return '/api/stream?path=' + encodeURIComponent(fullPath);
+    // _versaoImagens muda quando uma capa é trocada: força o <img> e o cache
+    // de memória do navegador a buscar de novo.
+    return '/api/stream?path=' + encodeURIComponent(fullPath)
+      + (_versaoImagens ? '&iv=' + _versaoImagens : '');
   }
+  let _versaoImagens = 0;
 
   // ==================== FORMAT ====================
   function formatSize(bytes) {
@@ -82,7 +86,59 @@
     delete _frontCache[url];
   }
 
+  // ==================== FILTRO DE FONTE (todas / locais / nuvem) ====================
+  // Vale para as listas de filmes e séries (Filmes, Séries, busca, home,
+  // coleções e tags). O filtro age na resposta, depois do cache: o cache guarda
+  // sempre a resposta inteira, então alternar não refaz nenhuma requisição.
+  let _fonteFiltro = 'todas';
+  try {
+    const salvo = localStorage.getItem('fonteFiltro');
+    if (salvo === 'local' || salvo === 'nuvem') _fonteFiltro = salvo;
+  } catch (e) {}
+  const _ROTAS_FILTRAVEIS = ['/api/search', '/api/all-movies', '/api/recent-movies',
+    '/api/continue-watching', '/api/series', '/api/collection?', '/api/genero?'];
+
+  function _filtrarFonte(url, data) {
+    if (_fonteFiltro === 'todas' || !data || !_ROTAS_FILTRAVEIS.some(r => url.indexOf(r) === 0)) return data;
+    const quer = _fonteFiltro === 'local';
+    const manter = it => {
+      if (!it || typeof it !== 'object') return true;
+      const p = it.path != null ? it.path : (it.Path != null ? it.Path : it.folder_path);
+      return typeof p !== 'string' || isLocalPath(p) === quer;
+    };
+    const andar = v => Array.isArray(v) ? v.filter(manter).map(andar)
+      : (v && typeof v === 'object')
+        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, andar(x)]))
+        : v;
+    return andar(data);
+  }
+
+  function _pintarFonteFiltro() {
+    document.querySelectorAll('#fonteFiltro button').forEach(b => {
+      const ativo = b.dataset.fonte === _fonteFiltro;
+      b.classList.toggle('ativo', ativo);
+      b.setAttribute('aria-pressed', ativo ? 'true' : 'false');
+    });
+  }
+
+  function setFonteFiltro(fonte) {
+    if (fonte === _fonteFiltro) return;
+    _fonteFiltro = fonte;
+    try { localStorage.setItem('fonteFiltro', fonte); } catch (e) {}
+    _pintarFonteFiltro();
+    // Refaz a tela atual (ou a busca em andamento) com o filtro novo.
+    if (document.getElementById('searchInput').value.trim()) search();
+    else loadPathInternal(currentPath);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _pintarFonteFiltro);
+  else _pintarFonteFiltro();
+
   function cachedFetch(url) {
+    return _cachedFetchBruto(url).then(data => _filtrarFonte(url, data));
+  }
+
+  function _cachedFetchBruto(url) {
     const now = Date.now();
     const entry = _frontCache[url];
     if (entry && (now - entry.time) < _CACHE_TTL) {
@@ -174,7 +230,7 @@
       const name = item.Name || '';
       const filePath = item.Path ? '/' + item.Path : '';
       const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
-      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc, item.watched);
+      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc, item.watched, item.is_file);
     });
 
     html += `</div></div>
@@ -416,7 +472,7 @@
         // Filme solto (arquivo avulso) não tem ficha: o clique toca direto.
         // Filme em pasta abre a ficha, como em todo o app.
         const clique = m.is_file
-          ? 'playMovie(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))'
+          ? 'playMovie(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'), null, null, decodeURIComponent(\'' + safePath + '\'))'
           : 'showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)';
         const botaoGenero = (_me && _me.role === 'admin')
           ? '<button class="movie-card-genero" onclick="event.stopPropagation(); openGeneroFilmeModal(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))" title="Tags do filme"><svg class="icon-svg"><use href="#i-layers"></use></svg></button>'
@@ -578,7 +634,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(m.path, m.poster);
-          img.alt = escHtml(m.name);
+          img.alt = m.name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           // Attach after card is in DOM
@@ -616,7 +672,8 @@
           linhas += '<button class="episodio-linha" onclick="playMovie(decodeURIComponent(\''
             + enc(m.path) + '\'), decodeURIComponent(\'' + enc(rotulo) + '\')'
             + (m.subtitle ? ', decodeURIComponent(\'' + enc(m.subtitle) + '\')' : ', null')
-            + ', ' + Math.floor(m.position) + ')">'
+            + ', ' + Math.floor(m.position)
+            + ', decodeURIComponent(\'' + enc(m.path) + '\'))">'
             + '<span class="episodio-play"><svg class="icon-svg"><use href="#i-play"></use></svg></span>'
             + '<span class="episodio-titulo">' + escHtml(rotulo)
             + ' <span class="episodio-tamanho">' + posStr + ' assistido</span></span>'
@@ -641,7 +698,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(m.path, m.poster);
-          img.alt = escHtml(m.name);
+          img.alt = m.name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           setTimeout(() => {
@@ -1323,14 +1380,15 @@
       const isAdmin = _me && _me.role === 'admin';
       const totalEps = serie.temporadas.reduce((n, t) => n + t.episodios.length, 0);
       document.getElementById('heroDesc').innerHTML =
-        (isAdmin ? '<span class="colecao-acoes">'
-          + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
-                               'vale para a série inteira: todas as temporadas e episódios')
-          + '</span>' : '')
-        + '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
+        '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
         + serie.temporadas.length + (serie.temporadas.length === 1 ? ' temporada · ' : ' temporadas · ')
         + totalEps + (totalEps === 1 ? ' episódio' : ' episódios')
-        + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '');
+        + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '')
+        + (isAdmin ? '<div class="colecao-acoes">'
+          + pillEditarHtml(seriePath, serie.name, 'serie')
+          + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
+                               'vale para a série inteira: todas as temporadas e episódios')
+          + '</div>' : '');
 
       if (!serie.temporadas.length) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
@@ -1484,7 +1542,7 @@
         const titulo = escHtml((m.title || m.name).replace(/[._]/g, ' '));
         const poster = m.poster ? posterUrl(m.path, m.poster) : null;
         const clique = m.is_file
-          ? 'playMovie(decodeURIComponent(\'' + enc(m.path) + '\'), decodeURIComponent(\'' + enc(m.title || m.name) + '\'))'
+          ? 'playMovie(decodeURIComponent(\'' + enc(m.path) + '\'), decodeURIComponent(\'' + enc(m.title || m.name) + '\'), null, null, decodeURIComponent(\'' + enc(m.path) + '\'))'
           : 'showMovieInfo(decodeURIComponent(\'' + enc(m.path) + '\'), event)';
         html += '<div class="movie-card" onclick="' + clique + '" title="' + titulo + '">'
           + (poster
@@ -1830,6 +1888,16 @@
       .finally(() => { raiz.style.pointerEvents = ''; });
   }
 
+  function pillEditarHtml(alvo, titulo, tipo) {
+    return '<button class="pill-acao pill-acao-btn" '
+      + 'onclick="openMetaEditor(decodeURIComponent(\'' + enc(alvo) + '\'), decodeURIComponent(\'' + enc(titulo) + '\'), \'' + tipo + '\')" '
+      + 'title="Editar título, ano, sinopse, gêneros, elenco...">'
+      + '<span class="pill-acao-icone"><svg class="icon-svg"><use href="#i-edit"></use></svg></span>'
+      + '<span class="switch-texto"><span class="switch-rotulo">Informações</span>'
+      + '<span class="switch-nota">Editar</span></span>'
+      + '</button>';
+  }
+
   function pillCapaHtml(alvo, titulo) {
     return '<button class="pill-acao pill-acao-btn" '
       + 'onclick="openCapaModal(decodeURIComponent(\'' + enc(alvo) + '\'), decodeURIComponent(\'' + enc(titulo) + '\'))" title="Escolher outra capa do TMDB">'
@@ -2037,7 +2105,7 @@
   }
 
   // ===== MOVIE CARD HTML =====
-  function renderMovieCardHtml(name, filePath, size, posterSrc, watched) {
+  function renderMovieCardHtml(name, filePath, size, posterSrc, watched, chaveProgresso) {
     const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     // Use encodeURIComponent for safe embedding in onclick attributes
     // DecodeURIComponent in the handler reverses this safely
@@ -2047,7 +2115,7 @@
     const year = yearMatch ? yearMatch[1] : '';
 
     let html = `
-      <div class="movie-card" onclick="playMovie(decodeURIComponent('${safePath}'), decodeURIComponent('${safeName}'))" title="${escHtml(name)}">`;
+      <div class="movie-card" onclick="playMovie(decodeURIComponent('${safePath}'), decodeURIComponent('${safeName}')${chaveProgresso ? `, null, null, decodeURIComponent('${safePath}')` : ''})" title="${escHtml(name)}">`;
 
     if (posterSrc) {
       html += `<img class="movie-card-poster" src="${posterSrc}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`;
@@ -2233,8 +2301,32 @@
 
       // ---- BUILD FINAL HTML ----
       let html = `
-        <div class="movie-info-poster">
-          ${posterImg}
+        <div class="movie-info-lateral">
+          <div class="movie-info-poster">
+            ${posterImg}
+          </div>
+          <div class="movie-info-actions">
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(titleClean) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
+            ${isLocalPath(folderPath)
+                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
+                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
+            ${switchAssistidoHtml(folderPath, !!detail.watched)}
+            ${detail.collection
+                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao('
+                  + detail.collection.id + ')" title="Ver a coleção inteira">'
+                  + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
+                  + escHtml(detail.collection.name)
+                  + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
+                : ''}
+          </div>
+          ${(_me && _me.role === 'admin')
+              ? '<div class="movie-info-admin"><span class="movie-info-admin-rotulo">Administração</span>'
+                + pillEditarHtml(folderPath, titleClean, 'filme')
+                + pillTagsHtml(folderPath, titleClean, detail.tags)
+                + (isLocalPath(folderPath) ? pillCapaHtml(folderPath, titleClean) : '')
+                + switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
+                + '</div>'
+              : ''}
         </div>
         <div class="movie-info-details">
           ${year ? '<div class="badge">' + year + '</div>' : ''}
@@ -2247,30 +2339,6 @@
             ${subtitle ? '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> ' + formatSize(subtitle.Size) + '</div>' : '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> Não</div>'}
           </div>
 
-          <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
-            ${isLocalPath(folderPath)
-                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
-                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
-            ${switchAssistidoHtml(folderPath, !!detail.watched)}
-            ${(_me && _me.role === 'admin')
-                ? pillTagsHtml(folderPath, titleClean, detail.tags)
-                : ''}
-            ${(_me && _me.role === 'admin' && isLocalPath(folderPath))
-                ? pillCapaHtml(folderPath, titleClean)
-                : ''}
-            ${(_me && _me.role === 'admin')
-                ? switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
-                : ''}
-            ${detail.collection
-                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao('
-                  + detail.collection.id + ')" title="Ver a coleção inteira">'
-                  + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
-                  + escHtml(detail.collection.name)
-                  + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
-                : ''}
-          </div>
-          </div>
         </div>`;
 
       content.innerHTML = html;
@@ -3907,7 +3975,7 @@
     if (currentVideoPath) {
       const movieTitle = document.getElementById('playerMovieName');
       const name = movieTitle.textContent;
-      playMovie(currentVideoPath, name, currentSubtitlePath);
+      playMovie(currentVideoPath, name, currentSubtitlePath, null, _currentPlayFolder || undefined);
     }
   }
 
@@ -4737,6 +4805,8 @@
       const res = await fetch('/api/auth/status');
       const data = await res.json();
       _me = data.user || null;
+      // Baixar/apagar cache e reescanear sao so de admin (o servidor recusa).
+      document.body.classList.toggle('nao-admin', !!_me && _me.role !== 'admin');
       if (_me) {
         const chip = document.getElementById('profileSwitchBtn');
         if (chip) {
@@ -4785,10 +4855,12 @@
     window.location.replace('/');
   }
 
+  // Tambem escapa aspas: o resultado vai muito para dentro de atributos, e
+  // um nome de arquivo com " fecharia o atributo (o innerHTML nao escapa aspas).
   function escHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // Encoda para URL E escapa aspas — seguro para embutir em atributos onclick
@@ -4847,6 +4919,9 @@
       if (changed) {
         localStorage.setItem('media_server_cached', JSON.stringify([..._cachedSet]));
       }
+      // A home pode ter pintado o contador antes desta sincronização acabar.
+      const baix = document.getElementById('statDownloaded');
+      if (baix) baix.textContent = _cachedSet.size;
     } catch(_) {}
   }
 
@@ -5033,7 +5108,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(path, detail.poster.Name);
-          img.alt = escHtml(name);
+          img.alt = name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           cards[idx].appendChild(img);
@@ -5142,11 +5217,11 @@
         statusLabel = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + _cmPcts[m.path] + '%';
       }
 
-      html += '<div class="cache-item" data-path="' + m.path + '">';
+      html += '<div class="cache-item" data-path="' + escHtml(m.path) + '">';
 
       // Poster thumbnail
       if (m.poster) {
-        html += '<img class="cache-item-poster" src="' + posterUrl(m.path, m.poster) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>\'">';
+        html += '<img class="cache-item-poster" src="' + escHtml(posterUrl(m.path, m.poster)) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>\'">';
       } else {
         html += '<div class="cache-item-poster"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
       }
@@ -5509,7 +5584,7 @@
     const c = d.candidatos || [];
     area.innerHTML = campo + (c.length ? c.map((x, i) =>
       '<div class="user-row" style="align-items:flex-start">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
       + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' <span style="color:var(--text3);font-weight:400">(' + x.ano + ')</span>' : '') + '</div>'
       + '<div class="src-hint" style="margin:2px 0 0">' + escHtml((x.sinopse || '').slice(0, 130)) + ((x.sinopse || '').length > 130 ? '…' : '') + '</div>'
       + '<div class="src-hint" style="color:#a5d6a7">→ ' + escHtml(x.destino) + '/</div></div>'
@@ -5545,7 +5620,7 @@
       + capas.map((c, i) => '<button type="button" title="' + escHtml((c.idioma || 'sem idioma') + ' · ' + (c.largura || '?') + '×' + (c.altura || '?')) + '" '
         + 'onclick="_capaClicada(\'' + elId + '\',' + i + ')" style="padding:0;border:2px solid '
         + (c.path === selecionado ? 'var(--cream)' : 'transparent') + ';border-radius:4px;background:none;cursor:pointer;overflow:hidden;position:relative">'
-        + '<img src="' + c.thumb + '" alt="" loading="lazy" style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover">'
+        + '<img src="' + escHtml(c.thumb) + '" alt="" loading="lazy" style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover">'
         + (c.idioma ? '<span style="position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.7);color:#fff;padding:1px 4px;border-radius:3px">' + escHtml(c.idioma) + '</span>' : '')
         + '</button>').join('') + '</div>';
   }
@@ -5638,6 +5713,115 @@
   }
 
   // ----- Trocar a capa de UM filme (ficha do filme; só fonte local) -----
+  // ==================== EDITOR DE METADADOS (filme ou série) ====================
+  // Edição manual de tudo que a ficha mostra, ou preenchimento pelo TMDB
+  // (filmes e séries). Grava no banco; vale para fonte local e nuvem.
+  async function openMetaEditor(path, titulo, tipo) {
+    document.getElementById('scrapeModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    window._metaAlvo = { path: path, titulo: titulo, tipo: tipo };
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML = '<div class="loading" style="min-height:120px"><div class="spinner"></div><span>Carregando...</span></div>';
+    let m = {};
+    try { m = await (await fetch('/api/meta?path=' + encodeURIComponent(path))).json(); } catch (e) {}
+    const campo = (id, rotulo, valor, extra) => '<label class="meta-campo"><span>' + rotulo + '</span>'
+      + '<input type="text" id="' + id + '" value="' + escHtml(valor || '') + '" ' + (extra || '') + '></label>';
+    const area = (id, rotulo, valor, linhas, nota) => '<label class="meta-campo"><span>' + rotulo
+      + (nota ? ' <small>' + nota + '</small>' : '') + '</span>'
+      + '<textarea id="' + id + '" rows="' + linhas + '">' + escHtml(valor || '') + '</textarea></label>';
+    const nomeTipo = tipo === 'serie' ? 'série' : 'filme';
+    box.innerHTML = '<div class="meta-editor">'
+      + '<div class="meta-tmdb"><button class="rclone-action-btn" onclick="_metaTmdb()">'
+      + '<svg class="icon-svg"><use href="#i-search"></use></svg> Preencher pelo TMDB</button>'
+      + '<span class="meta-dica">Busca a ' + nomeTipo + ' e substitui tudo; depois dá para ajustar aqui.</span></div>'
+      + '<div id="metaTmdbArea"></div>'
+      + campo('metaTitle', 'Título', m.title || (titulo || '').replace(/\s*\(\d{4}\)\s*$/, ''))
+      + '<div class="meta-linha">'
+      + campo('metaYear', 'Ano', m.year, 'inputmode="numeric" maxlength="4"')
+      + campo('metaRating', 'Nota (0–10)', m.rating, 'inputmode="decimal" maxlength="4"')
+      + '</div>'
+      + campo('metaTagline', 'Frase de efeito', m.tagline)
+      + area('metaPlot', 'Sinopse', m.plot, 5)
+      + campo('metaGenres', 'Gêneros', (m.genres || []).join(', '), 'placeholder="separados por vírgula"')
+      + campo('metaDirectors', tipo === 'serie' ? 'Criação' : 'Direção', (m.directors || []).join(', '))
+      + campo('metaWriters', 'Roteiro', (m.writers || []).join(', '))
+      + area('metaCast', 'Elenco', (m.cast || []).join('\n'), 5, 'um por linha: Nome — Personagem')
+      + '<div id="metaMsg"></div>'
+      + '<div class="meta-acoes"><button class="rclone-action-btn" onclick="closeScrapeModal()">Cancelar</button>'
+      + '<button class="rclone-action-btn primary" onclick="_metaSalvar()">Salvar</button></div>'
+      + '</div>';
+  }
+
+  async function _metaSalvar() {
+    const v = id => document.getElementById(id).value;
+    const lista = id => v(id).split(',').map(x => x.trim()).filter(Boolean);
+    const r = await _scrapePost('/api/meta/salvar', {
+      path: window._metaAlvo.path,
+      title: v('metaTitle'), year: v('metaYear'), rating: v('metaRating'),
+      tagline: v('metaTagline'), plot: v('metaPlot'),
+      genres: lista('metaGenres'), directors: lista('metaDirectors'), writers: lista('metaWriters'),
+      cast: v('metaCast').split('\n').map(x => x.trim()).filter(Boolean),
+      tipo: window._metaAlvo.tipo,
+    });
+    if (!r.ok) {
+      document.getElementById('metaMsg').innerHTML = '<div class="user-msg err">'
+        + escHtml(r.data.error || 'Não foi possível salvar.') + '</div>';
+      return;
+    }
+    if (r.data.aviso) showToast(r.data.aviso, 'error');
+    else showToast(r.data.path !== window._metaAlvo.path
+      ? 'Informações salvas e pasta renomeada.' : 'Informações salvas.', 'success');
+    if (r.data.path) window._metaAlvo.path = r.data.path;
+    _metaRecarregar();
+  }
+
+  function _metaRecarregar() {
+    closeScrapeModal();
+    _frontCache = {};
+    const a = window._metaAlvo;
+    if (a.tipo === 'serie') renderSerieView(a.path);
+    else showMovieInfo(a.path);
+  }
+
+  async function _metaTmdb() {
+    const st = await (await fetch('/api/scrape/status')).json().catch(() => ({}));
+    const area = document.getElementById('metaTmdbArea');
+    if (!st.configurado) {
+      area.innerHTML = '<div class="user-msg err">Configure a chave do TMDB em Ajustes › Metadados primeiro.</div>';
+      return;
+    }
+    const titulo = document.getElementById('metaTitle').value;
+    area.innerHTML = '<div class="user-form"><input type="text" id="metaTmdbQ" value="' + escHtml(titulo) + '" style="flex:1 1 auto" '
+      + 'onkeydown="if(event.key===\'Enter\')_metaTmdbBuscar()"><button class="rclone-action-btn primary" onclick="_metaTmdbBuscar()">Buscar</button></div>'
+      + '<div id="metaTmdbCands" style="margin-top:8px"></div>';
+    _metaTmdbBuscar();
+  }
+
+  async function _metaTmdbBuscar() {
+    const a = window._metaAlvo;
+    const q = (document.getElementById('metaTmdbQ').value || '').trim();
+    const area = document.getElementById('metaTmdbCands');
+    area.innerHTML = '<div class="loading" style="min-height:60px"><div class="spinner"></div><span>Buscando no TMDB...</span></div>';
+    const d = await (await fetch('/api/scrape/search?path=' + encodeURIComponent(a.path) + '&q=' + encodeURIComponent(q)
+      + '&tipo=' + encodeURIComponent(a.tipo))).json().catch(() => ({ erro: 'Falha de conexão.' }));
+    if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
+    const c = d.candidatos || [];
+    area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div>'
+      + '<div class="user-role">' + escHtml((x.sinopse || '').slice(0, 140)) + '</div></div>'
+      + '<button class="user-btn" onclick="_metaTmdbAplicar(' + Number(x.id) + ')">Usar este</button></div>').join('')
+      : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
+  }
+
+  async function _metaTmdbAplicar(tmdbId) {
+    const a = window._metaAlvo;
+    const r = await _scrapePost('/api/scrape/apply', { path: a.path, tmdb_id: tmdbId, tipo: a.tipo });
+    if (!r.ok) { showToast(r.data.error || 'Não foi possível aplicar.', 'error'); return; }
+    showToast('Informações do TMDB aplicadas.', 'success');
+    openMetaEditor(a.path, a.titulo, a.tipo);
+  }
+
   async function openCapaModal(path, titulo) {
     document.getElementById('scrapeModal').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -5661,8 +5845,8 @@
     if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
-      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div></div>'
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div></div>'
       + '<button class="user-btn" onclick="_capaEscolherFilme(' + x.id + ')">Ver capas</button></div>').join('')
       : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
   }
@@ -5678,8 +5862,12 @@
     msg.innerHTML = '<div class="loading" style="min-height:40px"><div class="spinner"></div><span>Baixando a capa...</span></div>';
     const r = await _scrapePost('/api/scrape/capa', { path: window._capaAlvo, tmdb_id: window._capaTmdb, poster_path: caminho });
     if (r.ok) {
-      msg.innerHTML = '<div class="user-msg ok">Capa trocada. O catálogo está sendo atualizado.</div>';
       showToast('Capa trocada.', 'success');
+      _versaoImagens = Date.now();
+      _frontCache = {};
+      closeScrapeModal();
+      showMovieInfo(window._capaAlvo);
+      loadPath(currentPath || '');
     } else {
       msg.innerHTML = '<div class="user-msg err">' + escHtml(r.data.error || 'Não foi possível trocar a capa.') + '</div>';
     }
@@ -5718,8 +5906,8 @@
     if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:flex-start">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
-      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div>'
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div>'
       + '<div class="src-hint">' + escHtml((x.sinopse || '').slice(0, 140)) + '</div></div>'
       + '<button class="user-btn" onclick="_scrapeAplicar(\'' + pathEnc + '\', ' + x.id + ')">Usar este</button></div>').join('')
       : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';

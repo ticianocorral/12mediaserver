@@ -318,7 +318,8 @@ def _remapear_banco(antigo, novo):
                                ("colecoes_filmes", "folder_path"),
                                ("colecoes", "capa"),
                                ("generos_filmes", "alvo"),
-                               ("infantil_filmes", "alvo")):
+                               ("infantil_filmes", "alvo"),
+                               ("movie_meta", "folder_path")):
             conn.execute("UPDATE OR REPLACE %s SET %s=? WHERE %s=?" % (tabela, coluna, coluna),
                          (novo, antigo))
         conn.commit()
@@ -445,6 +446,70 @@ def aplicar(source_id, itens):
         if feitos:
             op = _registrar(source_id, feitos)
     return {"op": op, "resultados": resultados}, None
+
+
+def renomear_pela_meta(folder_path, titulo, ano, tipo="filme"):
+    """Depois de editar as informacoes: renomeia a pasta (e, no filme, o video,
+    legendas e NFO) para "Titulo (Ano)", no mesmo lugar. So fonte local.
+
+    Entra no historico do Organizar, entao da para desfazer por la. Devolve
+    ({"path": novo_logico, "source": id} | None, erro | None); None/None quando
+    nao ha nada a fazer (nuvem ou nome ja no padrao)."""
+    src = _sources.resolve(folder_path)
+    if not src or src.get("kind") != "local":
+        return None, None
+    nome_base = nome_padrao(titulo, ano)
+    if not nome_base:
+        return None, None
+    raiz, erro = _raiz_local(src["id"])
+    if erro:
+        return None, erro
+    rel = "/" + folder_path.strip("/")
+    mount = "/" + src["mount"].strip("/")
+    if not rel.startswith(mount + "/"):
+        return None, None
+    rel = rel[len(mount) + 1:]
+    with _lock:
+        origem = _dentro(raiz, rel)
+        if origem is None or not origem.is_dir():
+            return None, "Pasta não encontrada na fonte."
+        try:
+            movs = (_planejar_movimentos(raiz, "pasta", rel, rel, nome_base)
+                    if tipo == "filme" else [])
+        except ValueError as e:
+            return None, "Informações salvas, mas a pasta não foi renomeada: %s" % e
+        nova = origem.parent / nome_base
+        renomear_pasta = origem.name != nome_base
+        if renomear_pasta and nova.exists() and not _mesmo_arquivo(origem, nova):
+            return None, "Informações salvas, mas já existe a pasta \"%s\"." % nome_base
+        if not movs and not renomear_pasta:
+            return None, None
+        feitos = []
+        try:
+            for a, b in movs:
+                _mover(a, b)
+                feitos.append((a, b))
+            if renomear_pasta:
+                os.rename(origem, nova)
+                feitos.append((origem, nova))
+        except OSError as e:
+            for a, b in reversed(feitos):
+                try:
+                    _mover(b, a)
+                except OSError:
+                    pass
+            return None, "Informações salvas, mas não deu para renomear: %s" % e
+        novo_rel = nova.relative_to(raiz).as_posix() if renomear_pasta else rel
+        antigo_log, novo_log = _logico(src, rel), _logico(src, novo_rel)
+        _remapear_banco(antigo_log, novo_log)
+        _registrar(src["id"], [{
+            "origem": rel, "destino": novo_rel, "titulo": titulo,
+            "movimentos": [[a.relative_to(raiz).as_posix(), b.relative_to(raiz).as_posix()]
+                           for a, b in feitos],
+            "criadas": [], "removidas": [], "gerados": [],
+            "mapa": [antigo_log, novo_log],
+        }])
+    return {"path": novo_log, "source": src["id"]}, None
 
 
 # ── Historico e desfazer ─────────────────────────────────────

@@ -120,3 +120,6 @@ tv/.idea/
 
 # Saida dos instaladores nativos
 /saida/
+
+# Icones do app da TV (gerados por tools/gerar_icones_marca.py)
+!tv/app/src/main/res/**/*.png

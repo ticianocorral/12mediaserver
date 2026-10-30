@@ -70,7 +70,8 @@ def _login_page(setup=False, codigo=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>__MARCA__</title>
-<link rel="icon" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
 <style>
 __FONTE__
   :root { color-scheme: dark; }
@@ -480,14 +481,15 @@ def _profiles_page():
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Quem esta assistindo? · __NOME__</title>
-<link rel="icon" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
 <style>__FONTE____CSS__</style>
 </head><body>
 <header>
   __WORDMARK__
   <div>
     <button class="link" id="btnVoltar" type="button" style="display:none">Voltar ao app</button>
-    <button class="link" id="btnSair" type="button">Sair da conta</button>
+    <button class="link" id="btnSair" type="button">Sair</button>
   </div>
 </header>
 <main>

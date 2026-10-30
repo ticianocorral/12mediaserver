@@ -70,6 +70,21 @@
     padding: 0;
   }
   .sidebar-search input::placeholder { color: var(--text3); }
+  /* Filtro de fonte: três opções num controle só, "Todas" por padrão. */
+  .fonte-filtro {
+    display: flex; gap: 2px; padding: 3px; margin: 0 0 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+  }
+  .fonte-filtro button {
+    flex: 1 1 0; border: 0; background: transparent; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    color: var(--text3); padding: 5px 4px; border-radius: 999px;
+    transition: all var(--transition);
+  }
+  .fonte-filtro button:hover { color: var(--text); }
+  .fonte-filtro button.ativo { background: var(--primary); color: #fff; }
   .sidebar-search .search-icon {
     font-size: 15px;
     margin-right: 8px;
@@ -653,7 +668,7 @@
   }
   .colecao-acao-btn:hover { background: rgba(255,255,255,0.14); }
   .colecao-acao-btn.perigo:hover { background: rgba(240,40,40,0.25); border-color: rgba(240,40,40,0.5); }
-  .colecao-acoes { display: inline-flex; margin-right: 12px; }
+  .colecao-acoes { display: flex; margin-top: 12px; }
   .colecao-campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
   .colecao-campo span { font-size: 12px; color: var(--text3); font-weight: 600; }
   .colecao-campo span em { font-style: normal; font-weight: 400; }
@@ -763,7 +778,7 @@
     .colecao-capa-grade { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
     .colecao-passos { flex-direction: column; }
     .colecao-passos .rclone-action-btn { width: 100%; }
-    .colecao-acoes { display: flex; width: 100%; margin: 0 0 8px; }
+    .colecao-acoes { display: flex; width: 100%; margin: 8px 0 0; }
     .colecao-acao-btn { flex: 1 1 auto; justify-content: center; }
   }
 
@@ -2064,8 +2079,37 @@
     padding: 0 48px;
     align-items: flex-start;
   }
-  .movie-info-poster {
+  /* Coluna da esquerda: capa, botões de ação e (admin) controles de gestão. */
+  .movie-info-lateral {
     flex: 0 0 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .movie-info-lateral .movie-info-actions {
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 0;
+  }
+  .movie-info-lateral .btn-play,
+  .movie-info-lateral .pill-acao,
+  .movie-info-lateral .btn-colecao { justify-content: center; }
+  .movie-info-admin {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+  .movie-info-admin-rotulo {
+    flex: 0 0 100%;
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .movie-info-admin .pill-acao,
+  .movie-info-admin .switch-infantil { flex: 1 1 auto; justify-content: center; }
+  .movie-info-poster {
+    width: 100%;
     border-radius: var(--radius-lg);
     overflow: hidden;
     box-shadow: 0 10px 40px rgba(0,0,0,0.6);
@@ -2306,8 +2350,8 @@
     .main { padding-left: 24px; padding-right: 24px; }
     .hero { padding: 24px 24px; }
     .movie-info-content { flex-direction: column; align-items: center; text-align: center; gap: 24px; }
-    .movie-info-poster { flex: 0 0 200px; }
-    .movie-info-actions { justify-content: center; }
+    .movie-info-lateral { flex: 0 0 auto; width: 240px; max-width: 100%; }
+    .movie-info-poster { flex: 0 0 auto; }
   }
   @media (max-width: 768px) {
     /* ── Barra lateral vira gaveta ──────────────────────────
@@ -2353,7 +2397,7 @@
     .genre-title { font-size: 17px; }
     .player-container { width: 98vw; border-radius: 4px; }
     .movie-info-content { padding: 0 20px; margin: 40px auto; }
-    .movie-info-poster { flex: 0 0 160px; }
+    .movie-info-lateral { width: 200px; }
     .movie-info-details h1 { font-size: 26px; }
     /* left:220px supunha a barra lateral fixa, que no celular vira gaveta —
        sobrava uma faixa de ~155px pro breadcrumb inteiro. padding-left abre
@@ -2520,3 +2564,22 @@ button, input, select, textarea { font-family: inherit; }
 .proximo-btn.primario:hover { background: var(--primary-hover); }
 .proximo-btn:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
 @media (max-width: 700px) { .proximo-card { right: 12px; bottom: 100px; } }
+
+/* Acoes de cache e rescan: so administrador (o servidor recusa as demais) */
+body.nao-admin #refreshBtn,
+body.nao-admin #cacheManagerModal .rclone-action-btn,
+body.nao-admin #cacheManagerModal .cache-item-btn { display: none; }
+
+/* Editor de metadados */
+.meta-editor { display: flex; flex-direction: column; gap: 12px; }
+.meta-campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text2); }
+.meta-campo small { color: var(--text3); font-weight: 400; }
+.meta-campo input, .meta-campo textarea {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--bg3, rgba(255,255,255,.05));
+  border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 8px; padding: 8px 10px; resize: vertical;
+}
+.meta-linha { display: flex; gap: 12px; }
+.meta-linha .meta-campo { flex: 1 1 0; }
+.meta-tmdb { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.meta-dica { font-size: 12px; color: var(--text3); }
+.meta-acoes { display: flex; justify-content: flex-end; gap: 8px; }

@@ -144,45 +144,26 @@ def css():
 # pixel a pixel com supersampling 4x nao e caro o bastante pra doer, mas nao ha
 # razao pra refazer a cada requisicao quando a cor nao mudou.
 #
-# O desenho e o videocassete do logo, simplificado pra caber num quadrado:
-# chassi cinza, etiqueta creme com faixa vermelha, e o display "12:00" de 7
-# segmentos na cor da marca (segmentos apagados num tom bem escuro dela).
+# O desenho e so o "12" digital do logo: dois digitos de 7 segmentos, acesos na
+# cor da marca (segmentos apagados num tom bem escuro dela), sobre fundo preto.
 _AMOSTRAS = 4
 _RAIO_SVG = 6
 _FUNDO = (0x05, 0x05, 0x05)
 # Troque ao mudar o desenho: entra no nome do arquivo em cache, entao PNGs de
 # versoes anteriores deixam de ser servidos.
-_VERSAO_ICONE = "v3"
+_VERSAO_ICONE = "v4"
 
 # Segmentos a b c d e f g de um digito (x, y, largura, altura) num quadro 6x11,
-# e quais acendem em cada digito de "12:00".
+# e quais acendem em cada digito de "12".
 _SEG = {"a": (1, 0, 4, 1), "b": (5, 1, 1, 4), "c": (5, 6, 1, 4), "d": (1, 10, 4, 1),
         "e": (0, 6, 1, 4), "f": (0, 1, 1, 4), "g": (1, 5, 4, 1)}
-_ACESOS = {1: "bc", 2: "abdeg", 0: "abcdef"}
-# (digito, x) dentro do display, no quadro de 32 do icone
-_DIGITOS = [(1, 4.7), (2, 7.3), (0, 10.9), (0, 13.5)]
-_ESC_DIGITO = 0.36
-_Y_DIGITO = 17.22
-_DOIS_PONTOS = [(9.95, 18.4, 0.55, 0.55), (9.95, 19.9, 0.55, 0.55)]
-
-# Pecas fixas do videocassete (x, y, w, h, cor), no quadro de 32.
-_CHASSI = (0x2A, 0x2A, 0x2E)
-_PAINEL = (0x1A, 0x1A, 0x1D)
-_CREME = (0xEF, 0xE6, 0xD0)
-_FAIXA = (0xC0, 0x39, 0x2B)
-_CINZA = (0x55, 0x55, 0x5C)
-_PECAS = [
-    (2, 9, 28, 14, _CHASSI),
-    (3, 10, 26, 6.4, _PAINEL),
-    (5, 10.6, 22, 5, _CREME),
-    (5, 10.6, 22, 1.5, _FAIXA),
-    (8, 13.4, 16, 0.9, _PAINEL),
-    (4, 16.9, 11.6, 4.6, (0x04, 0x05, 0x04)),
-    (17.4, 17.6, 2.6, 1, _CINZA), (20.6, 17.6, 2.6, 1, _CINZA),
-    (17.4, 19.6, 2.6, 1, _CINZA), (20.6, 19.6, 2.6, 1, _CINZA),
-    (24.2, 17.2, 4.2, 3.4, (0xE8, 0xE8, 0xE8)),
-    (26.3, 17.2, 2.1, 3.4, _PAINEL),
-]
+_ACESOS = {1: "bc", 2: "abdeg"}
+# Escala dos digitos e posicao do par centralizado no quadro de 32.
+_DIGITOS = [1, 2]
+_ESC_DIGITO = 1.9
+_X_DIGITOS = 2.7
+_Y_DIGITOS = 5.55
+_PASSO_DIGITO = 8
 
 # tamanho, arredondado (cantos vivos = icone comum; sem isso = maskable, que o
 # Android recorta por cima), fator (encolhe o desenho pra caber na zona segura
@@ -207,15 +188,12 @@ def _retangulos(tamanho, fator):
                       centro + (y * esc - centro) * fator,
                       w * esc * fator, h * esc * fator, cor))
 
-    for x, y, w, h, cor in _PECAS:
-        add(x, y, w, h, cor)
-    for digito, x0 in _DIGITOS:
+    for i, digito in enumerate(_DIGITOS):
         for nome, (sx, sy, sw, sh) in _SEG.items():
-            add(x0 + sx * _ESC_DIGITO, _Y_DIGITO + sy * _ESC_DIGITO,
+            add(_X_DIGITOS + (i * _PASSO_DIGITO + sx) * _ESC_DIGITO,
+                _Y_DIGITOS + sy * _ESC_DIGITO,
                 sw * _ESC_DIGITO, sh * _ESC_DIGITO,
                 "aceso" if nome in _ACESOS[digito] else "apagado")
-    for x, y, w, h in _DOIS_PONTOS:
-        add(x, y, w, h, "aceso")
     return rects
 
 

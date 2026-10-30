@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR
+from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, vfs_cache_dir
 from . import branding as _branding
 
 _db_write_lock = threading.Lock()
@@ -210,6 +210,10 @@ def init_db():
     _migrar_progresso_por_perfil(conn)
     _migrar_prefixo_marca(conn)
     _migrar_colecoes_nfo(conn)
+    # Capa antiga (poster.anterior.*) indexada como imagem solta virava fundo
+    # da ficha; o scanner agora a ignora, isto corrige catalogos ja indexados.
+    conn.execute("UPDATE files SET file_type='other' "
+                 "WHERE name LIKE 'poster.anterior.%' AND file_type='image'")
     conn.commit()
     conn.close()
 
@@ -451,7 +455,7 @@ def get_cache_usage():
     for label, path in [
         ("images", IMAGE_CACHE_DIR),
         ("subs", SUBS_CACHE_DIR),
-        ("vfs", Path.home() / ".cache" / "rclone" / "vfs"),
+        ("vfs", vfs_cache_dir()),
         ("db", DB_PATH),
     ]:
         p = Path(path)

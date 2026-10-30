@@ -69,6 +69,28 @@ DB_PATH = CACHE_DIR / "media-server.db"
 IMAGE_CACHE_DIR = CACHE_DIR / "images"
 SUBS_CACHE_DIR = CACHE_DIR / "subs"
 CACHED_FILES_PATH = CACHE_DIR / "cached_files.json"
+
+
+def vfs_cache_dir():
+    """Pasta do cache VFS do rclone. Ele usa o diretorio de cache do sistema:
+    ~/Library/Caches no macOS, %LocalAppData% no Windows, ~/.cache (ou
+    $XDG_CACHE_HOME) no Linux. Assumir sempre ~/.cache fazia o contador, a
+    limpeza e a lista de baixados nao enxergarem nada fora do Linux. Devolve a
+    primeira que existe; sem nenhuma, a padrao do sistema."""
+    home = Path.home()
+    cands = []
+    if env("VFS_CACHE_DIR"):
+        cands.append(Path(env("VFS_CACHE_DIR")))
+    if sys.platform == "darwin":
+        cands.append(home / "Library" / "Caches" / "rclone" / "vfs")
+    elif os.name == "nt":
+        cands.append(Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")) / "rclone" / "vfs")
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    cands.append((Path(xdg) if xdg else home / ".cache") / "rclone" / "vfs")
+    for c in cands:
+        if c.is_dir():
+            return c
+    return cands[0]
 AUTH_PATH = CACHE_DIR / "auth.json"
 # MP4s gerados pelo prepare.py para transmitir na TV (MKV/E-AC3 nao tocam
 # no Chromecast nem no AirPlay). Regeneravel a qualquer momento — o nome do
@@ -121,6 +143,7 @@ WRITE_ROUTES = frozenset({
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
     "/api/scrape/apply", "/api/scrape/key/set", "/api/scrape/capa",
+    "/api/meta/salvar",
     "/api/organizar/aplicar", "/api/organizar/desfazer",
 })
 
@@ -177,8 +200,14 @@ ADMIN_PATHS = frozenset({
     "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
     "/api/scrape/apply", "/api/scrape/key/set",
     "/api/scrape/capas", "/api/scrape/capa",
+    "/api/meta", "/api/meta/salvar",
     "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
     "/api/organizar/desfazer", "/api/organizar/historico",
+    # Cache e rclone: apagar gigas baixados, forcar downloads ou derrubar o
+    # serve afeta a casa toda.
+    "/api/clear-cache", "/api/uncache", "/api/cache-download", "/api/refresh",
+    "/api/rclone/serve/restart", "/api/rclone/webgui/start",
+    "/api/rclone/webgui/stop",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

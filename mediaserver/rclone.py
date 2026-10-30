@@ -5,8 +5,10 @@ nunca na raiz do remote — veja start_rclone_serve. Combinado com --read-only, 
 porta local nao le nem escreve nada fora do catalogo.
 """
 
+import base64
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -17,7 +19,7 @@ from pathlib import Path
 
 from .config import (
     CACHED_FILES_PATH, PROJECT_ROOT, RCLONE_GUI_ENABLED,
-    RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
+    RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT, vfs_cache_dir,
 )
 from .paths import rc_remote as _rc_remote, remote_configurado
 from .procutil import _pids_on_port, _proc_cmdline
@@ -25,6 +27,27 @@ from . import nuvem as _nuvem
 from . import branding as _branding
 
 rclone_server_proc = None
+
+# Credencial do `rclone serve http`, nova a cada execucao e so em memoria. Sem
+# ela qualquer processo local, ou uma pagina via DNS rebinding contra
+# 127.0.0.1, listaria e baixaria o catalogo da nuvem.
+_SERVE_USER = "ms"
+_SERVE_PASS = secrets.token_urlsafe(24)
+SERVE_AUTH = "Basic " + base64.b64encode(
+    ("%s:%s" % (_SERVE_USER, _SERVE_PASS)).encode()).decode()
+
+
+class _AuthServe(urllib.request.BaseHandler):
+    """Poe a credencial em todo urlopen para o serve local."""
+
+    def http_request(self, req):
+        if (req.host or "").split(":")[-1] == str(RCLONE_SERVE_PORT) and \
+                req.host.split(":")[0] in ("localhost", "127.0.0.1"):
+            req.add_unredirected_header("Authorization", SERVE_AUTH)
+        return req
+
+
+urllib.request.install_opener(urllib.request.build_opener(_AuthServe()))
 
 
 rclone_webgui_proc = None
@@ -109,6 +132,7 @@ def _mark_file_cached(file_path):
     file_path = _norm_cache_path(file_path)
     with _cached_files_lock:
         _cached_files.add(file_path)
+    invalidar_indice_vfs()
     # Batch write: persist at most once per 5s
     _schedule_cached_files_save()
 
@@ -135,8 +159,59 @@ def _flush_cached_files():
         CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
 
+# O registro acima so sabe o que passou pelo servidor e erra nos dois sentidos:
+# marca como baixado um filme de que so se leu o fim do arquivo e esquece o que
+# ja esta no disco quando o arquivo some. O cache VFS em si e a verdade: no
+# modo "full" o rclone grava o arquivo esparso, entao um filme so esta inteiro
+# quando o espaco realmente alocado cobre o tamanho do arquivo.
+_VFS_TTL = 10
+_vfs_indice = {"em": 0.0, "dir": None, "chaves": set()}
+_vfs_lock = threading.Lock()
+
+
+def _chave_vfs(partes):
+    """Pasta-do-filme/arquivo: o nome do remote e da biblioteca varia (a pasta
+    ja se chamou TicianoFlix), mas esses dois ultimos componentes nao."""
+    return "/".join(partes[-2:]).lower()
+
+
+def _vfs_baixados():
+    """(pasta do cache, chaves dos arquivos inteiros no disco). Reescaneia no
+    maximo a cada _VFS_TTL segundos: o cache-manager pergunta por filme."""
+    agora = time.time()
+    with _vfs_lock:
+        if agora - _vfs_indice["em"] < _VFS_TTL:
+            return _vfs_indice["dir"], _vfs_indice["chaves"]
+        raiz = vfs_cache_dir()
+        chaves = set()
+        if raiz.is_dir():
+            for raiz_arq, _dirs, arquivos in os.walk(raiz):
+                for nome in arquivos:
+                    try:
+                        st = os.stat(os.path.join(raiz_arq, nome))
+                    except OSError:
+                        continue
+                    alocado = getattr(st, "st_blocks", None)
+                    alocado = st.st_size if alocado is None else alocado * 512
+                    if st.st_size > 0 and alocado + (1 << 20) >= st.st_size:
+                        rel = Path(raiz_arq, nome).relative_to(raiz).parts
+                        if len(rel) >= 3:   # remote / pasta do filme / arquivo
+                            chaves.add(_chave_vfs(rel))
+        _vfs_indice.update(em=agora, dir=raiz, chaves=chaves)
+        return raiz, chaves
+
+
+def invalidar_indice_vfs():
+    with _vfs_lock:
+        _vfs_indice["em"] = 0.0
+
+
 def _is_file_cached(file_path):
     file_path = _norm_cache_path(file_path)
+    raiz, chaves = _vfs_baixados()
+    if raiz is not None and raiz.is_dir():
+        partes = [p for p in file_path.split("/") if p]
+        return len(partes) >= 2 and _chave_vfs(partes) in chaves
     with _cached_files_lock:
         return file_path in _cached_files
 
@@ -207,11 +282,33 @@ def _kill_rclone_on_port(port):
             pass
 
 
+def _liberar_porta_serve():
+    """Mata o rclone na porta e espera ela soltar (ate 10s, depois SIGKILL).
+    Um serve antigo fechando o cache VFS pode passar de 1s; subir o novo
+    antes disso faz o bind falhar e deixa a nuvem fora do ar."""
+    _kill_rclone_on_port(RCLONE_SERVE_PORT)
+    for i in range(20):
+        pids = [p for p in _pids_on_port(RCLONE_SERVE_PORT)
+                if "rclone" in _proc_cmdline(p)]
+        if not pids:
+            return
+        if i == 19:
+            for p in pids:
+                try:
+                    os.kill(int(p), signal.SIGKILL)
+                except Exception:
+                    pass
+            time.sleep(0.5)
+        else:
+            time.sleep(0.5)
+
+
 def start_rclone_serve():
     """Garante que o 'rclone serve http' esteja rodando na porta 18082.
 
-    Retorna o Popen se este processo iniciou, "external" se já havia um
-    servidor respondendo com o remote acessível, ou None em caso de falha.
+    Retorna o Popen se este processo iniciou, ou None em caso de falha. Um
+    serve que ja esteja na porta (de execucao anterior, com outra senha) e
+    derrubado e substituido.
     """
     global rclone_server_proc
     with _rclone_serve_lock:
@@ -230,20 +327,10 @@ def start_rclone_serve():
                   flush=True)
             return None
 
-        # Já existe um serve respondendo (ex.: iniciado externamente)?
-        try:
-            import urllib.request as ureq_check
-            ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
-            try:
-                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/?format=json", timeout=5)
-                print(f"[12:00 Media Server] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
-                return "external"
-            except Exception:
-                print(f"[12:00 Media Server] rclone serve responde mas a nuvem está inacessível — tentando reiniciar", flush=True)
-                _kill_rclone_on_port(RCLONE_SERVE_PORT)
-                time.sleep(1)
-        except Exception:
-            pass
+        # Algo ja ouve na porta: um serve de execucao anterior (com outra
+        # credencial) ou externo. Mata se for rclone e sobe o nosso.
+        if _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
+            _liberar_porta_serve()
 
         try:
             proc = subprocess.Popen(
@@ -264,6 +351,9 @@ def start_rclone_serve():
                  "--log-level", "ERROR"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                # Por variavel de ambiente, nao --pass: nao aparece no `ps`.
+                env={**os.environ, "RCLONE_USER": _SERVE_USER,
+                     "RCLONE_PASS": _SERVE_PASS},
             )
             rclone_server_proc = proc
             print(f"[12:00 Media Server] Starting rclone serve http on localhost:{RCLONE_SERVE_PORT}...", end=" ", flush=True)
@@ -272,6 +362,9 @@ def start_rclone_serve():
             # demorar enquanto o rclone inicializa o VFS e conecta na nuvem)
             for _ in range(25):
                 time.sleep(1)
+                if proc.poll() is not None:
+                    print("o rclone saiu ao iniciar (porta ocupada?)", flush=True)
+                    break
                 if not _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
                     continue
                 if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
@@ -306,13 +399,12 @@ def restart_rclone_serve():
             except Exception:
                 pass
     rclone_server_proc = None
-    _kill_rclone_on_port(RCLONE_SERVE_PORT)
-    time.sleep(1)
+    _liberar_porta_serve()
 
     proc = start_rclone_serve()
     if proc is None:
         return {"status": "error", "error": "Não foi possível iniciar o rclone serve (rclone está instalado?)."}
-    return {"status": "ok", "serve_running": True, "external": proc == "external"}
+    return {"status": "ok", "serve_running": True}
 
 
 def start_rclone_webgui():

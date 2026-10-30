@@ -23,6 +23,7 @@ from .rclone import ensure_rclone_in_path, start_rclone_serve
 from . import rclone as _rclone
 from . import sources as _sources
 from . import scanner as _scanner
+from . import updater as _updater
 from .paths import remote_atual, remote_configurado
 
 # Sentinela do cache de usuario por requisicao (ver _reset_request_state).
@@ -182,6 +183,8 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGHUP, shutdown)
+
+    _updater.iniciar()
 
     try:
         server.serve_forever()

@@ -40,7 +40,7 @@ from xml.sax.saxutils import escape as _xml_escape
 from .config import TMDB_KEY_PATH
 from .db import get_db
 from . import sources as _sources
-from .nfo import _save_nfo_to_db
+from .nfo import _fetch_nfo_from_db, _save_nfo_to_db
 
 TMDB_BASE = "https://api.themoviedb.org/3"
 # Tamanhos estaveis da API do TMDB (developer.themoviedb.org/reference/configuration-details).
@@ -120,34 +120,38 @@ def _titulo_ano(nome_pasta):
 
 # ── Busca (nunca aplica sozinha — so devolve candidatos) ────
 
-def buscar_candidatos(nome_pasta, query=None):
+def buscar_candidatos(nome_pasta, query=None, tipo="filme"):
     """Candidatos do TMDB pro nome de uma pasta. 'query' sobrepoe o titulo
-    derivado do nome, pra quando o palpite automatico erra feio."""
+    derivado do nome, pra quando o palpite automatico erra feio. tipo='serie'
+    busca em /search/tv."""
     titulo, ano = _titulo_ano(nome_pasta)
     if query:
         titulo, ano = _titulo_ano(query) if _RE_TITULO_ANO.match(query.strip()) else (query.strip(), ano)
     if not titulo:
         return [], None
+    serie = tipo == "serie"
     params = {"query": titulo, "include_adult": "false"}
     if ano:
-        params["primary_release_year"] = ano
-    dados, erro = _get("/search/movie", params)
+        params["first_air_date_year" if serie else "primary_release_year"] = ano
+    dados, erro = _get("/search/tv" if serie else "/search/movie", params)
     if erro:
         return [], erro
     candidatos = []
     for r in (dados or {}).get("results", [])[:8]:
         candidatos.append({
             "id": r.get("id"),
-            "titulo": r.get("title") or r.get("original_title") or "",
-            "ano": (r.get("release_date") or "")[:4] or None,
+            "titulo": (r.get("title") or r.get("original_title") or r.get("name")
+                       or r.get("original_name") or ""),
+            "ano": (r.get("release_date") or r.get("first_air_date") or "")[:4] or None,
             "poster": (IMG_POSTER + r["poster_path"]) if r.get("poster_path") else None,
             "sinopse": r.get("overview") or "",
         })
     return candidatos, None
 
 
-def detalhes(tmdb_id):
-    return _get("/movie/%d" % int(tmdb_id), {"append_to_response": "credits"})
+def detalhes(tmdb_id, tipo="filme"):
+    rota = "/tv/%d" if tipo == "serie" else "/movie/%d"
+    return _get(rota % int(tmdb_id), {"append_to_response": "credits"})
 
 
 def para_movie_meta(dados):
@@ -162,10 +166,14 @@ def para_movie_meta(dados):
               for c in credits_.get("cast", [])[:20]]
     colecao = dados.get("belongs_to_collection") or {}
 
+    # Serie (/tv): name/first_air_date; os criadores entram como "direcao".
+    if dados.get("first_air_date") is not None or dados.get("name"):
+        diretores = diretores or [c.get("name", "") for c in dados.get("created_by", [])]
     return {
-        "title": dados.get("title") or dados.get("original_title"),
-        "originaltitle": dados.get("original_title"),
-        "year": (dados.get("release_date") or "")[:4] or None,
+        "title": (dados.get("title") or dados.get("original_title")
+                  or dados.get("name") or dados.get("original_name")),
+        "originaltitle": dados.get("original_title") or dados.get("original_name"),
+        "year": (dados.get("release_date") or dados.get("first_air_date") or "")[:4] or None,
         "plot": dados.get("overview") or None,
         "outline": None,
         "tagline": dados.get("tagline") or None,
@@ -371,10 +379,10 @@ def aplicar_capa(folder_path, tmdb_id, poster_path):
 
 # ── Aplicar: o unico caminho que grava alguma coisa ─────────
 
-def aplicar(folder_path, tmdb_id):
-    """Busca os detalhes de UM filme escolhido na tela de revisao, grava no
-    banco e, se der, escreve na pasta local. Devolve (ok, erro)."""
-    dados, erro = detalhes(tmdb_id)
+def aplicar(folder_path, tmdb_id, tipo="filme"):
+    """Busca os detalhes de UM filme (ou serie) escolhido, grava no banco e,
+    se for filme em pasta local, escreve NFO/capa. Devolve (ok, erro)."""
+    dados, erro = detalhes(tmdb_id, tipo)
     if erro:
         return False, erro
     if not dados or not dados.get("id"):
@@ -388,7 +396,9 @@ def aplicar(folder_path, tmdb_id):
     finally:
         conn.close()
 
-    _escrever_local_se_possivel(folder_path, meta)
+    # O NFO gravado e o de filme (<movie>): para serie fica so no banco.
+    if tipo != "serie":
+        _escrever_local_se_possivel(folder_path, meta)
     return True, None
 
 
@@ -418,3 +428,65 @@ def listar_pendentes(limite=200):
     finally:
         conn.close()
     return [{"path": r["path"], "name": r["name"]} for r in rows], total
+
+
+# ── Edicao manual (filme ou serie) ──────────────────────────
+
+CAMPOS_TEXTO = ("title", "year", "plot", "tagline", "rating")
+CAMPOS_LISTA = ("genres", "directors", "writers")
+
+
+def ler_meta(folder_path):
+    """Os campos editaveis de uma pasta, vazios se ainda nao ha metadado."""
+    m = _fetch_nfo_from_db(folder_path) or {}
+    out = {k: m.get(k) or "" for k in CAMPOS_TEXTO}
+    out.update({k: list(m.get(k) or []) for k in CAMPOS_LISTA})
+    out["cast"] = [a.get("name", "") + ((" — " + a["role"]) if a.get("role") else "")
+                   for a in (m.get("actors") or []) if isinstance(a, dict)]
+    return out
+
+
+def salvar_meta(folder_path, campos):
+    """Grava a edicao manual. Mantem o que a edicao nao cobre (votos, info de
+    video/audio) e substitui o resto pelo que veio do formulario."""
+    atual = _fetch_nfo_from_db(folder_path) or {}
+    novo = dict(atual)
+
+    def texto(k, limite):
+        v = str(campos.get(k) or "").strip()[:limite]
+        return v or None
+
+    novo["title"] = texto("title", 300)
+    novo["plot"] = texto("plot", 5000)
+    novo["tagline"] = texto("tagline", 300)
+    ano = texto("year", 4)
+    if ano and not ano.isdigit():
+        return False, "Ano invalido"
+    novo["year"] = ano
+    nota = texto("rating", 4)
+    if nota:
+        try:
+            if not 0 <= float(nota.replace(",", ".")) <= 10:
+                raise ValueError
+        except ValueError:
+            return False, "Nota deve ir de 0 a 10"
+        nota = nota.replace(",", ".")
+    novo["rating"] = nota
+    for k in CAMPOS_LISTA:
+        v = campos.get(k) or []
+        if isinstance(v, str):
+            v = v.split(",")
+        novo[k] = [str(x).strip()[:120] for x in v if str(x).strip()][:30]
+    elenco = []
+    for linha in (campos.get("cast") or [])[:50]:
+        nome, _, papel = str(linha).partition("—")
+        if nome.strip():
+            elenco.append({"name": nome.strip()[:120], "role": papel.strip()[:120], "thumb": ""})
+    novo["actors"] = elenco
+    conn = get_db()
+    try:
+        _save_nfo_to_db(conn, folder_path, novo)
+        conn.commit()
+    finally:
+        conn.close()
+    return True, None

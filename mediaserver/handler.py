@@ -1,6 +1,7 @@
 """Handler HTTP: roteamento, gate de autenticacao e streaming de midia."""
 
 import http.server
+import gzip
 import json
 import os
 import socket
@@ -31,6 +32,7 @@ from .config import (
     IMAGE_CACHE_DIR,
     SUBS_CACHE_DIR,
     CACHED_FILES_PATH,
+    vfs_cache_dir,
     IMAGE_EXTENSIONS,
     MAX_RESTORE_BYTES,
     MAX_JSON_BODY_BYTES,
@@ -95,9 +97,11 @@ from .netutil import (
     _get_local_ip, mkcert_root_ca_path, _primary_local_hostname, active_https_port,
 )
 from .rclone import (
+    SERVE_AUTH,
     run_rclone_cmd,
     _vfs_segment_match,
     _mark_file_cached,
+    invalidar_indice_vfs,
     _is_file_cached,
     _cached_files,
     _cached_files_lock,
@@ -137,6 +141,35 @@ _download_progress_lock = threading.Lock()
 # ~3000 vezes por filme; 1 MB corta o mesmo trajeto em ~64x menos laços e
 # syscalls, sem inflar a memoria por conexao (so 1 MB a mais por stream).
 _STREAM_BUFFER = 1024 * 1024
+
+# Estaticos comprimidos uma vez por versao do arquivo (app.js tem ~300 KB).
+def _caminho_ok(caminho):
+    """Recusa segmentos '.', '..' e barra invertida em caminhos de midia.
+
+    As checagens (perfil infantil, token de cast) olham o caminho como texto;
+    quem resolve o '..' depois e o sistema de arquivos ou o rclone. Sem esta
+    trava, /Infantil/../Adultos/x.mkv passava pela pasta marcada e tocava."""
+    if "\\" in caminho or "\x00" in caminho:
+        return False
+    return not any(seg in (".", "..") for seg in caminho.split("/"))
+
+
+_COMPRIMIVEIS = ("application/javascript", "application/json", "image/svg+xml")
+_gzip_cache = {}
+_gzip_lock = threading.Lock()
+
+
+def _gzip_estatico(caminho, st):
+    chave = (str(caminho), st.st_mtime_ns, st.st_size)
+    with _gzip_lock:
+        corpo = _gzip_cache.get(chave)
+    if corpo is None:
+        corpo = gzip.compress(caminho.read_bytes(), 6)
+        with _gzip_lock:
+            for k in [k for k in _gzip_cache if k[0] == chave[0]]:
+                del _gzip_cache[k]
+            _gzip_cache[chave] = corpo
+    return corpo
 
 
 # O mimetypes do Python nao conhece .webmanifest, e sem o tipo certo o
@@ -452,7 +485,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         """Assina URLs para o Chromecast, que busca a midia sem cookie."""
         body = self._read_json_body() or {}
         media_path = str(body.get("path", ""))
-        if not media_path:
+        if not media_path or not _caminho_ok(media_path) or \
+                not _caminho_ok(str(body.get("subtitle", ""))):
             self._send_json({"status": "error", "error": "Missing path"}, 400)
             return
         subtitle = str(body.get("subtitle", ""))
@@ -460,7 +494,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         # token para cada um — senao a tela do Chromecast fica sem a arte.
         # Teto de 4: sao poster e fanart, nao uma galeria.
         extras = body.get("images")
-        imgs = ([str(p) for p in extras[:4] if p]
+        imgs = ([str(p) for p in extras[:4] if p and _caminho_ok(str(p))]
                 if isinstance(extras, list) else [])
         # Perfil infantil: o token e a credencial da TV e vale SEM sessao —
         # por isso o filtro tem que acontecer aqui na emissao. Checar so no
@@ -488,7 +522,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         estado para a UI acompanhar em /api/prepare-status."""
         body = self._read_json_body() or {}
         file_path = str(body.get("path", ""))
-        if not file_path:
+        if not file_path or not _caminho_ok(file_path):
             self._send_json({"status": "error", "error": "Missing path"}, 400)
             return
         if self._so_infantil() and not self._permitido_infantil(file_path):
@@ -590,11 +624,38 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if not folder_path:
             self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
             return
-        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        tipo = "serie" if body.get("tipo") == "serie" else "filme"
+        ok, erro = _scraper.aplicar(folder_path, tmdb_id, tipo)
         if not ok:
             self._send_json({"status": "error", "error": erro}, 502)
             return
         self._send_json({"status": "ok"})
+
+    def _handle_meta_salvar(self):
+        """Edicao manual dos metadados de um filme ou serie."""
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        if not folder_path or not _caminho_ok(folder_path):
+            self._send_json({"status": "error", "error": "Faltou path"}, 400)
+            return
+        ok, erro = _scraper.salvar_meta(folder_path, body)
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 400)
+            return
+        # Fonte local: a pasta (e os arquivos do filme) passam a "Titulo (Ano)".
+        tipo = "serie" if body.get("tipo") == "serie" else "filme"
+        res, aviso = _organizador.renomear_pela_meta(
+            folder_path, str(body.get("title") or "").strip(),
+            str(body.get("year") or "").strip(), tipo)
+        if res:
+            # Espera a reindexacao (fonte local, segundos) para a ficha reabrir
+            # ja no caminho novo em vez de vazia.
+            _scanner.start_background_scan(res["source"])
+            limite = time.time() + 20
+            while _scanner.is_scanning() and time.time() < limite:
+                time.sleep(0.3)
+        self._send_json({"status": "ok", "path": res["path"] if res else folder_path,
+                         "aviso": aviso})
 
     def _handle_scrape_capa(self):
         """Troca a capa de um filme local pela escolhida (nunca fanart)."""
@@ -807,6 +868,11 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         terceiro). Chromecast e <video> nao mandam Origin e passam normalmente."""
         if not _host_allowed(self.headers.get("Host")):
             self._send_error("Host nao permitido", 403)
+            return False
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if not all(_caminho_ok(v) for k in ("path", "alvo", "origem")
+                   for v in query.get(k, [])):
+            self._send_error("Caminho invalido", 400)
             return False
         if not _origin_allowed(self.headers.get("Origin")):
             # O receiver do Chromecast busca a faixa de legenda COM CORS — e
@@ -1136,14 +1202,28 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
 
         length = (end - start + 1) if size > 0 else 0
 
+        # Capa local: o navegador revalida (304 barato) em vez de guardar um
+        # dia — trocar a capa no app tem que aparecer na hora.
+        etag = None
+        if cache_imagem:
+            st = real.stat()
+            etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return
+
         self.send_response(206 if partial else 200)
         if partial:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Content-Length", str(length))
         self.send_header("Content-Type", mime)
         self.send_header("Accept-Ranges", "bytes")
-        if cache_imagem:
-            self.send_header("Cache-Control", "max-age=86400")
+        if etag:
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
         self._send_media_cors()
         self.end_headers()
 
@@ -1291,7 +1371,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         import http.client
         try:
             conn = http.client.HTTPConnection("localhost", RCLONE_SERVE_PORT, timeout=60)
-            conn.request("GET", "/" + safe_path, headers={"Range": range_header} if range_header else {})
+            hdrs = {"Authorization": SERVE_AUTH}
+            if range_header:
+                hdrs["Range"] = range_header
+            conn.request("GET", "/" + safe_path, headers=hdrs)
             resp = conn.getresponse()
 
             status = resp.status
@@ -1408,12 +1491,14 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if self._head_only:
             return
 
+        proc = None
         try:
-            proc = subprocess.Popen(cat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # stderr nao e lido: em PIPE, um rclone verboso travaria cheio.
+            proc = subprocess.Popen(cat_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             with keepawake.while_streaming():
                 remaining = chunk_size
                 while remaining > 0:
-                    buf = proc.stdout.read(min(65536, remaining))
+                    buf = proc.stdout.read(min(_STREAM_BUFFER, remaining))
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -1425,6 +1510,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 _mark_file_cached(path)
         except Exception as e:
             sys.stderr.write(f"[ERROR] Direct stream failed: {e}\n")
+        finally:
+            # Cliente que pula no video desconecta no meio: sem isto cada seek
+            # deixava um `rclone cat` vivo baixando o resto do pedaco.
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                proc.wait()
 
     @staticmethod
     def _decode_subtitle(raw_bytes):
@@ -1575,12 +1666,39 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         mime, _ = mimetypes.guess_type(str(requested))
         if mime is None:
             mime = "application/octet-stream"
+        st = requested.stat()
+        etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+        # Os assets ja vem carimbados com ?v=mtime: sob carimbo o navegador
+        # guarda para sempre; sem ele, revalida com ETag e recebe 304.
+        versionado = "v=" in urllib.parse.urlparse(self.path).query
+        cache = ("public, max-age=31536000, immutable" if versionado
+                 else "no-cache")
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            return
+        corpo = None
+        if (mime.startswith("text/") or mime in _COMPRIMIVEIS) and \
+                "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            corpo = _gzip_estatico(requested, st)
         self.send_response(200)
         self.send_header("Content-Type", mime)
-        self.send_header("Content-Length", str(requested.stat().st_size))
-        self.send_header("Cache-Control", "max-age=3600")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache)
+        self.send_header("Vary", "Accept-Encoding")
+        if corpo is not None:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(corpo)))
+        else:
+            self.send_header("Content-Length", str(st.st_size))
         self.end_headers()
-        if not self._head_only:
+        if self._head_only:
+            return
+        if corpo is not None:
+            self.wfile.write(corpo)
+        else:
             with open(requested, "rb") as f:
                 shutil.copyfileobj(f, self.wfile)
 
@@ -2336,6 +2454,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             self._handle_scrape_apply()
             return
 
+        if path == "/api/meta/salvar":
+            self._handle_meta_salvar()
+            return
+
         if path == "/api/scrape/capa":
             self._handle_scrape_capa()
             return
@@ -2525,8 +2647,17 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("Missing 'path' parameter", 400)
                 return
             nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
-            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            tipo = "serie" if params.get("tipo", [""])[0] == "serie" else "filme"
+            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query, tipo)
             self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/meta":
+            folder_path = params.get("path", [""])[0]
+            if not folder_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            self._send_json(_scraper.ler_meta(folder_path))
             return
 
         if path == "/api/scrape/capas":
@@ -2772,27 +2903,21 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/cache-manager":
             try:
                 movies = cached_all_movies(so_infantil=self._so_infantil())
+                # Primeiro video de cada pasta numa consulta so (antes era uma
+                # conexao + ate 2 SELECTs por filme).
+                conn_ck = get_db()
+                primeiro = {}
+                for r in conn_ck.execute(
+                        "SELECT folder_path, MIN(name) AS name FROM files "
+                        "WHERE file_type='video' GROUP BY folder_path"):
+                    primeiro.setdefault(r["folder_path"].strip("/"), r["name"])
+                conn_ck.close()
                 result = []
                 for m in movies:
                     folder_path = m["path"]
-                    cached = False
-                    # Check if any video file in this folder is cached
-                    conn_ck = get_db()
-                    rows_ck = conn_ck.execute(
-                        "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
-                        (folder_path,)
-                    ).fetchall()
-                    if not rows_ck:
-                        rows_ck = conn_ck.execute(
-                            "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
-                            (folder_path.strip("/"),)
-                        ).fetchall()
-                    conn_ck.close()
-                    for row_ck in rows_ck:
-                        file_path = folder_path.strip("/") + "/" + row_ck["name"]
-                        if _is_file_cached(file_path):
-                            cached = True
-                            break
+                    nome = primeiro.get(folder_path.strip("/"))
+                    cached = bool(nome) and _is_file_cached(
+                        folder_path.strip("/") + "/" + nome)
                     result.append({
                         "path": folder_path,
                         "name": m["name"],
@@ -2971,11 +3096,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             try:
                 import shutil as sh
                 # Clear VFS cache (downloaded videos)
-                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                vfs_cache = vfs_cache_dir()
                 if vfs_cache.exists():
                     for entry in vfs_cache.iterdir():
                         if entry.is_dir():
                             sh.rmtree(entry)
+                invalidar_indice_vfs()
                 # Clear cached files list
                 global _cached_files
                 with _cached_files_lock:
@@ -3034,7 +3160,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                     CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
                 # Remove VFS cache files from rclone cache directory
-                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                vfs_cache = vfs_cache_dir()
                 if vfs_cache.exists():
                     removed = 0
                     # rclone VFS cache stores files under <remote>{hash}/<full remote path>
@@ -3073,6 +3199,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                         if removed > 0:
                             print(f"[12:00 Media Server] Removed {removed} VFS cache entries (deep) for {folder_path}", flush=True)
 
+                invalidar_indice_vfs()
                 self._send_json({"status": "ok"})
             except Exception as e:
                 self._send_exception(e)
@@ -3203,7 +3330,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                    LEFT JOIN folders f ON f.path = p.folder_path
                    WHERE p.profile_id = ? AND p.position_seconds > 0
                    ORDER BY p.updated_at DESC
-                   LIMIT 20""",
+                   LIMIT 100""",
                 (perfil_atual(),)
             ).fetchall()
             # Pôster e título de filme em lote, na mesma conexão do laço.
@@ -3219,6 +3346,11 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 return base.strip()
 
             for row in rows:
+                # A consulta traz mais linhas que o necessario porque as
+                # orfas (arquivo que saiu do acervo) sao descartadas abaixo;
+                # com LIMIT 20 elas empurravam itens validos pra fora.
+                if len(result) >= 20:
+                    break
                 p_path = row["folder_path"]
                 # Perfil infantil: a home nao mostra progresso de fora do
                 # perfil (mesma regra que o /api/stream aplica pra tocar).
@@ -3526,6 +3658,9 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             file_path = params.get("path", [""])[0]
             if not file_path:
                 self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("File not found", 404)
                 return
             item = cached_get_file_info(file_path)
             if item:
