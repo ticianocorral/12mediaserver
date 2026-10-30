@@ -143,6 +143,7 @@ WRITE_ROUTES = frozenset({
     "/api/generos/create", "/api/generos/delete", "/api/generos/atribuir",
     "/api/generos/renomear", "/api/watched",
     "/api/scrape/apply", "/api/scrape/key/set", "/api/scrape/capa",
+    "/api/meta/salvar",
     "/api/organizar/aplicar", "/api/organizar/desfazer",
 })
 
@@ -199,6 +200,7 @@ ADMIN_PATHS = frozenset({
     "/api/scrape/status", "/api/scrape/pendentes", "/api/scrape/search",
     "/api/scrape/apply", "/api/scrape/key/set",
     "/api/scrape/capas", "/api/scrape/capa",
+    "/api/meta", "/api/meta/salvar",
     "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
     "/api/organizar/desfazer", "/api/organizar/historico",
     # Cache e rclone: apagar gigas baixados, forcar downloads ou derrubar o

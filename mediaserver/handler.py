@@ -624,9 +624,23 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if not folder_path:
             self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
             return
-        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        tipo = "serie" if body.get("tipo") == "serie" else "filme"
+        ok, erro = _scraper.aplicar(folder_path, tmdb_id, tipo)
         if not ok:
             self._send_json({"status": "error", "error": erro}, 502)
+            return
+        self._send_json({"status": "ok"})
+
+    def _handle_meta_salvar(self):
+        """Edicao manual dos metadados de um filme ou serie."""
+        body = self._read_json_body() or {}
+        folder_path = str(body.get("path", "")).strip()
+        if not folder_path or not _caminho_ok(folder_path):
+            self._send_json({"status": "error", "error": "Faltou path"}, 400)
+            return
+        ok, erro = _scraper.salvar_meta(folder_path, body)
+        if not ok:
+            self._send_json({"status": "error", "error": erro}, 400)
             return
         self._send_json({"status": "ok"})
 
@@ -2413,6 +2427,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             self._handle_scrape_apply()
             return
 
+        if path == "/api/meta/salvar":
+            self._handle_meta_salvar()
+            return
+
         if path == "/api/scrape/capa":
             self._handle_scrape_capa()
             return
@@ -2602,8 +2620,17 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("Missing 'path' parameter", 400)
                 return
             nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
-            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            tipo = "serie" if params.get("tipo", [""])[0] == "serie" else "filme"
+            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query, tipo)
             self._send_json({"candidatos": candidatos, "erro": erro})
+            return
+
+        if path == "/api/meta":
+            folder_path = params.get("path", [""])[0]
+            if not folder_path:
+                self._send_error("Missing 'path' parameter", 400)
+                return
+            self._send_json(_scraper.ler_meta(folder_path))
             return
 
         if path == "/api/scrape/capas":

@@ -2569,3 +2569,17 @@ button, input, select, textarea { font-family: inherit; }
 body.nao-admin #refreshBtn,
 body.nao-admin #cacheManagerModal .rclone-action-btn,
 body.nao-admin #cacheManagerModal .cache-item-btn { display: none; }
+
+/* Editor de metadados */
+.meta-editor { display: flex; flex-direction: column; gap: 12px; }
+.meta-campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text2); }
+.meta-campo small { color: var(--text3); font-weight: 400; }
+.meta-campo input, .meta-campo textarea {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--bg3, rgba(255,255,255,.05));
+  border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 8px; padding: 8px 10px; resize: vertical;
+}
+.meta-linha { display: flex; gap: 12px; }
+.meta-linha .meta-campo { flex: 1 1 0; }
+.meta-tmdb { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.meta-dica { font-size: 12px; color: var(--text3); }
+.meta-acoes { display: flex; justify-content: flex-end; gap: 8px; }

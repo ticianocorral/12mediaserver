@@ -1381,6 +1381,7 @@
         + totalEps + (totalEps === 1 ? ' episódio' : ' episódios')
         + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '')
         + (isAdmin ? '<div class="colecao-acoes">'
+          + pillEditarHtml(seriePath, serie.name, 'serie')
           + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
                                'vale para a série inteira: todas as temporadas e episódios')
           + '</div>' : '');
@@ -1883,6 +1884,16 @@
       .finally(() => { raiz.style.pointerEvents = ''; });
   }
 
+  function pillEditarHtml(alvo, titulo, tipo) {
+    return '<button class="pill-acao pill-acao-btn" '
+      + 'onclick="openMetaEditor(decodeURIComponent(\'' + enc(alvo) + '\'), decodeURIComponent(\'' + enc(titulo) + '\'), \'' + tipo + '\')" '
+      + 'title="Editar título, ano, sinopse, gêneros, elenco...">'
+      + '<span class="pill-acao-icone"><svg class="icon-svg"><use href="#i-edit"></use></svg></span>'
+      + '<span class="switch-texto"><span class="switch-rotulo">Informações</span>'
+      + '<span class="switch-nota">Editar</span></span>'
+      + '</button>';
+  }
+
   function pillCapaHtml(alvo, titulo) {
     return '<button class="pill-acao pill-acao-btn" '
       + 'onclick="openCapaModal(decodeURIComponent(\'' + enc(alvo) + '\'), decodeURIComponent(\'' + enc(titulo) + '\'))" title="Escolher outra capa do TMDB">'
@@ -2306,6 +2317,7 @@
           </div>
           ${(_me && _me.role === 'admin')
               ? '<div class="movie-info-admin"><span class="movie-info-admin-rotulo">Administração</span>'
+                + pillEditarHtml(folderPath, titleClean, 'filme')
                 + pillTagsHtml(folderPath, titleClean, detail.tags)
                 + (isLocalPath(folderPath) ? pillCapaHtml(folderPath, titleClean) : '')
                 + switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
@@ -5697,6 +5709,111 @@
   }
 
   // ----- Trocar a capa de UM filme (ficha do filme; só fonte local) -----
+  // ==================== EDITOR DE METADADOS (filme ou série) ====================
+  // Edição manual de tudo que a ficha mostra, ou preenchimento pelo TMDB
+  // (filmes e séries). Grava no banco; vale para fonte local e nuvem.
+  async function openMetaEditor(path, titulo, tipo) {
+    document.getElementById('scrapeModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    window._metaAlvo = { path: path, titulo: titulo, tipo: tipo };
+    const box = document.getElementById('scrapeBox');
+    box.innerHTML = '<div class="loading" style="min-height:120px"><div class="spinner"></div><span>Carregando...</span></div>';
+    let m = {};
+    try { m = await (await fetch('/api/meta?path=' + encodeURIComponent(path))).json(); } catch (e) {}
+    const campo = (id, rotulo, valor, extra) => '<label class="meta-campo"><span>' + rotulo + '</span>'
+      + '<input type="text" id="' + id + '" value="' + escHtml(valor || '') + '" ' + (extra || '') + '></label>';
+    const area = (id, rotulo, valor, linhas, nota) => '<label class="meta-campo"><span>' + rotulo
+      + (nota ? ' <small>' + nota + '</small>' : '') + '</span>'
+      + '<textarea id="' + id + '" rows="' + linhas + '">' + escHtml(valor || '') + '</textarea></label>';
+    const nomeTipo = tipo === 'serie' ? 'série' : 'filme';
+    box.innerHTML = '<div class="meta-editor">'
+      + '<div class="meta-tmdb"><button class="rclone-action-btn" onclick="_metaTmdb()">'
+      + '<svg class="icon-svg"><use href="#i-search"></use></svg> Preencher pelo TMDB</button>'
+      + '<span class="meta-dica">Busca a ' + nomeTipo + ' e substitui tudo; depois dá para ajustar aqui.</span></div>'
+      + '<div id="metaTmdbArea"></div>'
+      + campo('metaTitle', 'Título', m.title || (titulo || '').replace(/\s*\(\d{4}\)\s*$/, ''))
+      + '<div class="meta-linha">'
+      + campo('metaYear', 'Ano', m.year, 'inputmode="numeric" maxlength="4"')
+      + campo('metaRating', 'Nota (0–10)', m.rating, 'inputmode="decimal" maxlength="4"')
+      + '</div>'
+      + campo('metaTagline', 'Frase de efeito', m.tagline)
+      + area('metaPlot', 'Sinopse', m.plot, 5)
+      + campo('metaGenres', 'Gêneros', (m.genres || []).join(', '), 'placeholder="separados por vírgula"')
+      + campo('metaDirectors', tipo === 'serie' ? 'Criação' : 'Direção', (m.directors || []).join(', '))
+      + campo('metaWriters', 'Roteiro', (m.writers || []).join(', '))
+      + area('metaCast', 'Elenco', (m.cast || []).join('\n'), 5, 'um por linha: Nome — Personagem')
+      + '<div id="metaMsg"></div>'
+      + '<div class="meta-acoes"><button class="rclone-action-btn" onclick="closeScrapeModal()">Cancelar</button>'
+      + '<button class="rclone-action-btn primary" onclick="_metaSalvar()">Salvar</button></div>'
+      + '</div>';
+  }
+
+  async function _metaSalvar() {
+    const v = id => document.getElementById(id).value;
+    const lista = id => v(id).split(',').map(x => x.trim()).filter(Boolean);
+    const r = await _scrapePost('/api/meta/salvar', {
+      path: window._metaAlvo.path,
+      title: v('metaTitle'), year: v('metaYear'), rating: v('metaRating'),
+      tagline: v('metaTagline'), plot: v('metaPlot'),
+      genres: lista('metaGenres'), directors: lista('metaDirectors'), writers: lista('metaWriters'),
+      cast: v('metaCast').split('\n').map(x => x.trim()).filter(Boolean),
+    });
+    if (!r.ok) {
+      document.getElementById('metaMsg').innerHTML = '<div class="user-msg err">'
+        + escHtml(r.data.error || 'Não foi possível salvar.') + '</div>';
+      return;
+    }
+    showToast('Informações salvas.', 'success');
+    _metaRecarregar();
+  }
+
+  function _metaRecarregar() {
+    closeScrapeModal();
+    _frontCache = {};
+    const a = window._metaAlvo;
+    if (a.tipo === 'serie') renderSerieView(a.path);
+    else showMovieInfo(a.path);
+  }
+
+  async function _metaTmdb() {
+    const st = await (await fetch('/api/scrape/status')).json().catch(() => ({}));
+    const area = document.getElementById('metaTmdbArea');
+    if (!st.configurado) {
+      area.innerHTML = '<div class="user-msg err">Configure a chave do TMDB em Ajustes › Metadados primeiro.</div>';
+      return;
+    }
+    const titulo = document.getElementById('metaTitle').value;
+    area.innerHTML = '<div class="user-form"><input type="text" id="metaTmdbQ" value="' + escHtml(titulo) + '" style="flex:1 1 auto" '
+      + 'onkeydown="if(event.key===\'Enter\')_metaTmdbBuscar()"><button class="rclone-action-btn primary" onclick="_metaTmdbBuscar()">Buscar</button></div>'
+      + '<div id="metaTmdbCands" style="margin-top:8px"></div>';
+    _metaTmdbBuscar();
+  }
+
+  async function _metaTmdbBuscar() {
+    const a = window._metaAlvo;
+    const q = (document.getElementById('metaTmdbQ').value || '').trim();
+    const area = document.getElementById('metaTmdbCands');
+    area.innerHTML = '<div class="loading" style="min-height:60px"><div class="spinner"></div><span>Buscando no TMDB...</span></div>';
+    const d = await (await fetch('/api/scrape/search?path=' + encodeURIComponent(a.path) + '&q=' + encodeURIComponent(q)
+      + '&tipo=' + encodeURIComponent(a.tipo))).json().catch(() => ({ erro: 'Falha de conexão.' }));
+    if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
+    const c = d.candidatos || [];
+    area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div>'
+      + '<div class="user-role">' + escHtml((x.sinopse || '').slice(0, 140)) + '</div></div>'
+      + '<button class="user-btn" onclick="_metaTmdbAplicar(' + Number(x.id) + ')">Usar este</button></div>').join('')
+      : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
+  }
+
+  async function _metaTmdbAplicar(tmdbId) {
+    const a = window._metaAlvo;
+    const r = await _scrapePost('/api/scrape/apply', { path: a.path, tmdb_id: tmdbId, tipo: a.tipo });
+    if (!r.ok) { showToast(r.data.error || 'Não foi possível aplicar.', 'error'); return; }
+    showToast('Informações do TMDB aplicadas.', 'success');
+    openMetaEditor(a.path, a.titulo, a.tipo);
+  }
+
   async function openCapaModal(path, titulo) {
     document.getElementById('scrapeModal').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -5721,7 +5838,7 @@
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
       + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
-      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div></div>'
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div></div>'
       + '<button class="user-btn" onclick="_capaEscolherFilme(' + x.id + ')">Ver capas</button></div>').join('')
       : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
   }
@@ -5778,7 +5895,7 @@
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:flex-start">'
       + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
-      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div>'
+      + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + escHtml(String(x.ano)) + ')' : '') + '</div>'
       + '<div class="src-hint">' + escHtml((x.sinopse || '').slice(0, 140)) + '</div></div>'
       + '<button class="user-btn" onclick="_scrapeAplicar(\'' + pathEnc + '\', ' + x.id + ')">Usar este</button></div>').join('')
       : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
