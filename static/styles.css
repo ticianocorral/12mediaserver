@@ -2081,17 +2081,18 @@
   .movie-info-lateral .btn-colecao { justify-content: center; }
   .movie-info-admin {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 8px;
     padding-top: 14px;
     border-top: 1px solid rgba(255,255,255,0.1);
   }
   .movie-info-admin-rotulo {
+    flex: 0 0 100%;
     font-size: 11px; font-weight: 700; letter-spacing: 1px;
     text-transform: uppercase; color: var(--text3);
   }
   .movie-info-admin .pill-acao,
-  .movie-info-admin .switch-infantil { justify-content: space-between; }
+  .movie-info-admin .switch-infantil { flex: 1 1 auto; justify-content: center; }
   .movie-info-poster {
     width: 100%;
     border-radius: var(--radius-lg);
