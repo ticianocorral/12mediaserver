@@ -487,7 +487,7 @@ def _profiles_page():
   __WORDMARK__
   <div>
     <button class="link" id="btnVoltar" type="button" style="display:none">Voltar ao app</button>
-    <button class="link" id="btnSair" type="button">Sair da conta</button>
+    <button class="link" id="btnSair" type="button">Sair</button>
   </div>
 </header>
 <main>
