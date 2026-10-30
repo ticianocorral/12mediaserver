@@ -2,8 +2,8 @@
 
   favicon.svg / favicon.ico  so o "12" digital (7 segmentos), sem o videocassete;
                              copias em docs/assets e docs/press/assets.
-  app da TV (APK)            banner (launcher da Android TV) e ic_launcher, a
-                             partir do wordmark horizontal (static/wordmark.svg).
+  app da TV (APK)            banner (launcher da Android TV) e ic_launcher (o
+                             proprio banner), a partir do wordmark horizontal (static/wordmark.svg).
 
 Uso: python3 tools/gerar_icones_marca.py   (requer Pillow)
 """
@@ -126,11 +126,11 @@ def banner(w=640, h=360):
 
 
 def icone(lado):
+    """O proprio banner, inteiro, centralizado num quadrado do mesmo fundo."""
     img = Image.new("RGBA", (lado, lado), FUNDO)
-    logo = desenhar_wordmark(max(240, lado * 4))
-    alvo = int(lado * 0.88)
-    logo = logo.resize((alvo, max(1, int(alvo * logo.height / logo.width))), Image.LANCZOS)
-    img.alpha_composite(logo, ((lado - logo.width) // 2, (lado - logo.height) // 2))
+    b = banner().convert("RGBA")
+    b = b.resize((lado, max(1, round(lado * b.height / b.width))), Image.LANCZOS)
+    img.alpha_composite(b, (0, (lado - b.height) // 2))
     return img
 
 
