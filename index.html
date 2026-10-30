@@ -182,6 +182,11 @@
         <input type="text" id="searchInput" placeholder="Pesquisar filmes..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter') search(); else if(event.key==='Escape') clearSearch()">
         <span class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpar busca"><svg class="icon-svg"><use href="#i-close"></use></svg></span>
       </div>
+      <div class="fonte-filtro" id="fonteFiltro" role="group" aria-label="Mostrar mídias">
+        <button type="button" data-fonte="todas" class="ativo" aria-pressed="true" onclick="setFonteFiltro('todas')" title="Mostrar locais e da nuvem">Todas</button>
+        <button type="button" data-fonte="local" aria-pressed="false" onclick="setFonteFiltro('local')" title="Só HD, pendrive e pastas locais">Locais</button>
+        <button type="button" data-fonte="nuvem" aria-pressed="false" onclick="setFonteFiltro('nuvem')" title="Só o que está na nuvem">Nuvem</button>
+      </div>
       <button class="sidebar-item active" data-nav="home" onclick="loadPath('')">
         <span class="icon"><svg class="icon-svg"><use href="#i-home"></use></svg></span> Início
       </button>

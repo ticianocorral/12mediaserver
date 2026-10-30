@@ -82,7 +82,59 @@
     delete _frontCache[url];
   }
 
+  // ==================== FILTRO DE FONTE (todas / locais / nuvem) ====================
+  // Vale para as listas de filmes e séries (Filmes, Séries, busca, home,
+  // coleções e tags). O filtro age na resposta, depois do cache: o cache guarda
+  // sempre a resposta inteira, então alternar não refaz nenhuma requisição.
+  let _fonteFiltro = 'todas';
+  try {
+    const salvo = localStorage.getItem('fonteFiltro');
+    if (salvo === 'local' || salvo === 'nuvem') _fonteFiltro = salvo;
+  } catch (e) {}
+  const _ROTAS_FILTRAVEIS = ['/api/search', '/api/all-movies', '/api/recent-movies',
+    '/api/continue-watching', '/api/series', '/api/collection?', '/api/genero?'];
+
+  function _filtrarFonte(url, data) {
+    if (_fonteFiltro === 'todas' || !data || !_ROTAS_FILTRAVEIS.some(r => url.indexOf(r) === 0)) return data;
+    const quer = _fonteFiltro === 'local';
+    const manter = it => {
+      if (!it || typeof it !== 'object') return true;
+      const p = it.path != null ? it.path : (it.Path != null ? it.Path : it.folder_path);
+      return typeof p !== 'string' || isLocalPath(p) === quer;
+    };
+    const andar = v => Array.isArray(v) ? v.filter(manter).map(andar)
+      : (v && typeof v === 'object')
+        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, andar(x)]))
+        : v;
+    return andar(data);
+  }
+
+  function _pintarFonteFiltro() {
+    document.querySelectorAll('#fonteFiltro button').forEach(b => {
+      const ativo = b.dataset.fonte === _fonteFiltro;
+      b.classList.toggle('ativo', ativo);
+      b.setAttribute('aria-pressed', ativo ? 'true' : 'false');
+    });
+  }
+
+  function setFonteFiltro(fonte) {
+    if (fonte === _fonteFiltro) return;
+    _fonteFiltro = fonte;
+    try { localStorage.setItem('fonteFiltro', fonte); } catch (e) {}
+    _pintarFonteFiltro();
+    // Refaz a tela atual (ou a busca em andamento) com o filtro novo.
+    if (document.getElementById('searchInput').value.trim()) search();
+    else loadPathInternal(currentPath);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _pintarFonteFiltro);
+  else _pintarFonteFiltro();
+
   function cachedFetch(url) {
+    return _cachedFetchBruto(url).then(data => _filtrarFonte(url, data));
+  }
+
+  function _cachedFetchBruto(url) {
     const now = Date.now();
     const entry = _frontCache[url];
     if (entry && (now - entry.time) < _CACHE_TTL) {
