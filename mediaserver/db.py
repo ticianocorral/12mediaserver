@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR
+from .config import DB_PATH, IMAGE_CACHE_DIR, SUBS_CACHE_DIR, vfs_cache_dir
 from . import branding as _branding
 
 _db_write_lock = threading.Lock()
@@ -451,7 +451,7 @@ def get_cache_usage():
     for label, path in [
         ("images", IMAGE_CACHE_DIR),
         ("subs", SUBS_CACHE_DIR),
-        ("vfs", Path.home() / ".cache" / "rclone" / "vfs"),
+        ("vfs", vfs_cache_dir()),
         ("db", DB_PATH),
     ]:
         p = Path(path)

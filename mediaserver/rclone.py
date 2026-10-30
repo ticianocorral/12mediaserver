@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .config import (
     CACHED_FILES_PATH, PROJECT_ROOT, RCLONE_GUI_ENABLED,
-    RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT,
+    RCLONE_SERVE_PORT, RCLONE_WEBGUI_PORT, vfs_cache_dir,
 )
 from .paths import rc_remote as _rc_remote, remote_configurado
 from .procutil import _pids_on_port, _proc_cmdline
@@ -109,6 +109,7 @@ def _mark_file_cached(file_path):
     file_path = _norm_cache_path(file_path)
     with _cached_files_lock:
         _cached_files.add(file_path)
+    invalidar_indice_vfs()
     # Batch write: persist at most once per 5s
     _schedule_cached_files_save()
 
@@ -135,8 +136,59 @@ def _flush_cached_files():
         CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
 
+# O registro acima so sabe o que passou pelo servidor e erra nos dois sentidos:
+# marca como baixado um filme de que so se leu o fim do arquivo e esquece o que
+# ja esta no disco quando o arquivo some. O cache VFS em si e a verdade: no
+# modo "full" o rclone grava o arquivo esparso, entao um filme so esta inteiro
+# quando o espaco realmente alocado cobre o tamanho do arquivo.
+_VFS_TTL = 10
+_vfs_indice = {"em": 0.0, "dir": None, "chaves": set()}
+_vfs_lock = threading.Lock()
+
+
+def _chave_vfs(partes):
+    """Pasta-do-filme/arquivo: o nome do remote e da biblioteca varia (a pasta
+    ja se chamou TicianoFlix), mas esses dois ultimos componentes nao."""
+    return "/".join(partes[-2:]).lower()
+
+
+def _vfs_baixados():
+    """(pasta do cache, chaves dos arquivos inteiros no disco). Reescaneia no
+    maximo a cada _VFS_TTL segundos: o cache-manager pergunta por filme."""
+    agora = time.time()
+    with _vfs_lock:
+        if agora - _vfs_indice["em"] < _VFS_TTL:
+            return _vfs_indice["dir"], _vfs_indice["chaves"]
+        raiz = vfs_cache_dir()
+        chaves = set()
+        if raiz.is_dir():
+            for raiz_arq, _dirs, arquivos in os.walk(raiz):
+                for nome in arquivos:
+                    try:
+                        st = os.stat(os.path.join(raiz_arq, nome))
+                    except OSError:
+                        continue
+                    alocado = getattr(st, "st_blocks", None)
+                    alocado = st.st_size if alocado is None else alocado * 512
+                    if st.st_size > 0 and alocado + (1 << 20) >= st.st_size:
+                        rel = Path(raiz_arq, nome).relative_to(raiz).parts
+                        if len(rel) >= 3:   # remote / pasta do filme / arquivo
+                            chaves.add(_chave_vfs(rel))
+        _vfs_indice.update(em=agora, dir=raiz, chaves=chaves)
+        return raiz, chaves
+
+
+def invalidar_indice_vfs():
+    with _vfs_lock:
+        _vfs_indice["em"] = 0.0
+
+
 def _is_file_cached(file_path):
     file_path = _norm_cache_path(file_path)
+    raiz, chaves = _vfs_baixados()
+    if raiz is not None and raiz.is_dir():
+        partes = [p for p in file_path.split("/") if p]
+        return len(partes) >= 2 and _chave_vfs(partes) in chaves
     with _cached_files_lock:
         return file_path in _cached_files
 

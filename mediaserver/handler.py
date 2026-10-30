@@ -31,6 +31,7 @@ from .config import (
     IMAGE_CACHE_DIR,
     SUBS_CACHE_DIR,
     CACHED_FILES_PATH,
+    vfs_cache_dir,
     IMAGE_EXTENSIONS,
     MAX_RESTORE_BYTES,
     MAX_JSON_BODY_BYTES,
@@ -98,6 +99,7 @@ from .rclone import (
     run_rclone_cmd,
     _vfs_segment_match,
     _mark_file_cached,
+    invalidar_indice_vfs,
     _is_file_cached,
     _cached_files,
     _cached_files_lock,
@@ -2971,11 +2973,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             try:
                 import shutil as sh
                 # Clear VFS cache (downloaded videos)
-                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                vfs_cache = vfs_cache_dir()
                 if vfs_cache.exists():
                     for entry in vfs_cache.iterdir():
                         if entry.is_dir():
                             sh.rmtree(entry)
+                invalidar_indice_vfs()
                 # Clear cached files list
                 global _cached_files
                 with _cached_files_lock:
@@ -3034,7 +3037,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                     CACHED_FILES_PATH.write_text(json.dumps(list(_cached_files)))
 
                 # Remove VFS cache files from rclone cache directory
-                vfs_cache = Path.home() / ".cache" / "rclone" / "vfs"
+                vfs_cache = vfs_cache_dir()
                 if vfs_cache.exists():
                     removed = 0
                     # rclone VFS cache stores files under <remote>{hash}/<full remote path>
@@ -3073,6 +3076,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                         if removed > 0:
                             print(f"[12:00 Media Server] Removed {removed} VFS cache entries (deep) for {folder_path}", flush=True)
 
+                invalidar_indice_vfs()
                 self._send_json({"status": "ok"})
             except Exception as e:
                 self._send_exception(e)
@@ -3203,7 +3207,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                    LEFT JOIN folders f ON f.path = p.folder_path
                    WHERE p.profile_id = ? AND p.position_seconds > 0
                    ORDER BY p.updated_at DESC
-                   LIMIT 20""",
+                   LIMIT 100""",
                 (perfil_atual(),)
             ).fetchall()
             # Pôster e título de filme em lote, na mesma conexão do laço.
@@ -3219,6 +3223,11 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 return base.strip()
 
             for row in rows:
+                # A consulta traz mais linhas que o necessario porque as
+                # orfas (arquivo que saiu do acervo) sao descartadas abaixo;
+                # com LIMIT 20 elas empurravam itens validos pra fora.
+                if len(result) >= 20:
+                    break
                 p_path = row["folder_path"]
                 # Perfil infantil: a home nao mostra progresso de fora do
                 # perfil (mesma regra que o /api/stream aplica pra tocar).

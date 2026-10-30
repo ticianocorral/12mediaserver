@@ -226,7 +226,7 @@
       const name = item.Name || '';
       const filePath = item.Path ? '/' + item.Path : '';
       const posterSrc = item.poster ? posterUrl(filePath.replace(/\/[^/]*$/, ''), item.poster) : null;
-      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc, item.watched);
+      html += renderMovieCardHtml(name, filePath, item.Size, posterSrc, item.watched, item.is_file);
     });
 
     html += `</div></div>
@@ -468,7 +468,7 @@
         // Filme solto (arquivo avulso) não tem ficha: o clique toca direto.
         // Filme em pasta abre a ficha, como em todo o app.
         const clique = m.is_file
-          ? 'playMovie(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))'
+          ? 'playMovie(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'), null, null, decodeURIComponent(\'' + safePath + '\'))'
           : 'showMovieInfo(decodeURIComponent(\'' + safePath + '\'), event)';
         const botaoGenero = (_me && _me.role === 'admin')
           ? '<button class="movie-card-genero" onclick="event.stopPropagation(); openGeneroFilmeModal(decodeURIComponent(\'' + safePath + '\'), decodeURIComponent(\'' + enc(nameClean) + '\'))" title="Tags do filme"><svg class="icon-svg"><use href="#i-layers"></use></svg></button>'
@@ -668,7 +668,8 @@
           linhas += '<button class="episodio-linha" onclick="playMovie(decodeURIComponent(\''
             + enc(m.path) + '\'), decodeURIComponent(\'' + enc(rotulo) + '\')'
             + (m.subtitle ? ', decodeURIComponent(\'' + enc(m.subtitle) + '\')' : ', null')
-            + ', ' + Math.floor(m.position) + ')">'
+            + ', ' + Math.floor(m.position)
+            + ', decodeURIComponent(\'' + enc(m.path) + '\'))">'
             + '<span class="episodio-play"><svg class="icon-svg"><use href="#i-play"></use></svg></span>'
             + '<span class="episodio-titulo">' + escHtml(rotulo)
             + ' <span class="episodio-tamanho">' + posStr + ' assistido</span></span>'
@@ -1536,7 +1537,7 @@
         const titulo = escHtml((m.title || m.name).replace(/[._]/g, ' '));
         const poster = m.poster ? posterUrl(m.path, m.poster) : null;
         const clique = m.is_file
-          ? 'playMovie(decodeURIComponent(\'' + enc(m.path) + '\'), decodeURIComponent(\'' + enc(m.title || m.name) + '\'))'
+          ? 'playMovie(decodeURIComponent(\'' + enc(m.path) + '\'), decodeURIComponent(\'' + enc(m.title || m.name) + '\'), null, null, decodeURIComponent(\'' + enc(m.path) + '\'))'
           : 'showMovieInfo(decodeURIComponent(\'' + enc(m.path) + '\'), event)';
         html += '<div class="movie-card" onclick="' + clique + '" title="' + titulo + '">'
           + (poster
@@ -2089,7 +2090,7 @@
   }
 
   // ===== MOVIE CARD HTML =====
-  function renderMovieCardHtml(name, filePath, size, posterSrc, watched) {
+  function renderMovieCardHtml(name, filePath, size, posterSrc, watched, chaveProgresso) {
     const nameClean = name.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
     // Use encodeURIComponent for safe embedding in onclick attributes
     // DecodeURIComponent in the handler reverses this safely
@@ -2099,7 +2100,7 @@
     const year = yearMatch ? yearMatch[1] : '';
 
     let html = `
-      <div class="movie-card" onclick="playMovie(decodeURIComponent('${safePath}'), decodeURIComponent('${safeName}'))" title="${escHtml(name)}">`;
+      <div class="movie-card" onclick="playMovie(decodeURIComponent('${safePath}'), decodeURIComponent('${safeName}')${chaveProgresso ? `, null, null, decodeURIComponent('${safePath}')` : ''})" title="${escHtml(name)}">`;
 
     if (posterSrc) {
       html += `<img class="movie-card-poster" src="${posterSrc}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`;
@@ -3958,7 +3959,7 @@
     if (currentVideoPath) {
       const movieTitle = document.getElementById('playerMovieName');
       const name = movieTitle.textContent;
-      playMovie(currentVideoPath, name, currentSubtitlePath);
+      playMovie(currentVideoPath, name, currentSubtitlePath, null, _currentPlayFolder || undefined);
     }
   }
 
@@ -4898,6 +4899,9 @@
       if (changed) {
         localStorage.setItem('media_server_cached', JSON.stringify([..._cachedSet]));
       }
+      // A home pode ter pintado o contador antes desta sincronização acabar.
+      const baix = document.getElementById('statDownloaded');
+      if (baix) baix.textContent = _cachedSet.size;
     } catch(_) {}
   }
 
