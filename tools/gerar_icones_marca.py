@@ -73,15 +73,15 @@ def favicon_ico(tamanhos=(16, 32, 48)):
     return cab + dirs + corpo
 
 
-# ── wordmark horizontal (viewBox 124x25) ─────────────────────
+# ── wordmark horizontal (viewBox 130x25) ─────────────────────
 def attrs(tag):
     return dict(re.findall(r'([\w-]+)="([^"]*)"', tag))
 
 
 def desenhar_wordmark(largura):
     """Renderiza static/wordmark.svg na largura pedida, fundo transparente."""
-    k = largura * SS / 124
-    img = Image.new("RGBA", (int(124 * k), int(25 * k)), (0, 0, 0, 0))
+    k = largura * SS / 130
+    img = Image.new("RGBA", (int(130 * k), int(25 * k)), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     cores = {"on": ACESO, "off": APAGADO}
     corpo = WORDMARK.split("</style>", 1)[1]
@@ -110,7 +110,7 @@ def desenhar_wordmark(largura):
             ImageDraw.Draw(tmp).text((0, int(tam * 1.2 * k)), txt, font=f, fill=a["fill"], anchor="ls")
             tmp = tmp.resize((int(larg * k), tmp.height))
             img.alpha_composite(tmp, (int(float(a["x"]) * k), int((float(a["y"]) - tam * 1.2) * k)))
-    return img.resize((largura, int(largura * 25 / 124)), Image.LANCZOS)
+    return img.resize((largura, int(largura * 25 / 130)), Image.LANCZOS)
 
 
 def salvar(img, caminho):
