@@ -201,6 +201,11 @@ ADMIN_PATHS = frozenset({
     "/api/scrape/capas", "/api/scrape/capa",
     "/api/organizar/itens", "/api/organizar/buscar", "/api/organizar/aplicar",
     "/api/organizar/desfazer", "/api/organizar/historico",
+    # Cache e rclone: apagar gigas baixados, forcar downloads ou derrubar o
+    # serve afeta a casa toda.
+    "/api/clear-cache", "/api/uncache", "/api/cache-download", "/api/refresh",
+    "/api/rclone/serve/restart", "/api/rclone/webgui/start",
+    "/api/rclone/webgui/stop",
 })
 
 # ── Sessao e contas ──────────────────────────────────────────

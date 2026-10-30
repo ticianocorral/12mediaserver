@@ -1,6 +1,7 @@
 """Handler HTTP: roteamento, gate de autenticacao e streaming de midia."""
 
 import http.server
+import gzip
 import json
 import os
 import socket
@@ -96,6 +97,7 @@ from .netutil import (
     _get_local_ip, mkcert_root_ca_path, _primary_local_hostname, active_https_port,
 )
 from .rclone import (
+    SERVE_AUTH,
     run_rclone_cmd,
     _vfs_segment_match,
     _mark_file_cached,
@@ -139,6 +141,24 @@ _download_progress_lock = threading.Lock()
 # ~3000 vezes por filme; 1 MB corta o mesmo trajeto em ~64x menos laços e
 # syscalls, sem inflar a memoria por conexao (so 1 MB a mais por stream).
 _STREAM_BUFFER = 1024 * 1024
+
+# Estaticos comprimidos uma vez por versao do arquivo (app.js tem ~300 KB).
+_COMPRIMIVEIS = ("application/javascript", "application/json", "image/svg+xml")
+_gzip_cache = {}
+_gzip_lock = threading.Lock()
+
+
+def _gzip_estatico(caminho, st):
+    chave = (str(caminho), st.st_mtime_ns, st.st_size)
+    with _gzip_lock:
+        corpo = _gzip_cache.get(chave)
+    if corpo is None:
+        corpo = gzip.compress(caminho.read_bytes(), 6)
+        with _gzip_lock:
+            for k in [k for k in _gzip_cache if k[0] == chave[0]]:
+                del _gzip_cache[k]
+            _gzip_cache[chave] = corpo
+    return corpo
 
 
 # O mimetypes do Python nao conhece .webmanifest, e sem o tipo certo o
@@ -1293,7 +1313,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         import http.client
         try:
             conn = http.client.HTTPConnection("localhost", RCLONE_SERVE_PORT, timeout=60)
-            conn.request("GET", "/" + safe_path, headers={"Range": range_header} if range_header else {})
+            hdrs = {"Authorization": SERVE_AUTH}
+            if range_header:
+                hdrs["Range"] = range_header
+            conn.request("GET", "/" + safe_path, headers=hdrs)
             resp = conn.getresponse()
 
             status = resp.status
@@ -1410,12 +1433,14 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if self._head_only:
             return
 
+        proc = None
         try:
-            proc = subprocess.Popen(cat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # stderr nao e lido: em PIPE, um rclone verboso travaria cheio.
+            proc = subprocess.Popen(cat_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             with keepawake.while_streaming():
                 remaining = chunk_size
                 while remaining > 0:
-                    buf = proc.stdout.read(min(65536, remaining))
+                    buf = proc.stdout.read(min(_STREAM_BUFFER, remaining))
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -1427,6 +1452,12 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 _mark_file_cached(path)
         except Exception as e:
             sys.stderr.write(f"[ERROR] Direct stream failed: {e}\n")
+        finally:
+            # Cliente que pula no video desconecta no meio: sem isto cada seek
+            # deixava um `rclone cat` vivo baixando o resto do pedaco.
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                proc.wait()
 
     @staticmethod
     def _decode_subtitle(raw_bytes):
@@ -1577,12 +1608,39 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         mime, _ = mimetypes.guess_type(str(requested))
         if mime is None:
             mime = "application/octet-stream"
+        st = requested.stat()
+        etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+        # Os assets ja vem carimbados com ?v=mtime: sob carimbo o navegador
+        # guarda para sempre; sem ele, revalida com ETag e recebe 304.
+        versionado = "v=" in urllib.parse.urlparse(self.path).query
+        cache = ("public, max-age=31536000, immutable" if versionado
+                 else "no-cache")
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            return
+        corpo = None
+        if (mime.startswith("text/") or mime in _COMPRIMIVEIS) and \
+                "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            corpo = _gzip_estatico(requested, st)
         self.send_response(200)
         self.send_header("Content-Type", mime)
-        self.send_header("Content-Length", str(requested.stat().st_size))
-        self.send_header("Cache-Control", "max-age=3600")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache)
+        self.send_header("Vary", "Accept-Encoding")
+        if corpo is not None:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(corpo)))
+        else:
+            self.send_header("Content-Length", str(st.st_size))
         self.end_headers()
-        if not self._head_only:
+        if self._head_only:
+            return
+        if corpo is not None:
+            self.wfile.write(corpo)
+        else:
             with open(requested, "rb") as f:
                 shutil.copyfileobj(f, self.wfile)
 
@@ -2774,27 +2832,21 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/cache-manager":
             try:
                 movies = cached_all_movies(so_infantil=self._so_infantil())
+                # Primeiro video de cada pasta numa consulta so (antes era uma
+                # conexao + ate 2 SELECTs por filme).
+                conn_ck = get_db()
+                primeiro = {}
+                for r in conn_ck.execute(
+                        "SELECT folder_path, MIN(name) AS name FROM files "
+                        "WHERE file_type='video' GROUP BY folder_path"):
+                    primeiro.setdefault(r["folder_path"].strip("/"), r["name"])
+                conn_ck.close()
                 result = []
                 for m in movies:
                     folder_path = m["path"]
-                    cached = False
-                    # Check if any video file in this folder is cached
-                    conn_ck = get_db()
-                    rows_ck = conn_ck.execute(
-                        "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
-                        (folder_path,)
-                    ).fetchall()
-                    if not rows_ck:
-                        rows_ck = conn_ck.execute(
-                            "SELECT name FROM files WHERE folder_path=? AND file_type='video' LIMIT 1",
-                            (folder_path.strip("/"),)
-                        ).fetchall()
-                    conn_ck.close()
-                    for row_ck in rows_ck:
-                        file_path = folder_path.strip("/") + "/" + row_ck["name"]
-                        if _is_file_cached(file_path):
-                            cached = True
-                            break
+                    nome = primeiro.get(folder_path.strip("/"))
+                    cached = bool(nome) and _is_file_cached(
+                        folder_path.strip("/") + "/" + nome)
                     result.append({
                         "path": folder_path,
                         "name": m["name"],

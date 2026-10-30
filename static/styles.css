@@ -2564,3 +2564,8 @@ button, input, select, textarea { font-family: inherit; }
 .proximo-btn.primario:hover { background: var(--primary-hover); }
 .proximo-btn:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
 @media (max-width: 700px) { .proximo-card { right: 12px; bottom: 100px; } }
+
+/* Acoes de cache e rescan: so administrador (o servidor recusa as demais) */
+body.nao-admin #refreshBtn,
+body.nao-admin #cacheManagerModal .rclone-action-btn,
+body.nao-admin #cacheManagerModal .cache-item-btn { display: none; }

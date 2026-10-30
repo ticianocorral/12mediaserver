@@ -4789,6 +4789,8 @@
       const res = await fetch('/api/auth/status');
       const data = await res.json();
       _me = data.user || null;
+      // Baixar/apagar cache e reescanear sao so de admin (o servidor recusa).
+      document.body.classList.toggle('nao-admin', !!_me && _me.role !== 'admin');
       if (_me) {
         const chip = document.getElementById('profileSwitchBtn');
         if (chip) {
@@ -4837,10 +4839,12 @@
     window.location.replace('/');
   }
 
+  // Tambem escapa aspas: o resultado vai muito para dentro de atributos, e
+  // um nome de arquivo com " fecharia o atributo (o innerHTML nao escapa aspas).
   function escHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // Encoda para URL E escapa aspas — seguro para embutir em atributos onclick
@@ -5197,11 +5201,11 @@
         statusLabel = '<svg class="icon-svg"><use href="#i-download"></use></svg> ' + _cmPcts[m.path] + '%';
       }
 
-      html += '<div class="cache-item" data-path="' + m.path + '">';
+      html += '<div class="cache-item" data-path="' + escHtml(m.path) + '">';
 
       // Poster thumbnail
       if (m.poster) {
-        html += '<img class="cache-item-poster" src="' + posterUrl(m.path, m.poster) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>\'">';
+        html += '<img class="cache-item-poster" src="' + escHtml(posterUrl(m.path, m.poster)) + '" alt="" onerror="this.outerHTML=\'<div class=cache-item-poster><svg class=\'icon-svg\'><use href=\'#i-film\'></use></svg></div>\'">';
       } else {
         html += '<div class="cache-item-poster"><svg class="icon-svg"><use href="#i-film"></use></svg></div>';
       }

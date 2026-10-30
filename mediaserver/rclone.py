@@ -5,8 +5,10 @@ nunca na raiz do remote — veja start_rclone_serve. Combinado com --read-only, 
 porta local nao le nem escreve nada fora do catalogo.
 """
 
+import base64
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -25,6 +27,27 @@ from . import nuvem as _nuvem
 from . import branding as _branding
 
 rclone_server_proc = None
+
+# Credencial do `rclone serve http`, nova a cada execucao e so em memoria. Sem
+# ela qualquer processo local, ou uma pagina via DNS rebinding contra
+# 127.0.0.1, listaria e baixaria o catalogo da nuvem.
+_SERVE_USER = "ms"
+_SERVE_PASS = secrets.token_urlsafe(24)
+SERVE_AUTH = "Basic " + base64.b64encode(
+    ("%s:%s" % (_SERVE_USER, _SERVE_PASS)).encode()).decode()
+
+
+class _AuthServe(urllib.request.BaseHandler):
+    """Poe a credencial em todo urlopen para o serve local."""
+
+    def http_request(self, req):
+        if (req.host or "").split(":")[-1] == str(RCLONE_SERVE_PORT) and \
+                req.host.split(":")[0] in ("localhost", "127.0.0.1"):
+            req.add_unredirected_header("Authorization", SERVE_AUTH)
+        return req
+
+
+urllib.request.install_opener(urllib.request.build_opener(_AuthServe()))
 
 
 rclone_webgui_proc = None
@@ -282,20 +305,11 @@ def start_rclone_serve():
                   flush=True)
             return None
 
-        # Já existe um serve respondendo (ex.: iniciado externamente)?
-        try:
-            import urllib.request as ureq_check
-            ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2)
-            try:
-                ureq_check.urlopen(f"http://localhost:{RCLONE_SERVE_PORT}/?format=json", timeout=5)
-                print(f"[12:00 Media Server] rclone serve already running on localhost:{RCLONE_SERVE_PORT}", flush=True)
-                return "external"
-            except Exception:
-                print(f"[12:00 Media Server] rclone serve responde mas a nuvem está inacessível — tentando reiniciar", flush=True)
-                _kill_rclone_on_port(RCLONE_SERVE_PORT)
-                time.sleep(1)
-        except Exception:
-            pass
+        # Algo ja ouve na porta: um serve de execucao anterior (com outra
+        # credencial) ou externo. Mata se for rclone e sobe o nosso.
+        if _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
+            _kill_rclone_on_port(RCLONE_SERVE_PORT)
+            time.sleep(1)
 
         try:
             proc = subprocess.Popen(
@@ -316,6 +330,9 @@ def start_rclone_serve():
                  "--log-level", "ERROR"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                # Por variavel de ambiente, nao --pass: nao aparece no `ps`.
+                env={**os.environ, "RCLONE_USER": _SERVE_USER,
+                     "RCLONE_PASS": _SERVE_PASS},
             )
             rclone_server_proc = proc
             print(f"[12:00 Media Server] Starting rclone serve http on localhost:{RCLONE_SERVE_PORT}...", end=" ", flush=True)
