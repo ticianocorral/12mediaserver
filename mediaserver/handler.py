@@ -642,7 +642,20 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if not ok:
             self._send_json({"status": "error", "error": erro}, 400)
             return
-        self._send_json({"status": "ok"})
+        # Fonte local: a pasta (e os arquivos do filme) passam a "Titulo (Ano)".
+        tipo = "serie" if body.get("tipo") == "serie" else "filme"
+        res, aviso = _organizador.renomear_pela_meta(
+            folder_path, str(body.get("title") or "").strip(),
+            str(body.get("year") or "").strip(), tipo)
+        if res:
+            # Espera a reindexacao (fonte local, segundos) para a ficha reabrir
+            # ja no caminho novo em vez de vazia.
+            _scanner.start_background_scan(res["source"])
+            limite = time.time() + 20
+            while _scanner.is_scanning() and time.time() < limite:
+                time.sleep(0.3)
+        self._send_json({"status": "ok", "path": res["path"] if res else folder_path,
+                         "aviso": aviso})
 
     def _handle_scrape_capa(self):
         """Troca a capa de um filme local pela escolhida (nunca fanart)."""

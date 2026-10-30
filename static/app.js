@@ -5757,13 +5757,17 @@
       tagline: v('metaTagline'), plot: v('metaPlot'),
       genres: lista('metaGenres'), directors: lista('metaDirectors'), writers: lista('metaWriters'),
       cast: v('metaCast').split('\n').map(x => x.trim()).filter(Boolean),
+      tipo: window._metaAlvo.tipo,
     });
     if (!r.ok) {
       document.getElementById('metaMsg').innerHTML = '<div class="user-msg err">'
         + escHtml(r.data.error || 'Não foi possível salvar.') + '</div>';
       return;
     }
-    showToast('Informações salvas.', 'success');
+    if (r.data.aviso) showToast(r.data.aviso, 'error');
+    else showToast(r.data.path !== window._metaAlvo.path
+      ? 'Informações salvas e pasta renomeada.' : 'Informações salvas.', 'success');
+    if (r.data.path) window._metaAlvo.path = r.data.path;
     _metaRecarregar();
   }
 
