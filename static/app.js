@@ -50,8 +50,12 @@
     const fullPath = imageName.indexOf('/') === -1
       ? folderPath + '/' + imageName
       : imageName;
-    return '/api/stream?path=' + encodeURIComponent(fullPath);
+    // _versaoImagens muda quando uma capa é trocada: força o <img> e o cache
+    // de memória do navegador a buscar de novo.
+    return '/api/stream?path=' + encodeURIComponent(fullPath)
+      + (_versaoImagens ? '&iv=' + _versaoImagens : '');
   }
+  let _versaoImagens = 0;
 
   // ==================== FORMAT ====================
   function formatSize(bytes) {
@@ -5858,8 +5862,12 @@
     msg.innerHTML = '<div class="loading" style="min-height:40px"><div class="spinner"></div><span>Baixando a capa...</span></div>';
     const r = await _scrapePost('/api/scrape/capa', { path: window._capaAlvo, tmdb_id: window._capaTmdb, poster_path: caminho });
     if (r.ok) {
-      msg.innerHTML = '<div class="user-msg ok">Capa trocada. O catálogo está sendo atualizado.</div>';
       showToast('Capa trocada.', 'success');
+      _versaoImagens = Date.now();
+      _frontCache = {};
+      closeScrapeModal();
+      showMovieInfo(window._capaAlvo);
+      loadPath(currentPath || '');
     } else {
       msg.innerHTML = '<div class="user-msg err">' + escHtml(r.data.error || 'Não foi possível trocar a capa.') + '</div>';
     }

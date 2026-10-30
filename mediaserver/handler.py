@@ -1202,14 +1202,28 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
 
         length = (end - start + 1) if size > 0 else 0
 
+        # Capa local: o navegador revalida (304 barato) em vez de guardar um
+        # dia — trocar a capa no app tem que aparecer na hora.
+        etag = None
+        if cache_imagem:
+            st = real.stat()
+            etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return
+
         self.send_response(206 if partial else 200)
         if partial:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Content-Length", str(length))
         self.send_header("Content-Type", mime)
         self.send_header("Accept-Ranges", "bytes")
-        if cache_imagem:
-            self.send_header("Cache-Control", "max-age=86400")
+        if etag:
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
         self._send_media_cors()
         self.end_headers()
 
