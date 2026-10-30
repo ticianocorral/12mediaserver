@@ -1323,14 +1323,14 @@
       const isAdmin = _me && _me.role === 'admin';
       const totalEps = serie.temporadas.reduce((n, t) => n + t.episodios.length, 0);
       document.getElementById('heroDesc').innerHTML =
-        (isAdmin ? '<span class="colecao-acoes">'
-          + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
-                               'vale para a série inteira: todas as temporadas e episódios')
-          + '</span>' : '')
-        + '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
+        '<svg class="icon-svg"><use href="#i-tv"></use></svg> '
         + serie.temporadas.length + (serie.temporadas.length === 1 ? ' temporada · ' : ' temporadas · ')
         + totalEps + (totalEps === 1 ? ' episódio' : ' episódios')
-        + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '');
+        + (serie.overview ? '<div class="colecao-sinopse">' + escHtml(serie.overview) + '</div>' : '')
+        + (isAdmin ? '<div class="colecao-acoes">'
+          + switchInfantilHtml(seriePath, serie.infantil, 'Perfil infantil',
+                               'vale para a série inteira: todas as temporadas e episódios')
+          + '</div>' : '');
 
       if (!serie.temporadas.length) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">'
@@ -2233,8 +2233,31 @@
 
       // ---- BUILD FINAL HTML ----
       let html = `
-        <div class="movie-info-poster">
-          ${posterImg}
+        <div class="movie-info-lateral">
+          <div class="movie-info-poster">
+            ${posterImg}
+          </div>
+          <div class="movie-info-actions">
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
+            ${isLocalPath(folderPath)
+                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
+                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
+            ${switchAssistidoHtml(folderPath, !!detail.watched)}
+            ${detail.collection
+                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao('
+                  + detail.collection.id + ')" title="Ver a coleção inteira">'
+                  + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
+                  + escHtml(detail.collection.name)
+                  + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
+                : ''}
+          </div>
+          ${(_me && _me.role === 'admin')
+              ? '<div class="movie-info-admin"><span class="movie-info-admin-rotulo">Administração</span>'
+                + pillTagsHtml(folderPath, titleClean, detail.tags)
+                + (isLocalPath(folderPath) ? pillCapaHtml(folderPath, titleClean) : '')
+                + switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
+                + '</div>'
+              : ''}
         </div>
         <div class="movie-info-details">
           ${year ? '<div class="badge">' + year + '</div>' : ''}
@@ -2247,30 +2270,6 @@
             ${subtitle ? '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> ' + formatSize(subtitle.Size) + '</div>' : '<div class="meta-item"><svg class="icon-svg"><use href="#i-message"></use></svg> <span class="label">Legenda</span> Não</div>'}
           </div>
 
-          <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
-            ${isLocalPath(folderPath)
-                ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
-                : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
-            ${switchAssistidoHtml(folderPath, !!detail.watched)}
-            ${(_me && _me.role === 'admin')
-                ? pillTagsHtml(folderPath, titleClean, detail.tags)
-                : ''}
-            ${(_me && _me.role === 'admin' && isLocalPath(folderPath))
-                ? pillCapaHtml(folderPath, titleClean)
-                : ''}
-            ${(_me && _me.role === 'admin')
-                ? switchInfantilHtml(folderPath, detail.infantil, 'Perfil infantil')
-                : ''}
-            ${detail.collection
-                ? '<button class="btn-colecao" onclick="closeMovieInfo(); abrirColecao('
-                  + detail.collection.id + ')" title="Ver a coleção inteira">'
-                  + '<svg class="icon-svg"><use href="#i-layers"></use></svg> '
-                  + escHtml(detail.collection.name)
-                  + ' <span class="btn-colecao-conta">' + detail.collection.total + '</span></button>'
-                : ''}
-          </div>
-          </div>
         </div>`;
 
       content.innerHTML = html;
