@@ -630,7 +630,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(m.path, m.poster);
-          img.alt = escHtml(m.name);
+          img.alt = m.name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           // Attach after card is in DOM
@@ -694,7 +694,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(m.path, m.poster);
-          img.alt = escHtml(m.name);
+          img.alt = m.name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           setTimeout(() => {
@@ -2291,7 +2291,7 @@
             ${posterImg}
           </div>
           <div class="movie-info-actions">
-            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(escHtml(titleClean)) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
+            ${videoPath ? '<button class="btn-play" onclick="playFromInfo(decodeURIComponent(\'' + enc(videoPath) + '\'), decodeURIComponent(\'' + enc(titleClean) + '\') ' + (subtitle ? ', decodeURIComponent(\'' + enc(folderPath + '/' + subtitle.Name) + '\')' : '') + ')"><svg class="icon-svg"><use href="#i-play"></use></svg> Assistir</button>' : '<button class="btn-play" disabled style="opacity:0.4"><svg class="icon-svg"><use href="#i-play"></use></svg> Indisponível</button>'}
             ${isLocalPath(folderPath)
                 ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-hard-drive"></use></svg> Local</span>'
                 : (_isCached(folderPath) ? '<span class="offline-badge"><svg class="icon-svg"><use href="#i-download"></use></svg> Baixado</span>' : '')}
@@ -5092,7 +5092,7 @@
           const img = document.createElement('img');
           img.className = 'movie-card-poster';
           img.src = posterUrl(path, detail.poster.Name);
-          img.alt = escHtml(name);
+          img.alt = name;
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
           img.onerror = () => img.remove();
           cards[idx].appendChild(img);
@@ -5568,7 +5568,7 @@
     const c = d.candidatos || [];
     area.innerHTML = campo + (c.length ? c.map((x, i) =>
       '<div class="user-row" style="align-items:flex-start">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
       + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' <span style="color:var(--text3);font-weight:400">(' + x.ano + ')</span>' : '') + '</div>'
       + '<div class="src-hint" style="margin:2px 0 0">' + escHtml((x.sinopse || '').slice(0, 130)) + ((x.sinopse || '').length > 130 ? '…' : '') + '</div>'
       + '<div class="src-hint" style="color:#a5d6a7">→ ' + escHtml(x.destino) + '/</div></div>'
@@ -5604,7 +5604,7 @@
       + capas.map((c, i) => '<button type="button" title="' + escHtml((c.idioma || 'sem idioma') + ' · ' + (c.largura || '?') + '×' + (c.altura || '?')) + '" '
         + 'onclick="_capaClicada(\'' + elId + '\',' + i + ')" style="padding:0;border:2px solid '
         + (c.path === selecionado ? 'var(--cream)' : 'transparent') + ';border-radius:4px;background:none;cursor:pointer;overflow:hidden;position:relative">'
-        + '<img src="' + c.thumb + '" alt="" loading="lazy" style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover">'
+        + '<img src="' + escHtml(c.thumb) + '" alt="" loading="lazy" style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover">'
         + (c.idioma ? '<span style="position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.7);color:#fff;padding:1px 4px;border-radius:3px">' + escHtml(c.idioma) + '</span>' : '')
         + '</button>').join('') + '</div>';
   }
@@ -5720,7 +5720,7 @@
     if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:center">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
       + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div></div>'
       + '<button class="user-btn" onclick="_capaEscolherFilme(' + x.id + ')">Ver capas</button></div>').join('')
       : '<div class="user-msg">Nenhum resultado. Ajuste o texto da busca.</div>';
@@ -5777,7 +5777,7 @@
     if (d.erro) { area.innerHTML = '<div class="user-msg err">' + escHtml(d.erro) + '</div>'; return; }
     const c = d.candidatos || [];
     area.innerHTML = c.length ? c.map(x => '<div class="user-row" style="align-items:flex-start">'
-      + (x.poster ? '<img src="' + x.poster + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
+      + (x.poster ? '<img src="' + escHtml(x.poster) + '" alt="" style="width:44px;height:64px;object-fit:cover;border-radius:4px;flex:0 0 auto" onerror="this.remove()">' : '')
       + '<div class="src-main"><div class="user-name">' + escHtml(x.titulo) + (x.ano ? ' (' + x.ano + ')' : '') + '</div>'
       + '<div class="src-hint">' + escHtml((x.sinopse || '').slice(0, 140)) + '</div></div>'
       + '<button class="user-btn" onclick="_scrapeAplicar(\'' + pathEnc + '\', ' + x.id + ')">Usar este</button></div>').join('')

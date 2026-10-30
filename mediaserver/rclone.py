@@ -282,11 +282,33 @@ def _kill_rclone_on_port(port):
             pass
 
 
+def _liberar_porta_serve():
+    """Mata o rclone na porta e espera ela soltar (ate 10s, depois SIGKILL).
+    Um serve antigo fechando o cache VFS pode passar de 1s; subir o novo
+    antes disso faz o bind falhar e deixa a nuvem fora do ar."""
+    _kill_rclone_on_port(RCLONE_SERVE_PORT)
+    for i in range(20):
+        pids = [p for p in _pids_on_port(RCLONE_SERVE_PORT)
+                if "rclone" in _proc_cmdline(p)]
+        if not pids:
+            return
+        if i == 19:
+            for p in pids:
+                try:
+                    os.kill(int(p), signal.SIGKILL)
+                except Exception:
+                    pass
+            time.sleep(0.5)
+        else:
+            time.sleep(0.5)
+
+
 def start_rclone_serve():
     """Garante que o 'rclone serve http' esteja rodando na porta 18082.
 
-    Retorna o Popen se este processo iniciou, "external" se já havia um
-    servidor respondendo com o remote acessível, ou None em caso de falha.
+    Retorna o Popen se este processo iniciou, ou None em caso de falha. Um
+    serve que ja esteja na porta (de execucao anterior, com outra senha) e
+    derrubado e substituido.
     """
     global rclone_server_proc
     with _rclone_serve_lock:
@@ -308,8 +330,7 @@ def start_rclone_serve():
         # Algo ja ouve na porta: um serve de execucao anterior (com outra
         # credencial) ou externo. Mata se for rclone e sobe o nosso.
         if _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
-            _kill_rclone_on_port(RCLONE_SERVE_PORT)
-            time.sleep(1)
+            _liberar_porta_serve()
 
         try:
             proc = subprocess.Popen(
@@ -341,6 +362,9 @@ def start_rclone_serve():
             # demorar enquanto o rclone inicializa o VFS e conecta na nuvem)
             for _ in range(25):
                 time.sleep(1)
+                if proc.poll() is not None:
+                    print("o rclone saiu ao iniciar (porta ocupada?)", flush=True)
+                    break
                 if not _porta_responde(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
                     continue
                 if _urlopen_ok(f"http://localhost:{RCLONE_SERVE_PORT}/", timeout=2):
@@ -375,13 +399,12 @@ def restart_rclone_serve():
             except Exception:
                 pass
     rclone_server_proc = None
-    _kill_rclone_on_port(RCLONE_SERVE_PORT)
-    time.sleep(1)
+    _liberar_porta_serve()
 
     proc = start_rclone_serve()
     if proc is None:
         return {"status": "error", "error": "Não foi possível iniciar o rclone serve (rclone está instalado?)."}
-    return {"status": "ok", "serve_running": True, "external": proc == "external"}
+    return {"status": "ok", "serve_running": True}
 
 
 def start_rclone_webgui():

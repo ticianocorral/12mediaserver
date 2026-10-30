@@ -13,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.widget.Button
+import android.net.Uri
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -70,6 +71,21 @@ class MainActivity : AppCompatActivity() {
         botaoAtualizar.setOnClickListener { atualizar(base) }
 
         web.webViewClient = object : WebViewClient() {
+            // A ponte MediaServerTV fica exposta a qualquer pagina carregada:
+            // so o servidor salvo pode navegar dentro do app.
+            override fun shouldOverrideUrlLoading(
+                view: WebView, request: WebResourceRequest
+            ): Boolean {
+                val host = request.url.host
+                if (host != null && host == Uri.parse(view.url ?: "").host) return false
+                Log.w("12:00 Media Server", "navegacao bloqueada: ${request.url}")
+                return true
+            }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                hostServidor = Uri.parse(url ?: "").host
+            }
+
             // So a pagina principal: falha de imagem ou de outro recurso nao
             // pode derrubar a interface inteira.
             override fun onReceivedError(
@@ -139,6 +155,8 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
     }
 
+    @Volatile private var hostServidor: String? = null
+
     /** O que a pagina enxerga como window.MediaServerTV. */
     inner class Ponte {
         /**
@@ -153,6 +171,12 @@ class MainActivity : AppCompatActivity() {
                 JSONObject(json)
             } catch (e: Exception) {
                 Log.w("12:00 Media Server", "play(): json invalido: $json")
+                return
+            }
+            // So toca midia do proprio servidor da pagina.
+            val hostUrl = Uri.parse(dados.optString("url")).host
+            if (hostUrl == null || hostUrl != hostServidor) {
+                Log.w("12:00 Media Server", "play(): url de outro host recusada")
                 return
             }
             Log.i("12:00 Media Server", "play(): url=${dados.optString("url")} legenda=${dados.optString("legenda")} posicao=${dados.optLong("posicao", 0L)}")

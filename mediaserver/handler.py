@@ -143,6 +143,17 @@ _download_progress_lock = threading.Lock()
 _STREAM_BUFFER = 1024 * 1024
 
 # Estaticos comprimidos uma vez por versao do arquivo (app.js tem ~300 KB).
+def _caminho_ok(caminho):
+    """Recusa segmentos '.', '..' e barra invertida em caminhos de midia.
+
+    As checagens (perfil infantil, token de cast) olham o caminho como texto;
+    quem resolve o '..' depois e o sistema de arquivos ou o rclone. Sem esta
+    trava, /Infantil/../Adultos/x.mkv passava pela pasta marcada e tocava."""
+    if "\\" in caminho or "\x00" in caminho:
+        return False
+    return not any(seg in (".", "..") for seg in caminho.split("/"))
+
+
 _COMPRIMIVEIS = ("application/javascript", "application/json", "image/svg+xml")
 _gzip_cache = {}
 _gzip_lock = threading.Lock()
@@ -474,7 +485,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         """Assina URLs para o Chromecast, que busca a midia sem cookie."""
         body = self._read_json_body() or {}
         media_path = str(body.get("path", ""))
-        if not media_path:
+        if not media_path or not _caminho_ok(media_path) or \
+                not _caminho_ok(str(body.get("subtitle", ""))):
             self._send_json({"status": "error", "error": "Missing path"}, 400)
             return
         subtitle = str(body.get("subtitle", ""))
@@ -482,7 +494,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         # token para cada um — senao a tela do Chromecast fica sem a arte.
         # Teto de 4: sao poster e fanart, nao uma galeria.
         extras = body.get("images")
-        imgs = ([str(p) for p in extras[:4] if p]
+        imgs = ([str(p) for p in extras[:4] if p and _caminho_ok(str(p))]
                 if isinstance(extras, list) else [])
         # Perfil infantil: o token e a credencial da TV e vale SEM sessao —
         # por isso o filtro tem que acontecer aqui na emissao. Checar so no
@@ -510,7 +522,7 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         estado para a UI acompanhar em /api/prepare-status."""
         body = self._read_json_body() or {}
         file_path = str(body.get("path", ""))
-        if not file_path:
+        if not file_path or not _caminho_ok(file_path):
             self._send_json({"status": "error", "error": "Missing path"}, 400)
             return
         if self._so_infantil() and not self._permitido_infantil(file_path):
@@ -829,6 +841,11 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         terceiro). Chromecast e <video> nao mandam Origin e passam normalmente."""
         if not _host_allowed(self.headers.get("Host")):
             self._send_error("Host nao permitido", 403)
+            return False
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if not all(_caminho_ok(v) for k in ("path", "alvo", "origem")
+                   for v in query.get(k, [])):
+            self._send_error("Caminho invalido", 400)
             return False
         if not _origin_allowed(self.headers.get("Origin")):
             # O receiver do Chromecast busca a faixa de legenda COM CORS — e
@@ -3587,6 +3604,9 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
             file_path = params.get("path", [""])[0]
             if not file_path:
                 self._send_error("Missing 'path' parameter", 400)
+                return
+            if self._so_infantil() and not self._permitido_infantil(file_path):
+                self._send_error("File not found", 404)
                 return
             item = cached_get_file_info(file_path)
             if item:
