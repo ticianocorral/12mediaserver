@@ -117,6 +117,11 @@ MIT — veja [LICENSE](LICENSE). Histórico completo no changelog do próprio ap
 
 ## 📋 Changelog
 
+### v1.27.4 — séries reconhecem episódios soltos e agrupam temporadas
+
+- séries reconhecem episódios soltos e agrupam temporadas
+
+
 ### v1.27.3 — Séries reconhecem episódios soltos e agrupam temporadas pelo nome
 
 - Episódios soltos na pasta da série ou em subpastas agora aparecem, agrupados por S01E02 no nome

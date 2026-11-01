@@ -5738,6 +5738,13 @@
   // Só a última entrada é exibida no modal (versões anteriores ficam no README)
   const _CHANGELOG = [
     {
+      version: '1.27.4',
+      title: 'séries reconhecem episódios soltos e agrupam temporadas',
+      changes: [
+        'séries reconhecem episódios soltos e agrupam temporadas',
+      ],
+    },
+    {
       version: '1.27.3',
       title: 'Séries reconhecem episódios soltos e agrupam temporadas pelo nome',
       changes: [
