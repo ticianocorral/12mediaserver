@@ -875,6 +875,21 @@ def _ordem_temporada(nome):
     return int(m.group(1)) if m else 999
 
 
+def _numero_episodio(nome_arquivo, temporada_nome):
+    """(temporada, episodio) deduzidos do arquivo; None quando nao da."""
+    import re
+    m = (re.search(r"[Ss](\d{1,2})[ ._-]*[Ee](\d{1,3})", nome_arquivo)
+         or re.search(r"\b(\d{1,2})x(\d{2,3})\b", nome_arquivo))
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    e = re.search(r"(?:^|[ ._\-\[(])(?:e|ep|epis[oó]dio)[ ._-]*(\d{1,3})(?!\d)",
+                  nome_arquivo, re.I) or re.match(r"\s*(\d{1,3})(?!\d)", nome_arquivo)
+    t = re.search(r"(\d+)", temporada_nome or "")
+    if e and t:
+        return int(t.group(1)), int(e.group(1))
+    return None
+
+
 def _temporada_do_arquivo(nome_arquivo, pasta_nome, pasta_eh_temporada):
     """Nome da temporada de um episódio: a pasta dele, se for temporada;
     senão deduz de S01E02 / 1x02 / "Season 1" no nome do arquivo."""
@@ -989,10 +1004,24 @@ def cached_serie(serie_path, so_infantil=False):
                 "SELECT position_seconds, duration_seconds FROM watch_progress "
                 "WHERE profile_id=? AND folder_path=?",
                 (perfil_atual(), ep_path)).fetchone()
+            titulo_ep = _titulo_de_arquivo(fi["name"])
+            plot_ep = still_ep = None
+            num = _numero_episodio(fi["name"], nome_t)
+            if num:
+                em = conn.execute(
+                    "SELECT title, plot, still FROM episodios_meta "
+                    "WHERE serie_path=? AND season=? AND episode=?",
+                    (serie_path, num[0], num[1])).fetchone()
+                if em and em["title"]:
+                    titulo_ep = "E%02d · %s" % (num[1], em["title"])
+                    plot_ep = em["plot"] or None
+                    still_ep = em["still"] or None
             grupos.setdefault(nome_t, []).append({
                 "path": ep_path,
                 "name": fi["name"],
-                "title": _titulo_de_arquivo(fi["name"]),
+                "title": titulo_ep,
+                "plot": plot_ep,
+                "still": still_ep,
                 "size": fi["size"],
                 "subtitle": (fp + "/" + leg["name"]) if leg else None,
                 "position": (prog["position_seconds"] if prog else 0),

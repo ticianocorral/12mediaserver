@@ -579,6 +579,16 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         _scraper.set_api_key(str(body.get("api_key", "")))
         self._send_json({"status": "ok", "configurado": _scraper.configurado()})
 
+    @staticmethod
+    def _tipo_da_pasta(folder_path):
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT tipo FROM folders WHERE path=?",
+                               (folder_path,)).fetchone()
+        finally:
+            conn.close()
+        return row["tipo"] if row else "filme"
+
     def _handle_scrape_apply(self):
         body = self._read_json_body() or {}
         folder_path = str(body.get("path", "")).strip()
@@ -590,7 +600,10 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
         if not folder_path:
             self._send_json({"status": "error", "error": "Faltou path ou tmdb_id"}, 400)
             return
-        ok, erro = _scraper.aplicar(folder_path, tmdb_id)
+        if self._tipo_da_pasta(folder_path) == "serie":
+            ok, erro, _n = _scraper.aplicar_serie(folder_path, tmdb_id)
+        else:
+            ok, erro = _scraper.aplicar(folder_path, tmdb_id)
         if not ok:
             self._send_json({"status": "error", "error": erro}, 502)
             return
@@ -2525,7 +2538,8 @@ class MediaServerHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error("Missing 'path' parameter", 400)
                 return
             nome_pasta = folder_path.rstrip("/").rsplit("/", 1)[-1]
-            candidatos, erro = _scraper.buscar_candidatos(nome_pasta, query)
+            candidatos, erro = _scraper.buscar_candidatos(
+                nome_pasta, query, self._tipo_da_pasta(folder_path))
             self._send_json({"candidatos": candidatos, "erro": erro})
             return
 

@@ -1365,6 +1365,8 @@
             + (temProgresso ? 'pause' : 'play') + '"></use></svg></span>'
             + '<span class="episodio-titulo">' + escHtml(ep.title)
             + (temProgresso ? ' <span class="episodio-pos">' + posStr + '</span>' : '')
+            + (ep.plot ? '<span class="episodio-sinopse" style="display:block;font-size:.8em;opacity:.65;font-weight:400;white-space:normal">'
+                + escHtml(ep.plot.length > 180 ? ep.plot.slice(0, 180) + '…' : ep.plot) + '</span>' : '')
             + '</span>'
             + '<span class="episodio-tamanho">' + formatSize(ep.size) + '</span>'
             + (ep.subtitle ? '<span class="episodio-cc" title="Com legenda">CC</span>' : '')
@@ -5691,10 +5693,11 @@
     corpo.innerHTML = '<div class="loading" style="min-height:80px"><div class="spinner"></div></div>';
     const d = await (await fetch('/api/scrape/pendentes')).json();
     const lista = d.pendentes || [];
-    if (!lista.length) { corpo.innerHTML = '<div class="rclone-help">Todos os filmes já têm metadado.</div>'; return; }
-    corpo.innerHTML = '<div class="rclone-help">' + d.total + ' filme(s) sem metadado. Em filmes da nuvem os dados ficam só no '
+    if (!lista.length) { corpo.innerHTML = '<div class="rclone-help">Todos os filmes e séries já têm metadado.</div>'; return; }
+    corpo.innerHTML = '<div class="rclone-help">' + d.total + ' filme(s)/série(s) sem metadado. Em séries, os episódios também são preenchidos. Em itens da nuvem os dados ficam só no '
       + 'catálogo do app (a nuvem não é alterada); em pastas locais também é gravado o .nfo e o pôster.</div>'
-      + lista.map(it => '<div class="user-row"><span class="user-name">' + escHtml(it.name) + '</span>'
+      + lista.map(it => '<div class="user-row"><span class="user-name">' + escHtml(it.name)
+        + (it.tipo === 'serie' ? ' <span class="src-hint">(série)</span>' : '') + '</span>'
         + '<button class="user-btn" onclick="_scrapeAbrirBusca(\'' + enc(it.path) + '\', \'' + enc(it.name) + '\')">Buscar</button></div>').join('');
   }
 
@@ -5738,6 +5741,10 @@
       version: '1.27.3',
       title: 'Séries reconhecem episódios soltos e agrupam temporadas pelo nome',
       changes: [
+        'Episódios soltos na pasta da série ou em subpastas agora aparecem, agrupados por S01E02 no nome',
+        'Buscador de metadados (Ajustes > Metadados) agora busca séries no TMDB',
+        'Ao aplicar uma série, título, sinopse e miniatura de todos os episódios são gravados',
+        'Séries sem metadado de episódio aparecem em 'Sem metadado'',
       ],
     },
     {
