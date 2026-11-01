@@ -875,6 +875,20 @@ def _ordem_temporada(nome):
     return int(m.group(1)) if m else 999
 
 
+def _temporada_do_arquivo(nome_arquivo, pasta_nome, pasta_eh_temporada):
+    """Nome da temporada de um episódio: a pasta dele, se for temporada;
+    senão deduz de S01E02 / 1x02 / "Season 1" no nome do arquivo."""
+    import re
+    if pasta_eh_temporada:
+        return pasta_nome
+    m = (re.search(r"[Ss](\d{1,2})[ ._-]*[Ee]\d{1,3}", nome_arquivo)
+         or re.search(r"\b(\d{1,2})x\d{2,3}\b", nome_arquivo)
+         or re.search(r"(?:season|temporada|temp)[ ._-]*(\d{1,2})", nome_arquivo, re.I))
+    if m:
+        return "Temporada %d" % int(m.group(1))
+    return "Episódios"
+
+
 def cached_series_list(so_infantil=False):
     """Todas as séries do acervo, para a listagem própria delas."""
     conn = get_db()
@@ -885,13 +899,16 @@ def cached_series_list(so_infantil=False):
                           "WHERE ii.alvo = f.path)")
         rows = conn.execute(
             f"""SELECT f.path, f.name,
-                   (SELECT COUNT(*) FROM folders t
-                    WHERE t.parent = f.path AND t.tipo = 'temporada'
-                      AND t.has_video = 1) AS temporadas,
+                   (SELECT COUNT(DISTINCT fi.folder_path) FROM files fi
+                    WHERE fi.file_type = 'video'
+                      AND (fi.folder_path = f.path
+                           OR substr(fi.folder_path, 1, length(f.path) + 1) = f.path || '/')
+                   ) AS temporadas,
                    (SELECT COUNT(*) FROM files fi
-                    JOIN folders t2 ON t2.path = fi.folder_path
-                    WHERE t2.parent = f.path AND t2.tipo = 'temporada'
-                      AND fi.file_type = 'video') AS episodios
+                    WHERE fi.file_type = 'video'
+                      AND (fi.folder_path = f.path
+                           OR substr(fi.folder_path, 1, length(f.path) + 1) = f.path || '/')
+                   ) AS episodios
                FROM folders f
                WHERE f.tipo = 'serie' AND f.has_video = 1{filtro_inf}
                ORDER BY f.name COLLATE NOCASE ASC""").fetchall()
@@ -943,38 +960,46 @@ def cached_serie(serie_path, so_infantil=False):
                 (serie_path, tipo)).fetchone()
             return row["arquivo"] if row else None
 
-        temporadas = []
-        for temp in conn.execute(
-                "SELECT path, name FROM folders "
-                "WHERE parent=? AND tipo='temporada' AND has_video=1",
-                (serie_path,)).fetchall():
-            eps = []
-            for fi in conn.execute(
-                    "SELECT name, size FROM files "
-                    "WHERE folder_path=? AND file_type='video' ORDER BY name",
-                    (temp["path"],)).fetchall():
-                stem = fi["name"].rsplit(".", 1)[0]
-                ep_path = temp["path"] + "/" + fi["name"]
-                leg = conn.execute(
-                    "SELECT name FROM files WHERE folder_path=? AND name LIKE ? "
-                    "AND file_type='subtitle' LIMIT 1",
-                    (temp["path"], stem + "%")).fetchone()
-                prog = conn.execute(
-                    "SELECT position_seconds, duration_seconds FROM watch_progress "
-                    "WHERE profile_id=? AND folder_path=?",
-                    (perfil_atual(), ep_path)).fetchone()
-                eps.append({
-                    "path": ep_path,
-                    "name": fi["name"],
-                    "title": _titulo_de_arquivo(fi["name"]),
-                    "size": fi["size"],
-                    "subtitle": (temp["path"] + "/" + leg["name"]) if leg else None,
-                    "position": (prog["position_seconds"] if prog else 0),
-                    "duration": (prog["duration_seconds"] if prog else 0),
-                    # Selo do episodio assistido: linha encerrada (pos <= 0).
-                    "watched": bool(prog) and prog["position_seconds"] <= 0,
-                })
-            temporadas.append({"nome": temp["name"], "episodios": eps})
+        grupos = {}
+        videos = conn.execute(
+            "SELECT folder_path, name, size FROM files "
+            "WHERE file_type='video' AND (folder_path=? "
+            "OR substr(folder_path, 1, length(?) + 1) = ? || '/') "
+            "ORDER BY folder_path, name",
+            (serie_path, serie_path, serie_path)).fetchall()
+        for fi in videos:
+            fp = fi["folder_path"]
+            pasta = conn.execute(
+                "SELECT name, tipo FROM folders WHERE path=?", (fp,)).fetchone()
+            eh_temp = bool(pasta) and pasta["tipo"] == "temporada" and fp != serie_path
+            if not eh_temp and fp != serie_path:
+                # subpasta funda sem marca: usa o nome dela como temporada
+                nome_t = pasta["name"] if pasta else fp.rsplit("/", 1)[-1]
+                eh_temp = True
+            else:
+                nome_t = pasta["name"] if pasta else ""
+            nome_t = _temporada_do_arquivo(fi["name"], nome_t, eh_temp)
+            stem = fi["name"].rsplit(".", 1)[0]
+            ep_path = fp + "/" + fi["name"]
+            leg = conn.execute(
+                "SELECT name FROM files WHERE folder_path=? AND name LIKE ? "
+                "AND file_type='subtitle' LIMIT 1",
+                (fp, stem + "%")).fetchone()
+            prog = conn.execute(
+                "SELECT position_seconds, duration_seconds FROM watch_progress "
+                "WHERE profile_id=? AND folder_path=?",
+                (perfil_atual(), ep_path)).fetchone()
+            grupos.setdefault(nome_t, []).append({
+                "path": ep_path,
+                "name": fi["name"],
+                "title": _titulo_de_arquivo(fi["name"]),
+                "size": fi["size"],
+                "subtitle": (fp + "/" + leg["name"]) if leg else None,
+                "position": (prog["position_seconds"] if prog else 0),
+                "duration": (prog["duration_seconds"] if prog else 0),
+                "watched": bool(prog) and prog["position_seconds"] <= 0,
+            })
+        temporadas = [{"nome": n, "episodios": e} for n, e in grupos.items()]
         temporadas.sort(key=lambda x: _ordem_temporada(x["nome"]))
         poster = _art("poster")
         fanart = _art("fanart")
