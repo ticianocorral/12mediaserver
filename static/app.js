@@ -5744,7 +5744,7 @@
         'Episódios soltos na pasta da série ou em subpastas agora aparecem, agrupados por S01E02 no nome',
         'Buscador de metadados (Ajustes > Metadados) agora busca séries no TMDB',
         'Ao aplicar uma série, título, sinopse e miniatura de todos os episódios são gravados',
-        'Séries sem metadado de episódio aparecem em 'Sem metadado'',
+        'Séries sem metadado de episódio aparecem em “Sem metadado”',
       ],
     },
     {
