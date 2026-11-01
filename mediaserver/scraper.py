@@ -120,7 +120,7 @@ def _titulo_ano(nome_pasta):
 
 # ── Busca (nunca aplica sozinha — so devolve candidatos) ────
 
-def buscar_candidatos(nome_pasta, query=None):
+def buscar_candidatos(nome_pasta, query=None, tipo="filme"):
     """Candidatos do TMDB pro nome de uma pasta. 'query' sobrepoe o titulo
     derivado do nome, pra quando o palpite automatico erra feio."""
     titulo, ano = _titulo_ano(nome_pasta)
@@ -129,17 +129,19 @@ def buscar_candidatos(nome_pasta, query=None):
     if not titulo:
         return [], None
     params = {"query": titulo, "include_adult": "false"}
+    serie = tipo == "serie"
     if ano:
-        params["primary_release_year"] = ano
-    dados, erro = _get("/search/movie", params)
+        params["first_air_date_year" if serie else "primary_release_year"] = ano
+    dados, erro = _get("/search/tv" if serie else "/search/movie", params)
     if erro:
         return [], erro
     candidatos = []
     for r in (dados or {}).get("results", [])[:8]:
         candidatos.append({
             "id": r.get("id"),
-            "titulo": r.get("title") or r.get("original_title") or "",
-            "ano": (r.get("release_date") or "")[:4] or None,
+            "titulo": (r.get("name") if serie else r.get("title"))
+                      or r.get("original_title") or r.get("original_name") or "",
+            "ano": (r.get("first_air_date" if serie else "release_date") or "")[:4] or None,
             "poster": (IMG_POSTER + r["poster_path"]) if r.get("poster_path") else None,
             "sinopse": r.get("overview") or "",
         })
@@ -190,6 +192,110 @@ def para_movie_meta(dados):
         # baixa CAPA (poster), nunca fanart.
         "_poster_path": dados.get("poster_path"),
     }
+
+
+# ── Series: detalhes + episodios por temporada ──────────────
+
+def detalhes_serie(tmdb_id):
+    return _get("/tv/%d" % int(tmdb_id), {"append_to_response": "credits"})
+
+
+def para_serie_meta(dados):
+    """Mesmo formato de para_movie_meta, a partir de um /tv/{id}."""
+    credits_ = dados.get("credits") or {}
+    elenco = [{"name": c.get("name", ""), "role": c.get("character", ""), "thumb": ""}
+              for c in credits_.get("cast", [])[:20]]
+    duracoes = dados.get("episode_run_time") or []
+    estreia = dados.get("first_air_date") or None
+    return {
+        "title": dados.get("name") or dados.get("original_name"),
+        "originaltitle": dados.get("original_name"),
+        "year": (estreia or "")[:4] or None,
+        "plot": dados.get("overview") or None,
+        "outline": None,
+        "tagline": dados.get("tagline") or None,
+        "runtime": str(duracoes[0]) if duracoes else None,
+        "mpaa": None,
+        "country": list(dados.get("origin_country") or []),
+        "premiered": estreia,
+        "rating": ("%.1f" % dados["vote_average"]) if dados.get("vote_average") else None,
+        "votes": str(dados["vote_count"]) if dados.get("vote_count") else None,
+        "genres": [g.get("name", "") for g in dados.get("genres", [])],
+        "studios": [c.get("name", "") for c in dados.get("production_companies", [])],
+        "directors": [c.get("name", "") for c in dados.get("created_by", [])],
+        "writers": [],
+        "tags": [],
+        "actors": elenco,
+        "video_info": {},
+        "audio_info": {},
+        "source": "tmdb",
+        "set_name": None,
+        "set_overview": None,
+        "_poster_path": dados.get("poster_path"),
+    }
+
+
+def _episodios_da_temporada(tmdb_id, numero):
+    dados, erro = _get("/tv/%d/season/%d" % (int(tmdb_id), int(numero)), {})
+    if erro or not dados:
+        return [], erro
+    saida = []
+    for ep in dados.get("episodes", []):
+        if ep.get("episode_number") is None:
+            continue
+        saida.append({
+            "season": int(numero),
+            "episode": int(ep["episode_number"]),
+            "title": ep.get("name") or "",
+            "plot": ep.get("overview") or "",
+            "air_date": ep.get("air_date") or "",
+            "rating": ("%.1f" % ep["vote_average"]) if ep.get("vote_average") else "",
+            "runtime": str(ep["runtime"]) if ep.get("runtime") else "",
+            "still": (IMG_CAPA + ep["still_path"]) if ep.get("still_path") else "",
+        })
+    return saida, None
+
+
+def aplicar_serie(folder_path, tmdb_id):
+    """Grava no banco os dados da serie e de todos os episodios de todas as
+    temporadas. Devolve (ok, erro, total_episodios)."""
+    dados, erro = detalhes_serie(tmdb_id)
+    if erro:
+        return False, erro, 0
+    if not dados or not dados.get("id"):
+        return False, "TMDB nao devolveu dados pra essa serie", 0
+
+    episodios = []
+    for temp in dados.get("seasons", []):
+        numero = temp.get("season_number")
+        if numero is None:
+            continue
+        eps, erro = _episodios_da_temporada(tmdb_id, numero)
+        if erro:
+            return False, erro, 0
+        episodios.extend(eps)
+
+    meta = para_serie_meta(dados)
+    conn = get_db()
+    try:
+        _save_nfo_to_db(conn, folder_path, meta)
+        conn.execute("DELETE FROM episodios_meta WHERE serie_path=?", (folder_path,))
+        conn.executemany(
+            "INSERT OR REPLACE INTO episodios_meta (serie_path, season, episode, "
+            "title, plot, air_date, rating, runtime, still) VALUES (?,?,?,?,?,?,?,?,?)",
+            [(folder_path, e["season"], e["episode"], e["title"], e["plot"],
+              e["air_date"], e["rating"], e["runtime"], e["still"]) for e in episodios])
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Pasta local: so a capa (o NFO de filme nao serve de tvshow.nfo).
+    if _sources.is_local(folder_path):
+        pasta = _sources.local_real_path(folder_path)
+        if pasta is not None and pasta.is_dir():
+            escrever_arquivos(pasta, {"_poster_path": meta.get("_poster_path")},
+                              sem_nfo=True)
+    return True, None, len(episodios)
 
 
 # ── Escrita local: confinada, nao-destrutiva, atomica ───────
@@ -272,7 +378,8 @@ def _escrever_local_se_possivel(folder_path, meta):
     escrever_arquivos(pasta, meta)
 
 
-def escrever_arquivos(pasta, meta, nome_nfo=None, poster_path=None, sem_capa=False):
+def escrever_arquivos(pasta, meta, nome_nfo=None, poster_path=None, sem_capa=False,
+                      sem_nfo=False):
     """Grava NFO e poster.jpg em `pasta` (Path), so o que falta. Nunca fanart.
     `nome_nfo` e o nome do .nfo novo (sem extensao); padrao: nome da pasta.
     `poster_path` e a capa escolhida (caminho do TMDB); sem ele vale a capa
@@ -284,7 +391,7 @@ def escrever_arquivos(pasta, meta, nome_nfo=None, poster_path=None, sem_capa=Fal
         return novos
 
     tem_nfo = any(p.suffix.lower() == ".nfo" for p in existentes)
-    if not tem_nfo:
+    if not tem_nfo and not sem_nfo:
         nfo_path = pasta / ((nome_nfo or pasta.name) + ".nfo")
         try:
             _escrever_atomico(nfo_path, _construir_nfo_xml(meta).encode("utf-8"))
@@ -401,10 +508,12 @@ def listar_pendentes(limite=200):
     conn = get_db()
     try:
         rows = conn.execute(
-            """SELECT f.path, f.name FROM folders f
+            """SELECT f.path, f.name, f.tipo FROM folders f
                LEFT JOIN movie_meta m ON m.folder_path = f.path
-               WHERE f.has_video = 1 AND f.depth >= 1 AND f.tipo = 'filme'
-                 AND m.folder_path IS NULL
+               WHERE f.has_video = 1 AND f.depth >= 1 AND f.tipo IN ('filme', 'serie')
+                 AND ((f.tipo = 'filme' AND m.folder_path IS NULL)
+                   OR (f.tipo = 'serie' AND NOT EXISTS (
+                         SELECT 1 FROM episodios_meta e WHERE e.serie_path = f.path)))
                ORDER BY f.name COLLATE NOCASE ASC
                LIMIT ?""",
             (limite,),
@@ -412,9 +521,11 @@ def listar_pendentes(limite=200):
         total = conn.execute(
             """SELECT COUNT(*) as c FROM folders f
                LEFT JOIN movie_meta m ON m.folder_path = f.path
-               WHERE f.has_video = 1 AND f.depth >= 1 AND f.tipo = 'filme'
-                 AND m.folder_path IS NULL"""
+               WHERE f.has_video = 1 AND f.depth >= 1 AND f.tipo IN ('filme', 'serie')
+                 AND ((f.tipo = 'filme' AND m.folder_path IS NULL)
+                   OR (f.tipo = 'serie' AND NOT EXISTS (
+                         SELECT 1 FROM episodios_meta e WHERE e.serie_path = f.path)))"""
         ).fetchone()["c"]
     finally:
         conn.close()
-    return [{"path": r["path"], "name": r["name"]} for r in rows], total
+    return [{"path": r["path"], "name": r["name"], "tipo": r["tipo"]} for r in rows], total

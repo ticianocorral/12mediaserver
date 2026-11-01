@@ -64,6 +64,21 @@ SCHEMA = """
         updated_at REAL NOT NULL DEFAULT 0
     );
 
+    -- Metadados por episodio (TMDB), chaveados por serie + temporada + episodio:
+    -- independem do nome do arquivo e sobrevivem a mover/renomear.
+    CREATE TABLE IF NOT EXISTS episodios_meta (
+        serie_path TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        episode INTEGER NOT NULL,
+        title TEXT,
+        plot TEXT,
+        air_date TEXT,
+        rating TEXT,
+        runtime TEXT,
+        still TEXT,
+        PRIMARY KEY (serie_path, season, episode)
+    );
+
     -- Progresso por perfil: cada perfil tem o seu "continuar assistindo" e os
     -- seus assistidos. Linha com position_seconds = 0 e "assistido".
     CREATE TABLE IF NOT EXISTS watch_progress (
