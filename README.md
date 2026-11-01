@@ -117,6 +117,9 @@ MIT — veja [LICENSE](LICENSE). Histórico completo no changelog do próprio ap
 
 ## 📋 Changelog
 
+### v1.27.3 — Séries reconhecem episódios soltos e agrupam temporadas pelo nome
+
+
 ### v1.27.2 — v1.27.1 — servidor volta a subir com conta existente; remove Aparência
 
 - v1.27.1 — servidor volta a subir com conta existente; remove Aparência
